@@ -3,31 +3,13 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CIRCLEHOME="${CIRCLEHOME:-/media/jvincent/Kingspec512/repos/circle}"
-TOOLCHAIN="$ROOT/.radbuild/toolchains/arm-gnu-toolchain-15.2.rel1-x86_64-aarch64-none-elf/bin/aarch64-none-elf-"
-QEMU="${QEMU_SYSTEM_AARCH64:-}"
+RADLIB_ROOT="${RADLIB_ROOT:-$(cd "$ROOT/../RADLib" && pwd)}"
+TOOLCHAIN="${RADLIB_AARCH64_NONE_ELF_PREFIX:-$RADLIB_ROOT/.radbuild/toolchains/arm-gnu-toolchain-15.2.rel1-x86_64-aarch64-none-elf/bin/aarch64-none-elf-}"
 LOG="$ROOT/.radbuild/qemu-pizero2w-smoke.log"
 
-if [[ -z "$QEMU" ]]; then
-    if command -v qemu-system-aarch64 >/dev/null 2>&1; then
-        QEMU="$(command -v qemu-system-aarch64)"
-    else
-        QEMU="$ROOT/.radbuild/qemu-arm/usr/bin/qemu-system-aarch64"
-    fi
-fi
-
-if [[ ! -x "$QEMU" ]]; then
-    mkdir -p "$ROOT/.radbuild/qemu-arm-deb" "$ROOT/.radbuild/qemu-arm"
-    (
-        cd "$ROOT/.radbuild/qemu-arm-deb"
-        apt-get download qemu-system-arm
-        dpkg-deb -x qemu-system-arm_*.deb "$ROOT/.radbuild/qemu-arm"
-    )
-fi
-
-if [[ ! -x "$QEMU" ]]; then
-    echo "qemu-system-aarch64 not found; install qemu-system-arm or set QEMU_SYSTEM_AARCH64" >&2
-    exit 1
-fi
+# shellcheck source=/dev/null
+source "$ROOT/tools/embedded/qemu_aarch64_env.sh"
+QEMU="$(radix_resolve_qemu_system_aarch64 "$ROOT")"
 
 cd "$CIRCLEHOME"
 ./configure -f -r 3 -p "$TOOLCHAIN" --multicore --qemu --c++20 >/dev/null
@@ -56,9 +38,18 @@ if [[ "$status" != "0" && "$status" != "124" ]]; then
     exit "$status"
 fi
 
-grep -q "backend=circle_pi" "$LOG"
-grep -q "detected=4 service_core=0 worker_cores=3" "$LOG"
-grep -q "dsp_samples=96" "$LOG"
+require_marker() {
+    local marker="${1:?missing marker}"
+    if ! grep -q "$marker" "$LOG"; then
+        cat "$LOG"
+        echo "Pi Zero 2 W QEMU smoke missing marker: $marker" >&2
+        exit 1
+    fi
+}
+
+require_marker "backend=circle_pi"
+require_marker "detected=4 service_core=0 worker_cores=3"
+require_marker "dsp_samples=96"
 
 if [[ "${RADLIB_RESTORE_CIRCLE_HW:-1}" == "1" ]]; then
     (
