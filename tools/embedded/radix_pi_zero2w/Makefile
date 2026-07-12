@@ -13,13 +13,13 @@ OBJCOPY := $(TOOLCHAIN_PREFIX)objcopy
 CXXFLAGS := -std=c++20 -Os -ffreestanding -fno-pic -fno-pie -fno-rtti -fno-exceptions -fno-stack-protector -Wall -Wextra -DRADLIB_EMBEDDED_NO_CPP_WRAPPERS=1 -DRADIX_KERNEL_BACKEND_bcm283x_pi=1
 CFLAGS := -Os -ffreestanding -fno-pic -fno-pie -fno-stack-protector -Wall -Wextra -DRADLIB_EMBEDDED_NO_CPP_WRAPPERS=1 -DRADIX_KERNEL_BACKEND_bcm283x_pi=1
 ASFLAGS := -x assembler-with-cpp
-INCLUDES := -I$(RADIX_OS_ROOT)/RADixKernel/headers -I$(RADIX_OS_ROOT)/RADixKernel/boot
+INCLUDES := -I$(RADIX_OS_ROOT)/RADixKernel/headers -I$(RADIX_OS_ROOT)/RADixKernel/boot -I$(RADIX_OS_ROOT)/RADixKernel/platforms/a53
 LDFLAGS := -nostdlib -static -Wl,-T,$(CURDIR)/linker.ld -Wl,--build-id=none
 
 OBJS := \
 	boot.o \
 	kernel.o \
-	aarch64_user.o \
+	radixkernel_a53.o \
 	radboot.o \
 	radixkernel_runtime.o \
 	radixkernel_overlay.o \
@@ -40,7 +40,7 @@ boot.o: boot.S
 kernel.o: kernel.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c -o $@ $<
 
-aarch64_user.o: aarch64_user.cpp
+radixkernel_a53.o: $(RADIX_OS_ROOT)/RADixKernel/platforms/a53/radixkernel_a53.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c -o $@ $<
 
 radboot.o: $(RADIX_OS_ROOT)/RADixKernel/boot/radboot.cpp
@@ -52,7 +52,7 @@ radixkernel_runtime.o: $(RADIX_OS_ROOT)/RADixKernel/core/RADixKernel_runtime.cpp
 radixkernel_overlay.o: $(RADIX_OS_ROOT)/RADixKernel/subsystems/RADixOverlayRuntime.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c -o $@ $<
 
-radixkernel_hal_bcm283x.o: $(RADIX_OS_ROOT)/RADixKernel/hal/bcm283x/radixkernel_hal_bcm283x.cpp
+radixkernel_hal_bcm283x.o: $(RADIX_OS_ROOT)/RADixKernel/platforms/a53/bcm283x/radixkernel_hal_bcm283x.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c -o $@ $<
 
 radixkernel_runtime_newlib.o: $(RADIX_OS_ROOT)/RADixKernel/hal/circle/radixkernel_runtime_newlib.cpp

@@ -1,4 +1,5 @@
 #include <radixkernel/radixkernel.h>
+#include <radixkernel_a53.h>
 #include <radboot.h>
 
 #include <stdint.h>
@@ -7,14 +8,10 @@
 extern "C" char __bss_start;
 extern "C" char __bss_end;
 extern "C" char __image_end;
+extern "C" uintptr_t radix_pi_boot_argument;
 extern "C" void rad_bcm283x_bind_handoff(const rad_boot_handoff_t *handoff);
-extern "C" rad_status_t rad_aarch64_user_arch_init(void);
 
 namespace {
-void clear_bss() {
-    memset(&__bss_start, 0, static_cast<size_t>(&__bss_end - &__bss_start));
-}
-
 void marker(const char *text) {
     rad_debug_marker(text);
 }
@@ -30,8 +27,6 @@ void write_terminal(const char *text, void *context) {
 }
 
 extern "C" void radix_pi_entry(rad_boot_handoff_t *handoff) {
-    clear_bss();
-
     rad_boot_handoff_t fallback{};
     if (radboot_validate_handoff(handoff) != RAD_STATUS_OK) {
         radboot_prepare_pi_handoff(&fallback, "direct-kernel8", 0x80000u, reinterpret_cast<uintptr_t>(&__image_end) - 0x80000u, reinterpret_cast<uintptr_t>(&radix_pi_entry));
@@ -51,6 +46,8 @@ extern "C" void radix_pi_entry(rad_boot_handoff_t *handoff) {
     config.backend_name = "bcm283x_pi";
     config.boot_info = &handoff->boot;
     rad_kernel_init(&config);
+    rad_a53_note_boot_normalized(0u, static_cast<uintptr_t>(radix_pi_boot_argument), 1u);
+    rad_a53_platform_init();
 
     marker("RADIX_PI_HANDOFF_OK");
     marker("RADIX_PI_PAYLOAD_ENTRY_OK");
@@ -98,7 +95,7 @@ extern "C" void radix_pi_entry(rad_boot_handoff_t *handoff) {
         rad_device_close(input);
     }
 
-    if (rad_aarch64_user_arch_init() == RAD_STATUS_OK) marker("RADIX_AARCH64_PROCESS_ARCH_OK");
+    rad_a53_process_self_test();
 
     rad_framebuffer_t framebuffer = nullptr;
     if (rad_framebuffer_open_primary(&framebuffer) == RAD_STATUS_OK) {

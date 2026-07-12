@@ -27,6 +27,14 @@ The core runtime is intentionally explicit:
 - The overlay tree binds platform description to buses, child devices,
   framebuffers, and interrupt domains.
 
+## Platform Layout
+
+Architecture and SoC code is split under `RADixKernel/platforms`. Portable A53
+execution code belongs in `platforms/a53`; Broadcom-specific Pi drivers belong
+under `platforms/a53/bcm283x`. The x86 VM target remains the parity reference
+and will move under `platforms/x86` once its target wrapper is thin enough to
+avoid behavior changes.
+
 ## Handle Rules
 
 Opaque handles are owned by the caller after a successful open/create call.

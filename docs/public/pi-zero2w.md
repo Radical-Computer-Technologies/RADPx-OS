@@ -55,10 +55,13 @@ test downloads and extracts Ubuntu's `qemu-system-arm` package under
 `.radbuild/qemu-arm` and reuses it on later runs. A passing run verifies the
 early BCM283x HAL, PL011 UART, mailbox framebuffer, handoff validation, payload
 entry, block and FAT mount scaffolds, USB/input scaffolds, framebuffer dirty
-present, AArch64 process markers, and Slint/RADCompositor parity markers.
+present, portable A53 boot/process/COW checks, and Slint/RADCompositor parity
+markers.
 
 The current RAD-owned backend includes:
 
+- A platform split under `RADixKernel/platforms`: portable A53 code in
+  `platforms/a53` and Pi-specific BCM283x drivers in `platforms/a53/bcm283x`.
 - PL011 serial console registration.
 - System timer reads and busy sleep.
 - Interrupt enable/disable hooks for the BCM interrupt controller.
@@ -67,8 +70,10 @@ The current RAD-owned backend includes:
   backing for QEMU smoke reads.
 - `/dev/usb0` host-info scaffold and `/dev/input/event0` synthetic HID input
   event path.
-- AArch64 process-architecture marker registration for EL0, SVC, user-copy,
-  execve, fork, and COW page-fault parity gates.
+- A portable A53 process model that registers process arch hooks, performs
+  kernel process-table fork/fd-clone/wait checks, and exercises deterministic
+  parent/child COW isolation before the future privileged MMU implementation
+  takes over the same interface.
 - Slint/RADCompositor boot-shell, window-manager, terminal-window, and
   compositor-damage smoke markers.
 
@@ -89,12 +94,14 @@ for validating the actual Circle FAT load and jump sequence.
 
 ## Current Limits
 
-This page is experimental. The current eMMC, USB, HID, AArch64 EL0/syscall/MMU,
-fork/COW, and Slint shell paths are QEMU-visible scaffolds and parity markers,
-not complete physical drivers or complete process isolation. The next Pi passes
-need the real BCM283x eMMC command engine, real DWC OTG host enumeration,
-hardware keyboard/mouse input, second-stage FAT load/jump validation on silicon,
-and full AArch64 page-table/trap/fork/COW behavior.
+This page is experimental. The portable A53 layer now owns the boot/process/COW
+contract, but privileged AArch64 exception-vector entry, real EL0 execution,
+hardware page tables, and user ELF replacement are not complete yet. The eMMC,
+USB, HID, and Slint shell paths are still QEMU-visible scaffolds rather than
+complete physical drivers. The next Pi passes need the real BCM283x eMMC command
+engine, real DWC OTG host enumeration, hardware keyboard/mouse input,
+second-stage FAT load/jump validation on silicon, and full AArch64
+page-table/trap/fork/exec/COW behavior.
 
 Physical Pi Zero 2 W hardware remains the authority for mailbox framebuffer and
 SD behavior.

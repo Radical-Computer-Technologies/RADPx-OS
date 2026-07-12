@@ -4,6 +4,7 @@ PROJECT_BRIEF          = "POSIX-inspired kernel API with embedded and desktop VM
 OUTPUT_DIRECTORY       = $(RADIX_DOCS_OUTPUT)
 INPUT                  = $(RADIX_SOURCE_DIR)/RADixKernel/headers \
                          $(RADIX_SOURCE_DIR)/RADixKernel/boot \
+                         $(RADIX_SOURCE_DIR)/RADixKernel/platforms \
                          $(RADIX_SOURCE_DIR)/docs/public
 RECURSIVE              = YES
 FILE_PATTERNS          = *.h \

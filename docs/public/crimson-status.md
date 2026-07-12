@@ -32,9 +32,9 @@ testing.
 - RP2350 HSTX/DVI and SPI panel output are documented as framebuffer output
   goals, with backend completeness still target-dependent.
 - Pi Zero 2 W has an experimental standalone `bcm283x_pi` payload, handoff ABI,
-  PL011 serial path, timer reads, mailbox framebuffer path, SD block-device
-  registration scaffold, USB/input scaffolds, AArch64 process parity markers,
-  and Slint/RADCompositor parity markers.
+  platform split under `platforms/a53`, PL011 serial path, timer reads, mailbox
+  framebuffer path, SD block-device registration scaffold, USB/input scaffolds,
+  portable A53 process/COW self-tests, and Slint/RADCompositor parity markers.
 - DMA is available through the generic core and first consumed by SPI-style
   transfer paths.
 
@@ -46,5 +46,6 @@ testing.
   Crimson beta surface.
 - The Pi Zero 2 W path still needs hardware-real Circle FAT loader jump
   validation, eMMC command implementation, DWC OTG USB host enumeration,
-  hardware HID input, AArch64 page-table/trap/fork/COW implementation, and
-  Slint framebuffer rendering before it matches the x86 VM path.
+  hardware HID input, privileged AArch64 page-table/trap/user-entry/fork/exec/COW
+  implementation, and Slint framebuffer rendering before it matches the x86 VM
+  path.

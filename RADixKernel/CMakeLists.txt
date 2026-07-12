@@ -21,7 +21,10 @@ set(RADIX_KERNEL_SOURCES
 )
 
 if(RADIX_KERNEL_BACKEND STREQUAL "linux_sim")
-    list(APPEND RADIX_KERNEL_SOURCES core/RADixKernel.cpp)
+    list(APPEND RADIX_KERNEL_SOURCES
+        core/RADixKernel.cpp
+        platforms/a53/radixkernel_a53.cpp
+    )
 elseif(RADIX_KERNEL_BACKEND STREQUAL "rp235x_pico")
     set(RADIX_KERNEL_LIBRARY_TYPE STATIC)
     list(APPEND RADIX_KERNEL_SOURCES
@@ -39,7 +42,8 @@ elseif(RADIX_KERNEL_BACKEND STREQUAL "bcm283x_pi")
     set(RADIX_KERNEL_LIBRARY_TYPE STATIC)
     list(APPEND RADIX_KERNEL_SOURCES
         core/RADixKernel_runtime.cpp
-        hal/bcm283x/radixkernel_hal_bcm283x.cpp
+        platforms/a53/radixkernel_a53.cpp
+        platforms/a53/bcm283x/radixkernel_hal_bcm283x.cpp
         hal/circle/radixkernel_runtime_newlib.cpp
     )
 else()
@@ -100,6 +104,7 @@ target_include_directories(RADixKernel
     PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/headers"
         "${CMAKE_CURRENT_SOURCE_DIR}/boot"
+        "${CMAKE_CURRENT_SOURCE_DIR}/platforms/a53"
 )
 
 if(RADIX_KERNEL_BACKEND STREQUAL "rp235x_pico" AND DEFINED PICO_SDK_PATH)

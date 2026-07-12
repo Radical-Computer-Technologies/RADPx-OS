@@ -21,6 +21,7 @@
 #include <radixkernel/rad_pty.h>
 #include <radixkernel/rad_vfs.h>
 #include <radboot.h>
+#include "../RADixKernel/platforms/a53/radixkernel_a53.h"
 
 #include <atomic>
 #include <cstdio>
@@ -2007,6 +2008,29 @@ bool testIrqCore() {
     return ok;
 }
 
+bool testA53PlatformCore() {
+    rad_process_set_current_pid(1);
+    rad_a53_note_boot_normalized(0, 0x80000u, 1);
+    bool ok = expect(rad_a53_platform_init() == RAD_STATUS_OK, "A53 platform init should succeed");
+    ok &= expect(rad_a53_process_arch_init() == RAD_STATUS_OK, "A53 process arch should register");
+    rad_a53_capabilities_t caps{};
+    caps.size = sizeof(caps);
+    ok &= expect(rad_a53_get_capabilities(&caps) == RAD_STATUS_OK
+            && caps.boot_normalized
+            && caps.secondary_cores_parked
+            && caps.exception_vectors_ready
+            && caps.svc_ready
+            && caps.user_copy_ready
+            && caps.fork_ready
+            && caps.exec_ready
+            && caps.cow_ready
+            && caps.page_size == 4096u,
+        "A53 capabilities should report boot, SVC, user-copy, fork, exec, and COW readiness");
+    ok &= expect(rad_a53_vm_self_test() == 1, "A53 VM COW self-test should isolate parent and child pages");
+    ok &= expect(rad_a53_process_self_test() == RAD_STATUS_OK, "A53 process self-test should fork, exec-mark, exit, and wait");
+    return ok;
+}
+
 } // namespace
 
 int main() {
@@ -2032,6 +2056,7 @@ int main() {
     ok &= testServiceOverlayCore();
     ok &= testTtyAndPtyCore();
     ok &= testIrqCore();
+    ok &= testA53PlatformCore();
     ok &= testSerialTerminal();
     rad_kernel_shutdown();
     if (ok) {
