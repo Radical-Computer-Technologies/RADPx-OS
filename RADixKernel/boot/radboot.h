@@ -1,3 +1,8 @@
+/**
+ * @file radboot.h
+ * @brief Helpers for constructing rad_boot_info_t records during platform handoff.
+ */
+
 #ifndef RADBOOT_H
 #define RADBOOT_H
 
@@ -7,11 +12,16 @@
 extern "C" {
 #endif
 
+/// Initialize a boot info record with common backend, board, console, and SD mode strings.
 void radboot_prepare_default(rad_boot_info_t *boot, const char *backend, const char *board, const char *console, const char *sd_mode);
+/// Append a memory region to a boot info record when capacity remains.
 void radboot_add_memory_region(rad_boot_info_t *boot, const char *name, uint64_t base, uint64_t size, uint32_t type, uint32_t flags);
+/// Append a key/value boot argument to a boot info record when capacity remains.
 void radboot_add_arg(rad_boot_info_t *boot, const char *key, const char *value);
 
+/// Fill boot defaults for RP235x targets.
 void radboot_prepare_rp235x(rad_boot_info_t *boot, const char *board, const char *sd_mode);
+/// Fill boot defaults for Circle-backed Raspberry Pi targets.
 void radboot_prepare_circle(rad_boot_info_t *boot, const char *board, const char *sd_mode);
 
 #ifdef __cplusplus

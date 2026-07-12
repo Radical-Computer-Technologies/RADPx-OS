@@ -1,32 +1,41 @@
 # RADix-OS Kernel API
 
-RADix-OS is a POSIX-inspired operating system kernel aimed at embedded,
-desktop-VM, and future SoC targets. The kernel keeps an RTOS-influenced bias
-toward explicit subsystems and deterministic control while exposing familiar
-process, file, device, terminal, framebuffer, and filesystem APIs.
+RADix-OS is a POSIX-inspired operating system kernel aimed at embedded boards,
+desktop VM testing, and future SoC targets. The Crimson 0.1.0 line keeps an
+RTOS-influenced bias toward explicit subsystems while exposing familiar process,
+file, device, terminal, framebuffer, filesystem, and driver APIs.
 
-This documentation covers the Crimson 0.1.0 experimental kernel API.
+This hub documents the experimental Crimson 0.1.0 kernel API.
 
-## Current Kernel Surface
+## Start Here
 
-- Boot and platform handoff helpers.
-- Device registry, ioctl, block, network, framebuffer, serial, input, TTY, and
-  PTY APIs.
-- VFS provider interface with open/read/write/seek/stat/list, directory
-  mutation, symlink, truncate, chmod, and fsync hooks.
-- POSIX-inspired process, file descriptor, syscall, fork, exec, wait, and
-  copy-on-write interfaces.
-- Module, driver, IRQ, timer, task, wait queue, mutex, and event primitives.
+- @ref api_structure explains the public ABI shape and subsystem ownership.
+- @ref api_groups provides a subsystem-oriented API index.
+- @ref device_tree_guide documents the runtime overlay/device-tree model.
+- @ref minimal_examples provides short driver, framebuffer, input, VFS, and
+  syscall examples.
+- @ref crimson_status separates stable-beta APIs from incomplete areas.
+
+## API Groups
+
+- Kernel lifecycle, boot handoff, printk, CPU control, time, memory, and
+  performance counters.
+- Tasks, scheduler state, wait queues, mutexes, events, and timer sources.
+- Processes, file descriptors, syscall dispatch, programs, and POSIX-inspired
+  VFS entry points.
+- Device registry, ioctl, block, network, framebuffer/display, input, TTY, PTY,
+  audio, and serial APIs.
+- Overlay tree, IRQ domains/resources, modules, I2C, SPI, and DMA driver APIs.
 
 ## Filesystem Profile
 
-The x86_64 VM target currently boots from ext4. The implemented ext4 profile is
-clean no-journal read/write ext4 with extent-backed files, allocation, create,
+The x86_64 VM target currently boots from ext4. Crimson 0.1.0 supports a clean
+no-journal read/write ext4 profile with extent-backed files, allocation, create,
 mkdir, rename, truncate, symlink/readlink, unlink, rmdir, chmod, and fsync.
-Journal replay and journaled metadata commits are intentionally not part of
-Crimson 0.1.0.
+Journal replay and journaled metadata commits are intentionally outside the
+current beta profile.
 
-## Build And Smoke Checks
+## Verification
 
 Host kernel tests:
 
