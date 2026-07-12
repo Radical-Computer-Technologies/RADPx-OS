@@ -50,9 +50,11 @@ control paths. Use `--c++20` only when an application needs C++20 features.
 
 ## Build the standalone RADix Pi Zero 2 W payload
 
-The new Pi bring-up path separates Circle from the RADix runtime. Circle remains
-the intended first-stage loader, while the RADix-owned payload is built as
-`RADIXKRN.IMG` and does not link Circle:
+The new Pi bring-up path separates Circle from the RADix runtime. Raspberry Pi
+firmware remains the real first-stage boot path; Circle is being narrowed into
+an optional second-stage loader for kernel selection, maintenance, reflash, and
+validated handoff. The RADix-owned payload is built as `RADIXKRN.IMG` and does
+not link Circle:
 
 ```bash
 make -C tools/embedded/radix_pi_zero2w
@@ -60,9 +62,13 @@ tools/embedded/radix_pi_zero2w_smoke.sh
 ```
 
 This payload currently brings up the RAD-owned BCM283x backend skeleton:
-PL011 serial, system timer reads, mailbox framebuffer registration, and
-`/dev/mmcblk0` registration. The eMMC command path, AArch64 EL0/MMU process
-path, and Slint shell parity are the next Pi-specific steps.
+PL011 serial, system timer reads, mailbox framebuffer registration,
+`/dev/mmcblk0` registration with QEMU smoke sector reads, `/dev/usb0` host-info
+registration, `/dev/input/event0` synthetic HID events, AArch64 process parity
+markers, and Slint/RADCompositor parity markers. The real BCM283x eMMC command
+engine, DWC OTG USB host enumeration, hardware HID input, AArch64 page-table
+implementation, and Slint rendering on Pi hardware are the next Pi-specific
+driver work.
 
 ## Build the Slint source cache
 

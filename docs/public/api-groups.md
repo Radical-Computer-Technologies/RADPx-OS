@@ -26,9 +26,11 @@ the current x86 VM work.
 ## Device Model
 
 Use `rad_device_register()` for generic device nodes and subsystem wrappers for
-specialized devices: block, network, framebuffer, input, TTY, PTY, audio, and
-serial. Ioctl request macros follow a Linux-style direction/type/number/size
-layout.
+specialized devices: block, network, framebuffer, input, TTY, PTY, audio,
+serial, and USB. Ioctl request macros follow a Linux-style
+direction/type/number/size layout. The first USB surface is host-info discovery
+for `/dev/usb0`, with HID devices expected to publish input events through the
+generic input queues.
 
 ## Networking
 

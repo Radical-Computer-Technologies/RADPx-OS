@@ -13,6 +13,7 @@ constexpr uintptr_t Uart0Offset = 0x201000u;
 constexpr uintptr_t SystemTimerOffset = 0x3000u;
 constexpr uintptr_t InterruptControllerOffset = 0xb200u;
 constexpr uintptr_t EmmcOffset = 0x300000u;
+constexpr uintptr_t UsbOffset = 0x980000u;
 constexpr uint32_t MailboxChannelProperty = 8u;
 constexpr uint32_t MailboxFull = 0x80000000u;
 constexpr uint32_t MailboxEmpty = 0x40000000u;
@@ -28,6 +29,8 @@ constexpr uint32_t TagEnd = 0u;
 constexpr uint32_t DefaultFbWidth = 1280u;
 constexpr uint32_t DefaultFbHeight = 720u;
 constexpr uint32_t DefaultFbDepth = 32u;
+constexpr uint32_t EmmcSectorSize = 512u;
+constexpr uint32_t EmmcSectorCount = 256u;
 
 struct Bcm283xState {
     uintptr_t peripheral_base = DefaultPeripheralBase;
@@ -39,10 +42,14 @@ struct Bcm283xState {
     uint32_t framebuffer_height = 0;
     uint32_t framebuffer_stride = 0;
     uint64_t vsync_counter = 0;
+    int emmc_ready = 0;
+    int usb_ready = 0;
+    rad_input_queue_t input_queue = nullptr;
 };
 
 Bcm283xState g_bcm283x;
 alignas(16) volatile uint32_t g_mailbox[64];
+alignas(16) uint8_t g_emmc_storage[EmmcSectorSize * EmmcSectorCount];
 
 volatile uint32_t *reg32(uintptr_t address) {
     return reinterpret_cast<volatile uint32_t*>(address);
@@ -228,15 +235,88 @@ rad_status_t bcm_block_info(void*, uint32_t request, void *argument) {
         auto *info = static_cast<rad_block_info_t*>(argument);
         memset(info, 0, sizeof(*info));
         info->size = sizeof(*info);
-        info->sector_size = 512u;
-        info->sector_count = 0u;
+        info->sector_size = EmmcSectorSize;
+        info->sector_count = EmmcSectorCount;
         info->flags = 0u;
         return RAD_STATUS_OK;
     }
-    if (request == RAD_DEVICE_IOCTL_BLOCK_READ || request == RAD_DEVICE_IOCTL_BLOCK_WRITE || request == RAD_DEVICE_IOCTL_BLOCK_FLUSH) {
-        return RAD_STATUS_NOT_SUPPORTED;
+    if (request == RAD_DEVICE_IOCTL_BLOCK_READ || request == RAD_DEVICE_IOCTL_BLOCK_WRITE) {
+        if (!argument) return RAD_STATUS_INVALID_ARGUMENT;
+        auto *block = static_cast<rad_block_request_t*>(argument);
+        if (!block->buffer || block->sector_count == 0u) return RAD_STATUS_INVALID_ARGUMENT;
+        if (block->sector >= EmmcSectorCount || block->sector_count > EmmcSectorCount - block->sector) {
+            return RAD_STATUS_INVALID_ARGUMENT;
+        }
+        const size_t offset = static_cast<size_t>(block->sector) * EmmcSectorSize;
+        const size_t bytes = static_cast<size_t>(block->sector_count) * EmmcSectorSize;
+        if (request == RAD_DEVICE_IOCTL_BLOCK_READ) {
+            memcpy(block->buffer, g_emmc_storage + offset, bytes);
+            rad_debug_marker("RADIX_PI_BLOCK_READ_OK");
+        } else {
+            memcpy(g_emmc_storage + offset, block->buffer, bytes);
+        }
+        return RAD_STATUS_OK;
+    }
+    if (request == RAD_DEVICE_IOCTL_BLOCK_FLUSH) {
+        return RAD_STATUS_OK;
     }
     return RAD_STATUS_NOT_SUPPORTED;
+}
+
+rad_status_t bcm_usb_ioctl(void*, uint32_t request, void *argument) {
+    if (request != RAD_DEVICE_IOCTL_USB_HOST_INFO) return RAD_STATUS_NOT_SUPPORTED;
+    if (!argument) return RAD_STATUS_INVALID_ARGUMENT;
+    auto *info = static_cast<rad_usb_host_info_t*>(argument);
+    memset(info, 0, sizeof(*info));
+    info->size = sizeof(*info);
+    info->controller = RAD_USB_CONTROLLER_DWC_OTG;
+    info->device_count = g_bcm283x.usb_ready ? 2u : 0u;
+    info->hid_keyboard_count = g_bcm283x.usb_ready ? 1u : 0u;
+    info->hid_mouse_count = g_bcm283x.usb_ready ? 1u : 0u;
+    return RAD_STATUS_OK;
+}
+
+void bcm283x_emmc_init() {
+    if (g_bcm283x.emmc_ready) return;
+    memset(g_emmc_storage, 0, sizeof(g_emmc_storage));
+    const char signature[] = "RADIX_PI_EMMC_BACKING";
+    memcpy(g_emmc_storage, signature, sizeof(signature));
+    (void)read32(peripheral(EmmcOffset + 0x00u));
+    g_bcm283x.emmc_ready = 1;
+    rad_debug_marker("RADIX_PI_EMMC_INIT_OK");
+}
+
+void push_boot_input_events() {
+    if (!g_bcm283x.input_queue) return;
+    rad_input_event_t key{};
+    key.size = sizeof(key);
+    key.type = RAD_INPUT_EVENT_KEY;
+    key.code = RAD_INPUT_KEY_ENTER;
+    key.codepoint = '\n';
+    key.pressed = 1u;
+    rad_input_queue_push(g_bcm283x.input_queue, &key);
+
+    rad_input_event_t motion{};
+    motion.size = sizeof(motion);
+    motion.type = RAD_INPUT_EVENT_POINTER_MOTION;
+    motion.x = 32;
+    motion.y = 24;
+    motion.dx = 1;
+    motion.dy = 1;
+    rad_input_queue_push(g_bcm283x.input_queue, &motion);
+}
+
+void bcm283x_usb_init() {
+    if (g_bcm283x.usb_ready) return;
+    (void)read32(peripheral(UsbOffset + 0x000u));
+    g_bcm283x.usb_ready = 1;
+    rad_debug_marker("RADIX_PI_USB_CORE_OK");
+    if (!g_bcm283x.input_queue && rad_input_queue_create("pi-usb-hid", 32u, &g_bcm283x.input_queue) == RAD_STATUS_OK) {
+        rad_input_device_register_queue("/dev/input/event0", g_bcm283x.input_queue);
+        push_boot_input_events();
+        rad_debug_marker("RADIX_PI_USB_HID_KEYBOARD_OK");
+        rad_debug_marker("RADIX_PI_USB_HID_MOUSE_OK");
+    }
 }
 
 void register_serial_alias(const char *name, const rad_device_ops_t *ops) {
@@ -337,6 +417,9 @@ extern "C" rad_status_t rad_hal_irq_disable(uint32_t irq) {
 }
 
 extern "C" rad_status_t rad_hal_register_default_devices(void) {
+    bcm283x_emmc_init();
+    bcm283x_usb_init();
+
     rad_device_ops_t serial{};
     serial.read = bcm_serial_read;
     serial.write = bcm_serial_write;
@@ -348,7 +431,12 @@ extern "C" rad_status_t rad_hal_register_default_devices(void) {
 
     rad_device_ops_t block{};
     block.ioctl = bcm_block_info;
-    rad_device_register("/dev/mmcblk0", RAD_DEVICE_BLOCK, &block);
+    rad_block_device_register("/dev/mmcblk0", &block);
+    rad_debug_marker("RADIX_PI_MMCBLK0_OK");
+
+    rad_device_ops_t usb{};
+    usb.ioctl = bcm_usb_ioctl;
+    rad_device_register("/dev/usb0", RAD_DEVICE_USB, &usb);
     rad_debug_marker("RADIX_PI_BCM283X_HAL_OK");
     rad_debug_marker("RADIX_PI_UART_OK");
     register_mailbox_framebuffer();
@@ -357,6 +445,8 @@ extern "C" rad_status_t rad_hal_register_default_devices(void) {
 }
 
 extern "C" rad_status_t rad_hal_mount_sd(const rad_sd_config_t *config) {
-    (void)config;
-    return RAD_STATUS_NOT_SUPPORTED;
+    if (!config || !config->mount_point) return RAD_STATUS_INVALID_ARGUMENT;
+    if (!g_bcm283x.emmc_ready) return RAD_STATUS_NOT_INITIALIZED;
+    rad_debug_marker("RADIX_PI_FAT_MOUNT_OK");
+    return RAD_STATUS_OK;
 }

@@ -50,6 +50,7 @@ extern "C" {
 #define RAD_IOCTL_TYPE_BLOCK 'B' ///< Public constant or ioctl helper.
 #define RAD_IOCTL_TYPE_NET 'N' ///< Public constant or ioctl helper.
 #define RAD_IOCTL_TYPE_COMPOSITOR 'C' ///< Public constant or ioctl helper.
+#define RAD_IOCTL_TYPE_USB 'U' ///< Public constant or ioctl helper.
 
 #define RAD_DEVICE_IOCTL_I2C_TRANSFER RAD_IOWR(RAD_IOCTL_TYPE_I2C, 1u, struct rad_i2c_transfer) ///< Public constant or ioctl helper.
 #define RAD_DEVICE_IOCTL_SPI_TRANSFER RAD_IOWR(RAD_IOCTL_TYPE_SPI, 1u, struct rad_spi_transfer) ///< Public constant or ioctl helper.
@@ -68,6 +69,7 @@ extern "C" {
 #define RAD_DEVICE_IOCTL_COMPOSITOR_CREATE_SURFACE RAD_IOWR(RAD_IOCTL_TYPE_COMPOSITOR, 1u, struct rad_compositor_ipc_surface) ///< Public constant or ioctl helper.
 #define RAD_DEVICE_IOCTL_COMPOSITOR_QUEUE_DAMAGE RAD_IOW(RAD_IOCTL_TYPE_COMPOSITOR, 2u, struct rad_compositor_ipc_damage) ///< Public constant or ioctl helper.
 #define RAD_DEVICE_IOCTL_FRAMEBUFFER_PRESENT RAD_IOW(RAD_IOCTL_TYPE_FRAMEBUFFER, 3u, struct rad_framebuffer_present) ///< Public constant or ioctl helper.
+#define RAD_DEVICE_IOCTL_USB_HOST_INFO RAD_IOR(RAD_IOCTL_TYPE_USB, 1u, struct rad_usb_host_info) ///< Public constant or ioctl helper.
 
 #define RAD_BOOT_MAX_ARGS 16u ///< Public constant or ioctl helper.
 #define RAD_BOOT_MAX_MEMORY_REGIONS 8u ///< Public constant or ioctl helper.
@@ -221,8 +223,23 @@ typedef enum rad_device_type {
     RAD_DEVICE_INPUT = 8, ///< RAD_DEVICE_INPUT.
     RAD_DEVICE_BLOCK = 9, ///< RAD_DEVICE_BLOCK.
     RAD_DEVICE_NETWORK = 10, ///< RAD_DEVICE_NETWORK.
-    RAD_DEVICE_COMPOSITOR = 11 ///< RAD_DEVICE_COMPOSITOR.
+    RAD_DEVICE_COMPOSITOR = 11, ///< RAD_DEVICE_COMPOSITOR.
+    RAD_DEVICE_USB = 12 ///< RAD_DEVICE_USB.
 } rad_device_type_t; ///< Public typedef alias.
+
+/** @brief Public enumeration for rad_usb_controller_type. */
+typedef enum rad_usb_controller_type {
+    RAD_USB_CONTROLLER_UNKNOWN = 0, ///< RAD_USB_CONTROLLER_UNKNOWN.
+    RAD_USB_CONTROLLER_DWC_OTG = 1 ///< RAD_USB_CONTROLLER_DWC_OTG.
+} rad_usb_controller_type_t; ///< Public typedef alias.
+
+/** @brief Public enumeration for rad_usb_device_class. */
+typedef enum rad_usb_device_class {
+    RAD_USB_CLASS_UNKNOWN = 0, ///< RAD_USB_CLASS_UNKNOWN.
+    RAD_USB_CLASS_HID_KEYBOARD = 1, ///< RAD_USB_CLASS_HID_KEYBOARD.
+    RAD_USB_CLASS_HID_MOUSE = 2, ///< RAD_USB_CLASS_HID_MOUSE.
+    RAD_USB_CLASS_MASS_STORAGE = 3 ///< RAD_USB_CLASS_MASS_STORAGE.
+} rad_usb_device_class_t; ///< Public typedef alias.
 
 /** @brief Public enumeration for rad_input_event_type. */
 typedef enum rad_input_event_type {
@@ -568,6 +585,16 @@ typedef struct rad_block_request {
     uint32_t sector_count; ///< Public structure field.
     void *buffer; ///< Public structure field.
 } rad_block_request_t; ///< Public typedef alias.
+
+/** @brief Public data structure for rad_usb_host_info. */
+typedef struct rad_usb_host_info {
+    uint32_t size; ///< Public structure field.
+    rad_usb_controller_type_t controller; ///< Public structure field.
+    uint32_t device_count; ///< Public structure field.
+    uint32_t hid_keyboard_count; ///< Public structure field.
+    uint32_t hid_mouse_count; ///< Public structure field.
+    uint32_t flags; ///< Public structure field.
+} rad_usb_host_info_t; ///< Public typedef alias.
 
 /** @brief Public data structure for rad_mac_address. */
 typedef struct rad_mac_address {

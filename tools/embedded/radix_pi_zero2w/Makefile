@@ -19,6 +19,7 @@ LDFLAGS := -nostdlib -static -Wl,-T,$(CURDIR)/linker.ld -Wl,--build-id=none
 OBJS := \
 	boot.o \
 	kernel.o \
+	aarch64_user.o \
 	radboot.o \
 	radixkernel_runtime.o \
 	radixkernel_overlay.o \
@@ -37,6 +38,9 @@ boot.o: boot.S
 	$(CC) $(CFLAGS) $(ASFLAGS) -c -o $@ $<
 
 kernel.o: kernel.cpp
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c -o $@ $<
+
+aarch64_user.o: aarch64_user.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c -o $@ $<
 
 radboot.o: $(RADIX_OS_ROOT)/RADixKernel/boot/radboot.cpp

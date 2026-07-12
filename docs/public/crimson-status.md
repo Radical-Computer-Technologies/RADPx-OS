@@ -12,7 +12,7 @@ testing.
 - Task, wait queue, mutex, event, timer, scheduler, and basic multicore
   reporting APIs.
 - Device registry, ioctl encoding, input queues, framebuffer registration,
-  TTY, PTY, block device, and VFS provider APIs.
+  TTY, PTY, block device, USB host-info, and VFS provider APIs.
 - I2C, SPI, DMA, module, IRQ, and overlay binding APIs.
 - x86 GRUB VM smoke target with framebuffer shell, PTY/TTY terminal path, and
   clean no-journal ext4 read/write profile.
@@ -32,8 +32,9 @@ testing.
 - RP2350 HSTX/DVI and SPI panel output are documented as framebuffer output
   goals, with backend completeness still target-dependent.
 - Pi Zero 2 W has an experimental standalone `bcm283x_pi` payload, handoff ABI,
-  PL011 serial path, timer reads, mailbox framebuffer path, and SD block-device
-  registration scaffold.
+  PL011 serial path, timer reads, mailbox framebuffer path, SD block-device
+  registration scaffold, USB/input scaffolds, AArch64 process parity markers,
+  and Slint/RADCompositor parity markers.
 - DMA is available through the generic core and first consumed by SPI-style
   transfer paths.
 
@@ -43,6 +44,7 @@ testing.
   semantics across every target, full ext4 journaling, USB stacks, PCIe,
   wire-level TCP, DHCP/DNS, and production networking are beyond the current
   Crimson beta surface.
-- The Pi Zero 2 W path still needs the Circle FAT loader jump, eMMC command
-  implementation, AArch64 EL0/MMU/fork/COW parity, USB input, and Slint shell
-  parity before it matches the x86 VM path.
+- The Pi Zero 2 W path still needs hardware-real Circle FAT loader jump
+  validation, eMMC command implementation, DWC OTG USB host enumeration,
+  hardware HID input, AArch64 page-table/trap/fork/COW implementation, and
+  Slint framebuffer rendering before it matches the x86 VM path.

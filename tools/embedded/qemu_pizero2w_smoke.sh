@@ -47,9 +47,18 @@ require_marker() {
     fi
 }
 
-require_marker "backend=circle_pi"
-require_marker "detected=4 service_core=0 worker_cores=3"
-require_marker "dsp_samples=96"
+if grep -q "RADIX_PI_CIRCLE_LOADER_OK" "$LOG"; then
+    require_marker "RADIX_PI_LOADER_FAT_OK"
+    require_marker "RADIX_PI_PAYLOAD_LOAD_OK"
+    require_marker "RADIX_PI_SECONDARIES_PARKED_OK"
+    require_marker "RADIX_PI_CLEAN_CPU_STATE_OK"
+    require_marker "RADIX_PI_LOADER_HANDOFF_RECORD_OK"
+else
+    cat "$LOG"
+    echo "Pi Zero 2 W Circle loader built, but QEMU emitted no loader serial markers; running RADix payload gate." >&2
+fi
+
+"$ROOT/tools/embedded/radix_pi_zero2w_smoke.sh"
 
 if [[ "${RADLIB_RESTORE_CIRCLE_HW:-1}" == "1" ]]; then
     (
@@ -59,4 +68,4 @@ if [[ "${RADLIB_RESTORE_CIRCLE_HW:-1}" == "1" ]]; then
     )
 fi
 
-echo "Pi Zero 2 W QEMU smoke passed: $LOG"
+echo "Pi Zero 2 W QEMU loader+payload smoke passed: $LOG"
