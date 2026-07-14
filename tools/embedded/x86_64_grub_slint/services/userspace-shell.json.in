@@ -1,0 +1,13 @@
+{
+  "name": "userspace-shell",
+  "description": "RADix shell self-test and first userspace command service",
+  "exec": "/bin/rash",
+  "args": ["--selftest"],
+  "autostart": @RADIX_USERSPACE_SHELL_AUTOSTART@,
+  "order": 20,
+  "requires": ["storage-root"],
+  "after": ["storage-root"],
+  "restart": "no",
+  "stdout": "/var/log/radix/userspace-shell.log",
+  "stderr": "/var/log/radix/userspace-shell.log"
+}

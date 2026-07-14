@@ -158,6 +158,14 @@ typedef enum rad_log_level {
     RAD_LOG_CRITICAL = 5 ///< RAD_LOG_CRITICAL.
 } rad_log_level_t; ///< Public typedef alias.
 
+/** @brief Kernel-only printk severity. */
+typedef enum rad_kernel_print_level {
+    RKERN_DBG = 0, ///< Debug-only kernel detail.
+    RKERN_STAT = 1, ///< Normal kernel status.
+    RKERN_WARN = 2, ///< Recoverable kernel warning.
+    RKERN_ERR = 3 ///< Kernel error.
+} rad_kernel_print_level_t; ///< Public typedef alias.
+
 /** @brief Public enumeration for rad_posix_syscall. */
 typedef enum rad_posix_syscall {
     RAD_SYSCALL_READ = 0, ///< RAD_SYSCALL_READ.
@@ -1331,6 +1339,8 @@ void rad_kernel_request_shutdown(void); ///< Public RADix kernel API entry point
 int rad_kernel_is_shutdown_requested(void); ///< Public RADix kernel API entry point.
 int rad_vprintk(const char *format, va_list args); ///< Public RADix kernel API entry point.
 int rad_printk(const char *format, ...); ///< Public RADix kernel API entry point.
+int rad_vkprintk(rad_kernel_print_level_t level, const char *format, va_list args); ///< Public RADix kernel API entry point.
+int rad_kprintk(rad_kernel_print_level_t level, const char *format, ...); ///< Public RADix kernel API entry point.
 int rad_early_vprintk(const char *format, va_list args); ///< Public RADix kernel API entry point.
 int rad_early_printk(const char *format, ...); ///< Public RADix kernel API entry point.
 void rad_debug_marker(const char *marker); ///< Public RADix kernel API entry point.

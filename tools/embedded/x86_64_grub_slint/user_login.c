@@ -8,6 +8,7 @@ enum {
     SYS_WRITE = 1,
     SYS_OPEN = 2,
     SYS_CLOSE = 3,
+    SYS_IOCTL = 4,
     SYS_EXIT = 10,
     SYS_EXECVE = 12,
     SYS_SETUID = 1012,
@@ -17,6 +18,18 @@ enum {
 enum {
     O_READ = 1u << 0,
 };
+
+#define RAD_IOCTL_WRITE 1u
+#define RAD_IOCTL_READ 2u
+#define RAD_IOCTL(dir, type, nr, size) ((((uint32_t)(dir) & 3u) << 30) | (((uint32_t)(size) & 0x3fffu) << 16) | (((uint32_t)(type) & 0xffu) << 8) | ((uint32_t)(nr) & 0xffu))
+#define RAD_IOR(type, nr, type_name) RAD_IOCTL(RAD_IOCTL_READ, type, nr, sizeof(type_name))
+#define RAD_IOW(type, nr, type_name) RAD_IOCTL(RAD_IOCTL_WRITE, type, nr, sizeof(type_name))
+#define RAD_IOCTL_TYPE_TTY 'Y'
+#define RAD_DEVICE_IOCTL_TTY_GET_MODE RAD_IOR(RAD_IOCTL_TYPE_TTY, 3u, uint32_t)
+#define RAD_DEVICE_IOCTL_TTY_SET_MODE RAD_IOW(RAD_IOCTL_TYPE_TTY, 4u, uint32_t)
+#define RAD_TTY_MODE_CANONICAL (1u << 0)
+#define RAD_TTY_MODE_ECHO (1u << 1)
+#define RAD_TTY_MODE_CRLF (1u << 2)
 
 static long sc(long n, long a, long b, long c, long d, long e, long f) {
     register long rax asm("rax") = n;
@@ -55,6 +68,16 @@ static void puts_fd(int fd, const char *s) {
     putn(fd, s, s_len(s));
 }
 
+static uint32_t tty_get_mode(void) {
+    uint32_t mode = RAD_TTY_MODE_CANONICAL | RAD_TTY_MODE_ECHO | RAD_TTY_MODE_CRLF;
+    sc(SYS_IOCTL, 0, RAD_DEVICE_IOCTL_TTY_GET_MODE, (long)&mode, 0, 0, 0);
+    return mode;
+}
+
+static void tty_set_mode(uint32_t mode) {
+    sc(SYS_IOCTL, 0, RAD_DEVICE_IOCTL_TTY_SET_MODE, (long)&mode, 0, 0, 0);
+}
+
 static int read_file(const char *path, char *buffer, size_t size) {
     if (!buffer || size == 0) return -2;
     long fd = sc(SYS_OPEN, (long)path, O_READ, 0, 0, 0, 0);
@@ -77,8 +100,11 @@ static void read_line(char *buffer, size_t size, int echo_newline) {
     while (pos + 1 < size) {
         long n = sc(SYS_READ, 0, (long)&ch, 1, 0, 0, 0);
         if (n <= 0) break;
-        if (ch == '\r') continue;
-        if (ch == '\n') break;
+        if (ch == '\r' || ch == '\n') break;
+        if ((ch == '\b' || ch == 0x7f) && pos > 0) {
+            --pos;
+            continue;
+        }
         buffer[pos++] = ch;
     }
     buffer[pos] = 0;
@@ -143,9 +169,13 @@ int login_main(long argc, char **argv, char **envp) {
         long uid = 0;
         long gid = 0;
         puts_fd(1, "login: ");
-        read_line(user, sizeof(user), 0);
+        read_line(user, sizeof(user), 1);
         puts_fd(1, "Password: ");
+        uint32_t old_mode = tty_get_mode();
+        uint32_t password_mode = (old_mode | RAD_TTY_MODE_CANONICAL | RAD_TTY_MODE_CRLF) & ~RAD_TTY_MODE_ECHO;
+        tty_set_mode(password_mode);
         read_line(password, sizeof(password), 1);
+        tty_set_mode(old_mode);
         if (lookup_user(user, &uid, &gid, salt, sizeof(salt), expected, sizeof(expected), shell, sizeof(shell))) {
             radix_auth_password_hash(salt, password, actual);
             if (s_eq(actual, expected)) {

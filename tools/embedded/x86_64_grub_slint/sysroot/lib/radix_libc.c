@@ -37,6 +37,7 @@
 #include <radix/syscalls.h>
 
 int errno;
+static mode_t g_process_umask = 022;
 
 typedef struct {
     uint64_t size;
@@ -106,6 +107,7 @@ static void copy_stat(struct stat *dst, const radix_stat_t *src) {
     dst->st_size = src->size;
     dst->st_is_directory = src->is_directory;
     dst->st_mode = src->mode;
+    dst->st_nlink = 1;
     dst->st_uid = src->uid;
     dst->st_gid = src->gid;
     dst->st_blksize = 512;
@@ -319,22 +321,81 @@ int unlink(const char *pathname) { return (int)ok_or_errno(radix_syscall6(RADIX_
 int rmdir(const char *pathname) { return (int)ok_or_errno(radix_syscall6(RADIX_SYS_RMDIR, (long)pathname, 0, 0, 0, 0, 0)); }
 int mkdir(const char *pathname, mode_t mode) {
     int r = (int)ok_or_errno(radix_syscall6(RADIX_SYS_MKDIR, (long)pathname, 0, 0, 0, 0, 0));
-    if (r == 0 && mode) (void)chmod(pathname, mode);
+    if (r == 0 && mode) (void)chmod(pathname, mode & ~g_process_umask);
     return r;
 }
 int chmod(const char *pathname, mode_t mode) { return (int)ok_or_errno(radix_syscall6(RADIX_SYS_CHMOD, (long)pathname, mode, 0, 0, 0, 0)); }
+mode_t umask(mode_t mask) {
+    mode_t previous = g_process_umask;
+    g_process_umask = mask & 0777;
+    return previous;
+}
 int symlink(const char *target, const char *linkpath) { return (int)ok_or_errno(radix_syscall6(RADIX_SYS_SYMLINK, (long)target, (long)linkpath, 0, 0, 0, 0)); }
 int link(const char *oldpath, const char *newpath) { return (int)ok_or_errno(radix_syscall6(RADIX_SYS_LINK, (long)oldpath, (long)newpath, 0, 0, 0, 0)); }
 ssize_t readlink(const char *pathname, char *buf, size_t bufsiz) { return ok_or_errno(radix_syscall6(RADIX_SYS_READLINK, (long)pathname, (long)buf, bufsiz, 0, 0, 0)); }
 int utime(const char *filename, const struct utimbuf *times) { (void)filename; (void)times; errno = ENOSYS; return -1; }
 int fsync(int fd) { return (int)ok_or_errno(radix_syscall6(RADIX_SYS_FSYNC, fd, 0, 0, 0, 0, 0)); }
-int nanosleep(const struct timespec *req, struct timespec *rem) { (void)rem; return (int)ok_or_errno(radix_syscall6(RADIX_SYS_NANOSLEEP, req->tv_sec * 1000000000L + req->tv_nsec, 0, 0, 0, 0, 0)); }
+int nanosleep(const struct timespec *req, struct timespec *rem) { (void)rem; if (!req || req->tv_sec < 0 || req->tv_nsec < 0 || req->tv_nsec >= 1000000000L) { errno = EINVAL; return -1; } return (int)ok_or_errno(radix_syscall6(RADIX_SYS_NANOSLEEP, req->tv_sec * 1000000000L + req->tv_nsec, 0, 0, 0, 0, 0)); }
 unsigned int sleep(unsigned int seconds) { struct timespec ts = {(long)seconds, 0}; return nanosleep(&ts, 0) == 0 ? 0 : seconds; }
 int gettimeofday(struct timeval *tv, void *tz) { (void)tz; return (int)ok_or_errno(radix_syscall6(RADIX_SYS_GETTIMEOFDAY, (long)tv, 0, 0, 0, 0, 0)); }
 time_t time(time_t *tloc) { struct timeval tv; if (gettimeofday(&tv, 0) < 0) return (time_t)-1; if (tloc) *tloc = tv.tv_sec; return tv.tv_sec; }
 clock_t clock(void) { struct timeval tv; if (gettimeofday(&tv, 0) < 0) return (clock_t)-1; return tv.tv_sec * CLOCKS_PER_SEC + tv.tv_usec; }
-sighandler_t signal(int signum, sighandler_t handler) { (void)signum; (void)handler; errno = ENOSYS; return SIG_ERR; }
-int kill(int pid, int sig) { (void)pid; (void)sig; errno = ENOSYS; return -1; }
+struct tm *localtime(const time_t *timep) {
+    static struct tm tm;
+    time_t t = timep ? *timep : 0;
+    if (t < 0) t = 0;
+    tm.tm_sec = (int)(t % 60);
+    tm.tm_min = (int)((t / 60) % 60);
+    tm.tm_hour = (int)((t / 3600) % 24);
+    tm.tm_mday = 1 + (int)((t / 86400) % 31);
+    tm.tm_mon = 0;
+    tm.tm_year = 70;
+    tm.tm_wday = (int)((4 + t / 86400) % 7);
+    tm.tm_yday = (int)((t / 86400) % 365);
+    tm.tm_isdst = 0;
+    return &tm;
+}
+
+static struct sigaction g_signal_actions[NSIG];
+static int g_signal_actions_initialized;
+static sigset_t g_signal_mask;
+
+static void init_signal_actions(void) {
+    if (g_signal_actions_initialized) return;
+    for (int i = 0; i < NSIG; ++i) {
+        g_signal_actions[i].sa_handler = SIG_DFL;
+        g_signal_actions[i].sa_mask = 0;
+        g_signal_actions[i].sa_flags = 0;
+    }
+    g_signal_actions_initialized = 1;
+}
+
+sighandler_t signal(int signum, sighandler_t handler) {
+    if (signum <= 0 || signum >= NSIG || handler == SIG_ERR) { errno = EINVAL; return SIG_ERR; }
+    init_signal_actions();
+    sighandler_t old = g_signal_actions[signum].sa_handler;
+    g_signal_actions[signum].sa_handler = handler;
+    g_signal_actions[signum].sa_mask = 0;
+    g_signal_actions[signum].sa_flags = 0;
+    return old;
+}
+
+int kill(int pid, int sig) {
+    if (pid <= 0 || sig <= 0 || sig >= NSIG) { errno = EINVAL; return -1; }
+    errno = ENOSYS;
+    return -1;
+}
+int raise(int sig) {
+    if (sig <= 0 || sig >= NSIG) { errno = EINVAL; return -1; }
+    init_signal_actions();
+    sighandler_t handler = g_signal_actions[sig].sa_handler;
+    if (handler == SIG_IGN) return 0;
+    if (handler && handler != SIG_DFL && handler != SIG_ERR) {
+        handler(sig);
+        return 0;
+    }
+    return kill(getpid(), sig);
+}
 int sigemptyset(sigset_t *set) { if (!set) { errno = EINVAL; return -1; } *set = 0; return 0; }
 int sigfillset(sigset_t *set) { if (!set) { errno = EINVAL; return -1; } *set = ~0ul; return 0; }
 int sigaddset(sigset_t *set, int signum) {
@@ -343,18 +404,20 @@ int sigaddset(sigset_t *set, int signum) {
     return 0;
 }
 int sigprocmask(int how, const sigset_t *set, sigset_t *oldset) {
-    (void)how;
-    (void)set;
-    if (oldset) *oldset = 0;
-    errno = ENOSYS;
-    return -1;
+    if (oldset) *oldset = g_signal_mask;
+    if (!set) return 0;
+    if (how == SIG_BLOCK) g_signal_mask |= *set;
+    else if (how == SIG_UNBLOCK) g_signal_mask &= ~(*set);
+    else if (how == SIG_SETMASK) g_signal_mask = *set;
+    else { errno = EINVAL; return -1; }
+    return 0;
 }
 int sigaction(int signum, const struct sigaction *act, struct sigaction *oldact) {
-    (void)act;
     if (signum <= 0 || signum >= NSIG) { errno = EINVAL; return -1; }
-    if (oldact) memset(oldact, 0, sizeof(*oldact));
-    errno = ENOSYS;
-    return -1;
+    init_signal_actions();
+    if (oldact) *oldact = g_signal_actions[signum];
+    if (act) g_signal_actions[signum] = *act;
+    return 0;
 }
 
 DIR *opendir(const char *name) {
@@ -538,6 +601,7 @@ int isgraph(int c) { unsigned char ch = (unsigned char)c; return ch > 0x20 && ch
 int isprint(int c) { unsigned char ch = (unsigned char)c; return ch >= 0x20 && ch < 0x7f; }
 int isspace(int c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == '\v'; }
 int isxdigit(int c) { return isdigit(c) || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'); }
+int ispunct(int c) { return isgraph(c) && !isalnum(c); }
 int tolower(int c) { return isupper(c) ? c + ('a' - 'A') : c; }
 int toupper(int c) { return islower(c) ? c - ('a' - 'A') : c; }
 
@@ -648,33 +712,75 @@ long strtol(const char *nptr, char **endptr, int base) {
 }
 
 unsigned long strtoul(const char *nptr, char **endptr, int base) { return (unsigned long)strtol(nptr, endptr, base); }
-int atoi(const char *nptr) { return (int)strtol(nptr, 0, 10); }
-long atol(const char *nptr) { return strtol(nptr, 0, 10); }
-double atof(const char *nptr) {
-    if (!nptr) return 0.0;
-    int sign = 1;
-    while (isspace((unsigned char)*nptr)) ++nptr;
-    if (*nptr == '-') { sign = -1; ++nptr; }
-    else if (*nptr == '+') { ++nptr; }
-    double value = 0.0;
-    while (isdigit((unsigned char)*nptr)) {
-        value = value * 10.0 + (double)(*nptr - '0');
-        ++nptr;
+double strtod(const char *nptr, char **endptr) {
+    if (!nptr) {
+        if (endptr) *endptr = 0;
+        return 0.0;
     }
-    if (*nptr == '.') {
+    const char *p = nptr;
+    while (isspace((unsigned char)*p)) ++p;
+    int sign = 1;
+    if (*p == '-' || *p == '+') sign = *p++ == '-' ? -1 : 1;
+    double value = 0.0;
+    int any = 0;
+    while (isdigit((unsigned char)*p)) {
+        value = value * 10.0 + (double)(*p - '0');
+        ++p;
+        any = 1;
+    }
+    if (*p == '.') {
         double place = 0.1;
-        ++nptr;
-        while (isdigit((unsigned char)*nptr)) {
-            value += place * (double)(*nptr - '0');
+        ++p;
+        while (isdigit((unsigned char)*p)) {
+            value += place * (double)(*p - '0');
             place *= 0.1;
-            ++nptr;
+            ++p;
+            any = 1;
         }
     }
+    if ((*p == 'e' || *p == 'E') && any) {
+        const char *exp_start = p;
+        ++p;
+        int exp_sign = 1;
+        if (*p == '-' || *p == '+') exp_sign = *p++ == '-' ? -1 : 1;
+        int exp = 0;
+        int exp_any = 0;
+        while (isdigit((unsigned char)*p)) {
+            exp = exp * 10 + (*p - '0');
+            ++p;
+            exp_any = 1;
+        }
+        if (exp_any) {
+            while (exp-- > 0) value = exp_sign > 0 ? value * 10.0 : value / 10.0;
+        } else {
+            p = exp_start;
+        }
+    }
+    if (endptr) *endptr = (char*)(any ? p : nptr);
     return sign < 0 ? -value : value;
 }
+int atoi(const char *nptr) { return (int)strtol(nptr, 0, 10); }
+long atol(const char *nptr) { return strtol(nptr, 0, 10); }
+double atof(const char *nptr) { return strtod(nptr, 0); }
 int abs(int n) { return n < 0 ? -n : n; }
+long labs(long n) { return n < 0 ? -n : n; }
 intmax_t strtoimax(const char *nptr, char **endptr, int base) { return (intmax_t)strtol(nptr, endptr, base); }
 uintmax_t strtoumax(const char *nptr, char **endptr, int base) { return (uintmax_t)strtoul(nptr, endptr, base); }
+void *bsearch(const void *key, const void *base, size_t nmemb, size_t size, int (*compar)(const void *, const void *)) {
+    const unsigned char *items = (const unsigned char*)base;
+    size_t low = 0;
+    size_t high = nmemb;
+    if (!key || !items || !compar || !size) return 0;
+    while (low < high) {
+        const size_t mid = low + (high - low) / 2u;
+        const unsigned char *candidate = items + mid * size;
+        const int cmp = compar(key, candidate);
+        if (cmp == 0) return (void*)candidate;
+        if (cmp < 0) high = mid;
+        else low = mid + 1u;
+    }
+    return 0;
+}
 void qsort(void *base, size_t nmemb, size_t size, int (*compar)(const void *, const void *)) {
     unsigned char *items = (unsigned char*)base;
     if (!items || !compar || size == 0) return;
@@ -962,6 +1068,10 @@ struct passwd *getpwent(void) {
     return &g_root_passwd;
 }
 
+void setpwent(void) {
+    g_passwd_iter_emitted = 0;
+}
+
 void endpwent(void) {
     g_passwd_iter_emitted = 0;
 }
@@ -1152,6 +1262,23 @@ int fclose(FILE *stream) { if (!stream) return EOF; int r = close(stream->fd); f
 size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream) { if (!stream || !size) return 0; ssize_t n = read(stream->fd, ptr, size * nmemb); if (n < 0) { stream->error = 1; return 0; } return (size_t)n / size; }
 size_t fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream) { if (!stream || !size) return 0; ssize_t n = write(stream->fd, ptr, size * nmemb); if (n < 0) { stream->error = 1; return 0; } return (size_t)n / size; }
 int fflush(FILE *stream) { (void)stream; return 0; }
+int fseek(FILE *stream, long offset, int whence) {
+    if (!stream) { errno = EINVAL; return -1; }
+    off_t result = lseek(stream->fd, (off_t)offset, whence);
+    if (result < 0) { stream->error = 1; return -1; }
+    return 0;
+}
+long ftell(FILE *stream) {
+    if (!stream) { errno = EINVAL; return -1; }
+    off_t result = lseek(stream->fd, 0, SEEK_CUR);
+    if (result < 0) { stream->error = 1; return -1; }
+    return (long)result;
+}
+void rewind(FILE *stream) {
+    if (!stream) return;
+    (void)fseek(stream, 0, SEEK_SET);
+    clearerr(stream);
+}
 int fileno(FILE *stream) { return stream ? stream->fd : -1; }
 int ferror(FILE *stream) { return stream ? stream->error : 1; }
 void clearerr(FILE *stream) { if (stream) stream->error = 0; }
@@ -1231,6 +1358,30 @@ int strncasecmp(const char *s1, const char *s2, size_t n) {
 double floor(double x) { long i = (long)x; return (double)(i > x ? i - 1 : i); }
 double ceil(double x) { long i = (long)x; return (double)(i < x ? i + 1 : i); }
 double fabs(double x) { return x < 0 ? -x : x; }
+double pow(double x, double y) {
+    long exponent = (long)y;
+    if ((double)exponent != y) return 0.0;
+    int negative = exponent < 0;
+    if (negative) exponent = -exponent;
+    double result = 1.0;
+    while (exponent-- > 0) result *= x;
+    return negative && result != 0.0 ? 1.0 / result : result;
+}
+double log10(double x) {
+    if (x <= 0.0) return 0.0 / 0.0;
+    double value = 0.0;
+    while (x >= 10.0) {
+        x /= 10.0;
+        value += 1.0;
+    }
+    while (x > 0.0 && x < 1.0) {
+        x *= 10.0;
+        value -= 1.0;
+    }
+    return value;
+}
+int isinf(double x) { return x == __builtin_huge_val() || x == -__builtin_huge_val(); }
+int isnan(double x) { return x != x; }
 int signbit(double x) { return x < 0.0; }
 
 size_t mbrtowc(wchar_t *pwc, const char *s, size_t n, mbstate_t *ps) {

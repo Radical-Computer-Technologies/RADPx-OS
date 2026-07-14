@@ -52,8 +52,15 @@ Crimson fields are:
 - `terminal_posix_compat`: enables the POSIX terminal compatibility layer.
 - `terminal_ncurses`: stages the RADix terminfo/sysroot readiness pieces for
   ncurses-style ports.
-- `terminal_nano`: reserved for the upstream nano package once the full
-  ncurses/libc port is enabled.
+- `terminal_nano`: disabled by default; reserved for the experimental upstream
+  nano port while TTY/libc compatibility matures.
+- `terminal_vim`: disabled by default; enables the experimental upstream
+  vim-tiny port when RadBuild-managed Vim source is available.
+- `kernel_max_tasks` and `kernel_max_processes`: scheduler/process table
+  capacity, defaulting to 128 for the x86 terminal profile.
+- `kernel_task_stack_bytes` and `kernel_task_stack_policy`: default kernel task
+  stack size and `dynamic` or `static` allocation policy. x86 defaults to
+  dynamic 512 KiB task stacks.
 
 The generated ext4 image stages a Unix-like base layout:
 

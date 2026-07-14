@@ -1,0 +1,12 @@
+name=radix-vim-tiny
+version=0.1.0-experimental
+kind=userspace-app
+variant=tiny
+source=upstream-vim
+source_url=https://github.com/vim/vim
+license=Vim
+license_file=/usr/share/licenses/vim/LICENSE
+entry=/usr/bin/vim
+aliases=/usr/bin/vi
+runtime=/usr/share/vim/vim92/defaults.vim
+requires=radix-ncurses,libradixc

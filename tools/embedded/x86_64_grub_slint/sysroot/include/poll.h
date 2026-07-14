@@ -1,7 +1,7 @@
 #ifndef RADIX_SYSROOT_POLL_H
 #define RADIX_SYSROOT_POLL_H
 
-typedef unsigned long nfds_t;
+typedef long nfds_t;
 
 struct pollfd {
     int fd;

@@ -69,18 +69,85 @@ if(NOT RADIX_RKCONFIG_TERMINAL_NCURSES)
 endif()
 set(RADIX_RKCONFIG_TERMINAL_NANO "$ENV{RADIX_RKCONFIG_TERMINAL_NANO}" CACHE STRING "RADix terminal nano package")
 if(NOT RADIX_RKCONFIG_TERMINAL_NANO)
-    set(RADIX_RKCONFIG_TERMINAL_NANO "true")
+    set(RADIX_RKCONFIG_TERMINAL_NANO "false")
 endif()
 set(RADIX_RKCONFIG_TERMINAL_NANO_VARIANT "$ENV{RADIX_RKCONFIG_TERMINAL_NANO_VARIANT}" CACHE STRING "RADix terminal nano variant: none, tiny, full, both")
 if(NOT RADIX_RKCONFIG_TERMINAL_NANO_VARIANT)
-    set(RADIX_RKCONFIG_TERMINAL_NANO_VARIANT "both")
+    set(RADIX_RKCONFIG_TERMINAL_NANO_VARIANT "none")
+endif()
+set(RADIX_RKCONFIG_TERMINAL_NANO_ENABLED FALSE)
+if((RADIX_RKCONFIG_TERMINAL_NANO STREQUAL "true" OR RADIX_RKCONFIG_TERMINAL_NANO STREQUAL "1" OR RADIX_RKCONFIG_TERMINAL_NANO STREQUAL "ON")
+   AND NOT RADIX_RKCONFIG_TERMINAL_NANO_VARIANT STREQUAL "none")
+    set(RADIX_RKCONFIG_TERMINAL_NANO_ENABLED TRUE)
 endif()
 set(RADIX_X86_TERMINAL_AUTOTEST_NANO "$ENV{RADIX_X86_TERMINAL_AUTOTEST_NANO}" CACHE STRING "Run deterministic PTY nano smoke on terminal boot")
 if(NOT RADIX_X86_TERMINAL_AUTOTEST_NANO)
     set(RADIX_X86_TERMINAL_AUTOTEST_NANO "false")
 endif()
+set(RADIX_X86_TERMINAL_AUTOLOGIN "$ENV{RADIX_X86_TERMINAL_AUTOLOGIN}" CACHE STRING "Start /bin/rash directly on the boot terminal")
+if(NOT RADIX_X86_TERMINAL_AUTOLOGIN)
+    set(RADIX_X86_TERMINAL_AUTOLOGIN "false")
+endif()
+set(RADIX_X86_MAX_USER_PROCESSES "$ENV{RADIX_X86_MAX_USER_PROCESSES}" CACHE STRING "Maximum x86 userspace processes tracked by the architecture backend")
+if(NOT RADIX_X86_MAX_USER_PROCESSES)
+    set(RADIX_X86_MAX_USER_PROCESSES "128")
+endif()
+set(RADIX_RKCONFIG_KERNEL_MAX_TASKS "$ENV{RADIX_RKCONFIG_KERNEL_MAX_TASKS}" CACHE STRING "RADix kernel task table entries")
+if(NOT RADIX_RKCONFIG_KERNEL_MAX_TASKS)
+    set(RADIX_RKCONFIG_KERNEL_MAX_TASKS "128")
+endif()
+set(RADIX_RKCONFIG_KERNEL_MAX_PROCESSES "$ENV{RADIX_RKCONFIG_KERNEL_MAX_PROCESSES}" CACHE STRING "RADix kernel process table entries")
+if(NOT RADIX_RKCONFIG_KERNEL_MAX_PROCESSES)
+    set(RADIX_RKCONFIG_KERNEL_MAX_PROCESSES "128")
+endif()
+set(RADIX_RKCONFIG_KERNEL_TASK_STACK_BYTES "$ENV{RADIX_RKCONFIG_KERNEL_TASK_STACK_BYTES}" CACHE STRING "Default RADix kernel task stack bytes")
+if(NOT RADIX_RKCONFIG_KERNEL_TASK_STACK_BYTES)
+    set(RADIX_RKCONFIG_KERNEL_TASK_STACK_BYTES "524288")
+endif()
+set(RADIX_RKCONFIG_KERNEL_TASK_STACK_POLICY "$ENV{RADIX_RKCONFIG_KERNEL_TASK_STACK_POLICY}" CACHE STRING "RADix kernel task stack policy: dynamic or static")
+if(NOT RADIX_RKCONFIG_KERNEL_TASK_STACK_POLICY)
+    set(RADIX_RKCONFIG_KERNEL_TASK_STACK_POLICY "dynamic")
+endif()
+set(RADIX_RKCONFIG_TERMINAL_VIM "$ENV{RADIX_RKCONFIG_TERMINAL_VIM}" CACHE STRING "RADix terminal vim package")
+if(NOT RADIX_RKCONFIG_TERMINAL_VIM)
+    set(RADIX_RKCONFIG_TERMINAL_VIM "false")
+endif()
+set(RADIX_RKCONFIG_TERMINAL_VIM_VARIANT "$ENV{RADIX_RKCONFIG_TERMINAL_VIM_VARIANT}" CACHE STRING "RADix terminal vim variant: none, tiny")
+if(NOT RADIX_RKCONFIG_TERMINAL_VIM_VARIANT)
+    set(RADIX_RKCONFIG_TERMINAL_VIM_VARIANT "none")
+endif()
+if((RADIX_RKCONFIG_TERMINAL_VIM STREQUAL "true" OR RADIX_RKCONFIG_TERMINAL_VIM STREQUAL "1" OR RADIX_RKCONFIG_TERMINAL_VIM STREQUAL "ON")
+   AND RADIX_RKCONFIG_TERMINAL_VIM_VARIANT STREQUAL "none")
+    set(RADIX_RKCONFIG_TERMINAL_VIM_VARIANT "tiny")
+endif()
+set(RADIX_RKCONFIG_TERMINAL_VIM_ENABLED FALSE)
+if((RADIX_RKCONFIG_TERMINAL_VIM STREQUAL "true" OR RADIX_RKCONFIG_TERMINAL_VIM STREQUAL "1" OR RADIX_RKCONFIG_TERMINAL_VIM STREQUAL "ON")
+   AND NOT RADIX_RKCONFIG_TERMINAL_VIM_VARIANT STREQUAL "none")
+    set(RADIX_RKCONFIG_TERMINAL_VIM_ENABLED TRUE)
+endif()
+set(RADIX_X86_DIRECT_LOGIN "$ENV{RADIX_X86_DIRECT_LOGIN}" CACHE STRING "Launch /bin/login directly for interactive terminal boots")
+if(NOT RADIX_X86_DIRECT_LOGIN)
+    set(RADIX_X86_DIRECT_LOGIN "true")
+endif()
+set(RADIX_X86_TERMINAL_AUTOLOGIN_ENABLED FALSE)
+if(RADIX_X86_TERMINAL_AUTOLOGIN STREQUAL "true" OR RADIX_X86_TERMINAL_AUTOLOGIN STREQUAL "1" OR RADIX_X86_TERMINAL_AUTOLOGIN STREQUAL "ON")
+    set(RADIX_X86_TERMINAL_AUTOLOGIN_ENABLED TRUE)
+endif()
+set(RADIX_X86_TERMINAL_AUTOTEST_ENABLED FALSE)
+if(RADIX_X86_TERMINAL_AUTOTEST_NANO STREQUAL "true" OR RADIX_X86_TERMINAL_AUTOTEST_NANO STREQUAL "1" OR RADIX_X86_TERMINAL_AUTOTEST_NANO STREQUAL "ON")
+    set(RADIX_X86_TERMINAL_AUTOTEST_ENABLED TRUE)
+endif()
+set(RADIX_X86_DIRECT_LOGIN_ENABLED FALSE)
+if(NOT RADIX_X86_TERMINAL_AUTOTEST_ENABLED AND (RADIX_X86_DIRECT_LOGIN STREQUAL "true" OR RADIX_X86_DIRECT_LOGIN STREQUAL "1" OR RADIX_X86_DIRECT_LOGIN STREQUAL "ON"))
+    set(RADIX_X86_DIRECT_LOGIN_ENABLED TRUE)
+endif()
+set(RADIX_ENABLE_DEBUG_TRACE "$ENV{RADIX_ENABLE_DEBUG_TRACE}" CACHE STRING "Compile verbose RADix kernel debug traces")
+if(NOT RADIX_ENABLE_DEBUG_TRACE)
+    set(RADIX_ENABLE_DEBUG_TRACE "false")
+endif()
 set(RADIX_UPSTREAM_NCURSES_SOURCE "$ENV{RADIX_UPSTREAM_NCURSES_SOURCE}" CACHE PATH "Path to extracted upstream ncurses source")
 set(RADIX_UPSTREAM_NANO_SOURCE "$ENV{RADIX_UPSTREAM_NANO_SOURCE}" CACHE PATH "Path to extracted upstream GNU nano source")
+set(RADIX_UPSTREAM_VIM_SOURCE "$ENV{RADIX_UPSTREAM_VIM_SOURCE}" CACHE PATH "Path to extracted upstream Vim source")
 
 set(RADIX_OS_ROOT "${CMAKE_CURRENT_LIST_DIR}/../../.." CACHE PATH "Path to RADix-OS")
 if(NOT RADIX_UPSTREAM_NCURSES_SOURCE)
@@ -89,6 +156,26 @@ endif()
 if(NOT RADIX_UPSTREAM_NANO_SOURCE)
     set(RADIX_UPSTREAM_NANO_SOURCE "${RADIX_OS_ROOT}/.radbuild/ports/src/nano-9.0")
 endif()
+if(NOT RADIX_UPSTREAM_VIM_SOURCE)
+    set(RADIX_UPSTREAM_VIM_SOURCE "${RADIX_OS_ROOT}/.radbuild/ports/src/vim")
+endif()
+if(RADIX_X86_TERMINAL_AUTOLOGIN_ENABLED)
+    set(RADIX_BOOT_SESSION_EXEC "/bin/rash")
+else()
+    set(RADIX_BOOT_SESSION_EXEC "/bin/login")
+endif()
+if(RADIX_X86_TERMINAL_AUTOTEST_ENABLED)
+    set(RADIX_TERMINAL_STRESS_AUTOSTART "true")
+    set(RADIX_USERSPACE_SHELL_AUTOSTART "true")
+else()
+    set(RADIX_TERMINAL_STRESS_AUTOSTART "false")
+    set(RADIX_USERSPACE_SHELL_AUTOSTART "false")
+endif()
+set(RADIX_GENERATED_SERVICES_DIR "${CMAKE_BINARY_DIR}/services")
+file(MAKE_DIRECTORY "${RADIX_GENERATED_SERVICES_DIR}")
+configure_file("${CMAKE_CURRENT_LIST_DIR}/services/boot-session.json.in" "${RADIX_GENERATED_SERVICES_DIR}/boot-session.json" @ONLY)
+configure_file("${CMAKE_CURRENT_LIST_DIR}/services/terminal-stress.json.in" "${RADIX_GENERATED_SERVICES_DIR}/terminal-stress.json" @ONLY)
+configure_file("${CMAKE_CURRENT_LIST_DIR}/services/userspace-shell.json.in" "${RADIX_GENERATED_SERVICES_DIR}/userspace-shell.json" @ONLY)
 if(NOT RADLIB_ROOT)
     get_filename_component(RADIX_OS_PARENT "${RADIX_OS_ROOT}/.." ABSOLUTE)
     set(RADLIB_ROOT "${RADIX_OS_PARENT}/RADLib" CACHE PATH "Path to RADLib")
@@ -174,10 +261,27 @@ target_compile_definitions(radixkernel_x86_64_grub_slint PRIVATE
     RADLIB_EMBEDDED_NO_CPP_WRAPPERS=1
     RADIX_KERNEL_BACKEND_x86_64_grub=1
     RADIX_KERNEL_MAX_DEVICES=32
-    RADIX_KERNEL_TASK_STACK_BYTES=32768
+    RADIX_KERNEL_MAX_TASKS=${RADIX_RKCONFIG_KERNEL_MAX_TASKS}
+    RADIX_KERNEL_MAX_PROCESSES=${RADIX_RKCONFIG_KERNEL_MAX_PROCESSES}
+    RADIX_KERNEL_TASK_STACK_BYTES=${RADIX_RKCONFIG_KERNEL_TASK_STACK_BYTES}
+    RADIX_X86_MAX_USER_PROCESSES=${RADIX_X86_MAX_USER_PROCESSES}
 )
+if(RADIX_RKCONFIG_KERNEL_TASK_STACK_POLICY STREQUAL "dynamic")
+    target_compile_definitions(radixkernel_x86_64_grub_slint PRIVATE RADIX_KERNEL_TASK_DYNAMIC_STACKS=1)
+else()
+    target_compile_definitions(radixkernel_x86_64_grub_slint PRIVATE RADIX_KERNEL_TASK_DYNAMIC_STACKS=0)
+endif()
 if(RADIX_X86_TERMINAL_AUTOTEST_NANO STREQUAL "true" OR RADIX_X86_TERMINAL_AUTOTEST_NANO STREQUAL "1" OR RADIX_X86_TERMINAL_AUTOTEST_NANO STREQUAL "ON")
     target_compile_definitions(radixkernel_x86_64_grub_slint PRIVATE RADIX_X86_TERMINAL_AUTOTEST_NANO=1)
+endif()
+if(RADIX_X86_DIRECT_LOGIN_ENABLED)
+    target_compile_definitions(radixkernel_x86_64_grub_slint PRIVATE RADIX_X86_DIRECT_LOGIN=1)
+endif()
+if(RADIX_X86_TERMINAL_AUTOLOGIN STREQUAL "true" OR RADIX_X86_TERMINAL_AUTOLOGIN STREQUAL "1" OR RADIX_X86_TERMINAL_AUTOLOGIN STREQUAL "ON")
+    target_compile_definitions(radixkernel_x86_64_grub_slint PRIVATE RADIX_X86_TERMINAL_AUTOLOGIN=1)
+endif()
+if(RADIX_ENABLE_DEBUG_TRACE STREQUAL "true" OR RADIX_ENABLE_DEBUG_TRACE STREQUAL "1" OR RADIX_ENABLE_DEBUG_TRACE STREQUAL "ON")
+    target_compile_definitions(radixkernel_x86_64_grub_slint PRIVATE RADIX_ENABLE_DEBUG_TRACE=1)
 endif()
 
 target_link_options(radixkernel_x86_64_grub_slint PRIVATE
@@ -201,9 +305,20 @@ set(RADIX_RADSH_ELF "${CMAKE_BINARY_DIR}/radix-radsh.elf")
 set(RADIX_LOGIN_ELF "${CMAKE_BINARY_DIR}/radix-login.elf")
 set(RADIX_SH_ELF "${CMAKE_BINARY_DIR}/radix-sh.elf")
 set(RADIX_RADGFX_ELF "${CMAKE_BINARY_DIR}/radix-radgfx-smoke.elf")
+set(RADIX_TTY_STRESS_ELF "${CMAKE_BINARY_DIR}/radix-tty-stress.elf")
+set(RADIX_SLEEP_STRESS_ELF "${CMAKE_BINARY_DIR}/radix-sleep-stress.elf")
+set(RADIX_SIGNAL_STRESS_ELF "${CMAKE_BINARY_DIR}/radix-signal-stress.elf")
+set(RADIX_TUI_STRESS_ELF "${CMAKE_BINARY_DIR}/radix-tui-stress.elf")
+set(RADIX_TERMINAL_STRESS_ELF "${CMAKE_BINARY_DIR}/radix-terminal-stress.elf")
+set(RADIX_HOST_TTY_STRESS "${CMAKE_BINARY_DIR}/host-tty-stress")
+set(RADIX_HOST_SLEEP_STRESS "${CMAKE_BINARY_DIR}/host-sleep-stress")
+set(RADIX_HOST_SIGNAL_STRESS "${CMAKE_BINARY_DIR}/host-signal-stress")
+set(RADIX_HOST_TUI_STRESS "${CMAKE_BINARY_DIR}/host-tui-stress")
 set(RADIX_NANO_TINY_ELF "${CMAKE_BINARY_DIR}/radix-nano-tiny.elf")
 set(RADIX_NANO_FULL_ELF "${CMAKE_BINARY_DIR}/radix-nano-full.elf")
 set(RADIX_UPSTREAM_NANO_ELF "${CMAKE_BINARY_DIR}/upstream-nano/src/nano")
+set(RADIX_UPSTREAM_VIM_ELF "${CMAKE_BINARY_DIR}/upstream-vim/src/vim")
+set(RADIX_UPSTREAM_VIM_LICENSE "${RADIX_UPSTREAM_VIM_SOURCE}/LICENSE")
 set(RADIX_ROOTFS_DIR "${CMAKE_BINARY_DIR}/rootfs")
 set(RADIX_RKCONFIG_STAMP "${RADIX_RKCONFIG_DIR}/rkconfig")
 set(RADIX_TERMINFO_DIR "${CMAKE_BINARY_DIR}/terminfo")
@@ -237,6 +352,12 @@ add_custom_command(
             --terminal-ncurses "${RADIX_RKCONFIG_TERMINAL_NCURSES}"
             --terminal-nano "${RADIX_RKCONFIG_TERMINAL_NANO}"
             --terminal-nano-variant "${RADIX_RKCONFIG_TERMINAL_NANO_VARIANT}"
+            --terminal-vim "${RADIX_RKCONFIG_TERMINAL_VIM}"
+            --terminal-vim-variant "${RADIX_RKCONFIG_TERMINAL_VIM_VARIANT}"
+            --kernel-max-tasks "${RADIX_RKCONFIG_KERNEL_MAX_TASKS}"
+            --kernel-max-processes "${RADIX_RKCONFIG_KERNEL_MAX_PROCESSES}"
+            --kernel-task-stack-bytes "${RADIX_RKCONFIG_KERNEL_TASK_STACK_BYTES}"
+            --kernel-task-stack-policy "${RADIX_RKCONFIG_KERNEL_TASK_STACK_POLICY}"
     DEPENDS "${CMAKE_CURRENT_LIST_DIR}/make_rkconfig.py"
     VERBATIM
 )
@@ -330,6 +451,75 @@ else()
     )
 endif()
 
+if(EXISTS "${RADIX_UPSTREAM_VIM_SOURCE}/src/configure" OR EXISTS "${RADIX_UPSTREAM_VIM_SOURCE}/configure")
+    add_custom_target(radix_upstream_vim_tiny
+        COMMAND ${CMAKE_COMMAND} -E env
+            "RADIX_SYSROOT_DIR=${CMAKE_CURRENT_LIST_DIR}/sysroot"
+            "RADIX_NCURSES_INCLUDE_DIR=${RADIX_NCURSES_INSTALL_DIR}/usr/include"
+            "RADIX_USERSPACE_LIB_DIR=${CMAKE_BINARY_DIR}/upstream-port-libs"
+            "RADIX_LIBC_ARCHIVE=${RADIX_LIBC_ARCHIVE}"
+            "RADIX_NCURSESW_ARCHIVE=${RADIX_NCURSESW_ARCHIVE}"
+            "RADIX_TINFO_ARCHIVE=${RADIX_TINFO_ARCHIVE}"
+            "${CMAKE_CURRENT_LIST_DIR}/ports/upstream/build_upstream_vim_tiny.sh"
+            "${RADIX_UPSTREAM_VIM_SOURCE}"
+            "${CMAKE_BINARY_DIR}/upstream-vim"
+        DEPENDS radix_userspace_libs radix_sysroot
+        VERBATIM
+    )
+else()
+    add_custom_target(radix_upstream_vim_tiny
+        COMMAND ${CMAKE_COMMAND} -E echo "RADix upstream Vim source not found at ${RADIX_UPSTREAM_VIM_SOURCE}"
+        COMMAND ${CMAKE_COMMAND} -E false
+        VERBATIM
+    )
+endif()
+
+set(RADIX_NANO_DEPENDS)
+set(RADIX_NANO_EXT2_WRITE_COMMANDS)
+set(RADIX_NANO_EXT4_WRITE_COMMANDS)
+if(RADIX_RKCONFIG_TERMINAL_NANO_ENABLED)
+    list(APPEND RADIX_NANO_DEPENDS "${RADIX_NANO_TINY_ELF}" "${RADIX_NANO_FULL_ELF}" radix_upstream_nano)
+    list(APPEND RADIX_NANO_EXT2_WRITE_COMMANDS
+        COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_NANO_TINY_ELF} /usr/bin/nano-tiny" "${RADIX_EXT2_ROOTFS_IMAGE}"
+        COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_NANO_FULL_ELF} /usr/bin/nano-full" "${RADIX_EXT2_ROOTFS_IMAGE}"
+        COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_UPSTREAM_NANO_ELF} /usr/bin/nano" "${RADIX_EXT2_ROOTFS_IMAGE}"
+        COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${CMAKE_CURRENT_LIST_DIR}/ports/nano/radix-nano.meta /etc/radix/packages/radix-nano.radpm" "${RADIX_EXT2_ROOTFS_IMAGE}"
+    )
+    list(APPEND RADIX_NANO_EXT4_WRITE_COMMANDS
+        COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_NANO_TINY_ELF} /usr/bin/nano-tiny" "${RADIX_ROOTFS_IMAGE}"
+        COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_NANO_FULL_ELF} /usr/bin/nano-full" "${RADIX_ROOTFS_IMAGE}"
+        COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_UPSTREAM_NANO_ELF} /usr/bin/nano" "${RADIX_ROOTFS_IMAGE}"
+        COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${CMAKE_CURRENT_LIST_DIR}/ports/nano/radix-nano.meta /etc/radix/packages/radix-nano.radpm" "${RADIX_ROOTFS_IMAGE}"
+    )
+endif()
+
+set(RADIX_VIM_DEPENDS)
+set(RADIX_VIM_EXT2_WRITE_COMMANDS)
+set(RADIX_VIM_EXT4_WRITE_COMMANDS)
+if(RADIX_RKCONFIG_TERMINAL_VIM_ENABLED)
+    list(APPEND RADIX_VIM_DEPENDS radix_upstream_vim_tiny "${CMAKE_CURRENT_LIST_DIR}/ports/vim/runtime/defaults.vim" "${CMAKE_CURRENT_LIST_DIR}/ports/vim/radix-vim-tiny.meta" "${RADIX_UPSTREAM_VIM_LICENSE}")
+    list(APPEND RADIX_VIM_EXT2_WRITE_COMMANDS
+        COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /usr/share/vim" "${RADIX_EXT2_ROOTFS_IMAGE}"
+        COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /usr/share/vim/vim92" "${RADIX_EXT2_ROOTFS_IMAGE}"
+        COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /usr/share/licenses/vim" "${RADIX_EXT2_ROOTFS_IMAGE}"
+        COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_UPSTREAM_VIM_ELF} /usr/bin/vim" "${RADIX_EXT2_ROOTFS_IMAGE}"
+        COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_UPSTREAM_VIM_ELF} /usr/bin/vi" "${RADIX_EXT2_ROOTFS_IMAGE}"
+        COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${CMAKE_CURRENT_LIST_DIR}/ports/vim/runtime/defaults.vim /usr/share/vim/vim92/defaults.vim" "${RADIX_EXT2_ROOTFS_IMAGE}"
+        COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_UPSTREAM_VIM_LICENSE} /usr/share/licenses/vim/LICENSE" "${RADIX_EXT2_ROOTFS_IMAGE}"
+        COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${CMAKE_CURRENT_LIST_DIR}/ports/vim/radix-vim-tiny.meta /etc/radix/packages/radix-vim-tiny.radpm" "${RADIX_EXT2_ROOTFS_IMAGE}"
+    )
+    list(APPEND RADIX_VIM_EXT4_WRITE_COMMANDS
+        COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /usr/share/vim" "${RADIX_ROOTFS_IMAGE}"
+        COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /usr/share/vim/vim92" "${RADIX_ROOTFS_IMAGE}"
+        COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /usr/share/licenses/vim" "${RADIX_ROOTFS_IMAGE}"
+        COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_UPSTREAM_VIM_ELF} /usr/bin/vim" "${RADIX_ROOTFS_IMAGE}"
+        COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_UPSTREAM_VIM_ELF} /usr/bin/vi" "${RADIX_ROOTFS_IMAGE}"
+        COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${CMAKE_CURRENT_LIST_DIR}/ports/vim/runtime/defaults.vim /usr/share/vim/vim92/defaults.vim" "${RADIX_ROOTFS_IMAGE}"
+        COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_UPSTREAM_VIM_LICENSE} /usr/share/licenses/vim/LICENSE" "${RADIX_ROOTFS_IMAGE}"
+        COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${CMAKE_CURRENT_LIST_DIR}/ports/vim/radix-vim-tiny.meta /etc/radix/packages/radix-vim-tiny.radpm" "${RADIX_ROOTFS_IMAGE}"
+    )
+endif()
+
 add_custom_command(
     OUTPUT "${RADIX_INIT_ELF}"
     COMMAND "${X86_64_LINUX_GNU_GCC_EXECUTABLE}" -nostdlib -static -no-pie
@@ -408,6 +598,135 @@ add_custom_command(
 )
 
 add_custom_command(
+    OUTPUT "${RADIX_TTY_STRESS_ELF}"
+    COMMAND "${X86_64_LINUX_GNU_GCC_EXECUTABLE}" -nostdlib -static -no-pie
+            -ffreestanding -fno-stack-protector -fno-pic -fno-pie -fomit-frame-pointer -mno-red-zone
+            -DRADIX_GUEST_STRESS_DIRECT=1
+            -I "${CMAKE_CURRENT_LIST_DIR}/sysroot/include"
+            -Wl,-Ttext=0x40000000
+            -Wl,--build-id=none
+            -o "${RADIX_TTY_STRESS_ELF}"
+            "${CMAKE_CURRENT_LIST_DIR}/user_c_entry.S"
+            "${CMAKE_CURRENT_LIST_DIR}/user_tty_stress.c"
+    DEPENDS "${CMAKE_CURRENT_LIST_DIR}/user_c_entry.S" "${CMAKE_CURRENT_LIST_DIR}/user_tty_stress.c"
+    VERBATIM
+)
+
+add_custom_command(
+    OUTPUT "${RADIX_SLEEP_STRESS_ELF}"
+    COMMAND "${X86_64_LINUX_GNU_GCC_EXECUTABLE}" -nostdlib -static -no-pie
+            -ffreestanding -fno-stack-protector -fno-pic -fno-pie -fomit-frame-pointer -mno-red-zone
+            -DRADIX_GUEST_STRESS_DIRECT=1
+            -I "${CMAKE_CURRENT_LIST_DIR}/sysroot/include"
+            -Wl,-Ttext=0x40000000
+            -Wl,--build-id=none
+            -o "${RADIX_SLEEP_STRESS_ELF}"
+            "${CMAKE_CURRENT_LIST_DIR}/user_c_entry.S"
+            "${CMAKE_CURRENT_LIST_DIR}/user_sleep_stress.c"
+    DEPENDS "${CMAKE_CURRENT_LIST_DIR}/user_c_entry.S" "${CMAKE_CURRENT_LIST_DIR}/user_sleep_stress.c"
+    VERBATIM
+)
+
+add_custom_command(
+    OUTPUT "${RADIX_SIGNAL_STRESS_ELF}"
+    COMMAND "${X86_64_LINUX_GNU_GCC_EXECUTABLE}" -nostdlib -static -no-pie
+            -ffreestanding -fno-stack-protector -fno-pic -fno-pie -fomit-frame-pointer -mno-red-zone
+            -I "${CMAKE_CURRENT_LIST_DIR}/sysroot/include"
+            -Wl,-Ttext=0x40000000
+            -Wl,--build-id=none
+            -o "${RADIX_SIGNAL_STRESS_ELF}"
+            "${CMAKE_CURRENT_LIST_DIR}/user_c_entry.S"
+            "${CMAKE_CURRENT_LIST_DIR}/user_signal_stress.c"
+            "${RADIX_LIBC_ARCHIVE}"
+    DEPENDS "${CMAKE_CURRENT_LIST_DIR}/user_c_entry.S" "${CMAKE_CURRENT_LIST_DIR}/user_signal_stress.c" "${RADIX_LIBC_ARCHIVE}"
+    VERBATIM
+)
+
+add_custom_command(
+    OUTPUT "${RADIX_TUI_STRESS_ELF}"
+    COMMAND "${X86_64_LINUX_GNU_GCC_EXECUTABLE}" -nostdlib -static -no-pie
+            -ffreestanding -fno-stack-protector -fno-pic -fno-pie -fomit-frame-pointer -mno-red-zone
+            -I "${CMAKE_CURRENT_LIST_DIR}/sysroot/include"
+            -I "${RADIX_NCURSES_INSTALL_DIR}/usr/include"
+            -Wl,-Ttext=0x40000000
+            -Wl,--build-id=none
+            -o "${RADIX_TUI_STRESS_ELF}"
+            "${CMAKE_CURRENT_LIST_DIR}/user_c_entry.S"
+            "${CMAKE_CURRENT_LIST_DIR}/user_tui_stress.c"
+            "${RADIX_NCURSESW_ARCHIVE}"
+            "${RADIX_TINFO_ARCHIVE}"
+            "${RADIX_LIBC_ARCHIVE}"
+            "${RADIX_LIBC_ARCHIVE}"
+    DEPENDS "${CMAKE_CURRENT_LIST_DIR}/user_c_entry.S" "${CMAKE_CURRENT_LIST_DIR}/user_tui_stress.c" "${RADIX_NCURSESW_ARCHIVE}" "${RADIX_TINFO_ARCHIVE}" "${RADIX_LIBC_ARCHIVE}"
+    VERBATIM
+)
+
+add_custom_command(
+    OUTPUT "${RADIX_TERMINAL_STRESS_ELF}"
+    COMMAND "${X86_64_LINUX_GNU_GCC_EXECUTABLE}" -nostdlib -static -no-pie
+            -ffreestanding -fno-stack-protector -fno-pic -fno-pie -fomit-frame-pointer -mno-red-zone
+            -Wl,-Ttext=0x40000000
+            -Wl,--build-id=none
+            -o "${RADIX_TERMINAL_STRESS_ELF}"
+            "${CMAKE_CURRENT_LIST_DIR}/user_c_entry.S"
+            "${CMAKE_CURRENT_LIST_DIR}/user_terminal_stress.c"
+    DEPENDS "${CMAKE_CURRENT_LIST_DIR}/user_c_entry.S" "${CMAKE_CURRENT_LIST_DIR}/user_terminal_stress.c"
+    VERBATIM
+)
+
+add_custom_command(
+    OUTPUT "${RADIX_HOST_TTY_STRESS}"
+    COMMAND "${CMAKE_C_COMPILER}" -Wall -Wextra -O2 -D_DEFAULT_SOURCE
+            "${CMAKE_CURRENT_LIST_DIR}/user_tty_stress.c"
+            -o "${RADIX_HOST_TTY_STRESS}"
+    DEPENDS "${CMAKE_CURRENT_LIST_DIR}/user_tty_stress.c"
+    VERBATIM
+)
+
+add_custom_command(
+    OUTPUT "${RADIX_HOST_SLEEP_STRESS}"
+    COMMAND "${CMAKE_C_COMPILER}" -Wall -Wextra -O2
+            "${CMAKE_CURRENT_LIST_DIR}/user_sleep_stress.c"
+            -o "${RADIX_HOST_SLEEP_STRESS}"
+    DEPENDS "${CMAKE_CURRENT_LIST_DIR}/user_sleep_stress.c"
+    VERBATIM
+)
+
+add_custom_command(
+    OUTPUT "${RADIX_HOST_SIGNAL_STRESS}"
+    COMMAND "${CMAKE_C_COMPILER}" -Wall -Wextra -O2
+            "${CMAKE_CURRENT_LIST_DIR}/user_signal_stress.c"
+            -o "${RADIX_HOST_SIGNAL_STRESS}"
+    DEPENDS "${CMAKE_CURRENT_LIST_DIR}/user_signal_stress.c"
+    VERBATIM
+)
+
+add_custom_command(
+    OUTPUT "${RADIX_HOST_TUI_STRESS}"
+    COMMAND "${CMAKE_C_COMPILER}" -Wall -Wextra -O2 -D_DEFAULT_SOURCE
+            "${CMAKE_CURRENT_LIST_DIR}/user_tui_stress.c"
+            -o "${RADIX_HOST_TUI_STRESS}"
+            -lncursesw
+    DEPENDS "${CMAKE_CURRENT_LIST_DIR}/user_tui_stress.c"
+    VERBATIM
+)
+
+add_custom_target(radix_host_tui_stress DEPENDS "${RADIX_HOST_TUI_STRESS}")
+add_custom_target(radix_host_terminal_stress
+    DEPENDS "${RADIX_HOST_TTY_STRESS}" "${RADIX_HOST_SLEEP_STRESS}" "${RADIX_HOST_SIGNAL_STRESS}" "${RADIX_HOST_TUI_STRESS}"
+)
+add_custom_target(radix_host_terminal_stress_run
+    COMMAND "${CMAKE_CURRENT_LIST_DIR}/run_host_terminal_stress.sh"
+            "${RADIX_HOST_TTY_STRESS}"
+            "${RADIX_HOST_SLEEP_STRESS}"
+            "${RADIX_HOST_SIGNAL_STRESS}"
+            "${RADIX_HOST_TUI_STRESS}"
+            "${CMAKE_BINARY_DIR}/host-terminal-stress.log"
+    DEPENDS radix_host_terminal_stress "${CMAKE_CURRENT_LIST_DIR}/run_host_terminal_stress.sh"
+    VERBATIM
+)
+
+add_custom_command(
     OUTPUT "${RADIX_NANO_TINY_ELF}"
     COMMAND "${X86_64_LINUX_GNU_GCC_EXECUTABLE}" -nostdlib -static -no-pie
             -ffreestanding -fno-stack-protector -fno-pic -fno-pie -fomit-frame-pointer -mno-red-zone
@@ -457,6 +776,7 @@ add_custom_command(
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /usr/bin" "${RADIX_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /usr/lib" "${RADIX_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /usr/share" "${RADIX_EXT2_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /usr/share/licenses" "${RADIX_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /usr/share/terminfo" "${RADIX_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /usr/share/terminfo/r" "${RADIX_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /lib" "${RADIX_EXT2_ROOTFS_IMAGE}"
@@ -475,9 +795,13 @@ add_custom_command(
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_RADSH_ELF} /bin/tui-smoke" "${RADIX_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_LOGIN_ELF} /bin/login" "${RADIX_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_RADGFX_ELF} /bin/radgfx-smoke" "${RADIX_EXT2_ROOTFS_IMAGE}"
-    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_NANO_TINY_ELF} /usr/bin/nano-tiny" "${RADIX_EXT2_ROOTFS_IMAGE}"
-    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_NANO_FULL_ELF} /usr/bin/nano-full" "${RADIX_EXT2_ROOTFS_IMAGE}"
-    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_UPSTREAM_NANO_ELF} /usr/bin/nano" "${RADIX_EXT2_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_TTY_STRESS_ELF} /usr/bin/tty-stress" "${RADIX_EXT2_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_SLEEP_STRESS_ELF} /usr/bin/sleep-stress" "${RADIX_EXT2_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_SIGNAL_STRESS_ELF} /usr/bin/signal-stress" "${RADIX_EXT2_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_TUI_STRESS_ELF} /usr/bin/tui-stress" "${RADIX_EXT2_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_TERMINAL_STRESS_ELF} /usr/bin/terminal-stress" "${RADIX_EXT2_ROOTFS_IMAGE}"
+    ${RADIX_NANO_EXT2_WRITE_COMMANDS}
+    ${RADIX_VIM_EXT2_WRITE_COMMANDS}
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_RKCONFIG_DIR}/rkconfig /etc/radix/rkconfig" "${RADIX_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_RKCONFIG_DIR}/terminal.theme /etc/radix/terminal.theme" "${RADIX_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_RKCONFIG_DIR}/radpm-index.json /etc/radix/radpm-index.json" "${RADIX_EXT2_ROOTFS_IMAGE}"
@@ -490,18 +814,19 @@ add_custom_command(
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_LIBC_ARCHIVE} /usr/lib/libradixc.a" "${RADIX_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_NCURSESW_ARCHIVE} /usr/lib/libncursesw.a" "${RADIX_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_TINFO_ARCHIVE} /usr/lib/libtinfo.a" "${RADIX_EXT2_ROOTFS_IMAGE}"
-    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${CMAKE_CURRENT_LIST_DIR}/ports/nano/radix-nano.meta /etc/radix/packages/radix-nano.radpm" "${RADIX_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${CMAKE_CURRENT_LIST_DIR}/ports/ncurses/radix-ncurses.meta /etc/radix/packages/radix-ncurses.radpm" "${RADIX_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_TERMINFO_DIR}/r/radix /usr/share/terminfo/r/radix" "${RADIX_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${CMAKE_CURRENT_LIST_DIR}/test_script.sh /bin/test.sh" "${RADIX_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${CMAKE_CURRENT_LIST_DIR}/services/storage-root.json /etc/radix/services/storage-root.json" "${RADIX_EXT2_ROOTFS_IMAGE}"
-    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${CMAKE_CURRENT_LIST_DIR}/services/userspace-shell.json /etc/radix/services/userspace-shell.json" "${RADIX_EXT2_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_GENERATED_SERVICES_DIR}/userspace-shell.json /etc/radix/services/userspace-shell.json" "${RADIX_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${CMAKE_CURRENT_LIST_DIR}/services/base-terminal.json /etc/radix/services/base-terminal.json" "${RADIX_EXT2_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_GENERATED_SERVICES_DIR}/terminal-stress.json /etc/radix/services/terminal-stress.json" "${RADIX_EXT2_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_GENERATED_SERVICES_DIR}/boot-session.json /etc/radix/services/boot-session.json" "${RADIX_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${CMAKE_CURRENT_LIST_DIR}/services/network-smoke.json /etc/radix/services/network-smoke.json" "${RADIX_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${CMAKE_CURRENT_LIST_DIR}/services/fatfs.json /etc/radix/services/fatfs.json" "${RADIX_EXT2_ROOTFS_IMAGE}"
-    DEPENDS "${RADIX_RADINIT_ELF}" "${RADIX_INIT_ELF}" "${RADIX_RADSH_ELF}" "${RADIX_LOGIN_ELF}" "${RADIX_SH_ELF}" "${RADIX_RADGFX_ELF}" "${RADIX_NANO_TINY_ELF}" "${RADIX_NANO_FULL_ELF}" radix_upstream_nano "${RADIX_LIBC_ARCHIVE}" "${RADIX_NCURSESW_ARCHIVE}" "${RADIX_TINFO_ARCHIVE}" "${RADIX_RKCONFIG_STAMP}" "${RADIX_TERMINFO_STAMP}" "${RADIX_SYSROOT_STAMP}" "${CMAKE_CURRENT_LIST_DIR}/test_script.sh"
-            "${CMAKE_CURRENT_LIST_DIR}/services/storage-root.json" "${CMAKE_CURRENT_LIST_DIR}/services/userspace-shell.json"
-            "${CMAKE_CURRENT_LIST_DIR}/services/base-terminal.json" "${CMAKE_CURRENT_LIST_DIR}/services/network-smoke.json"
+    DEPENDS "${RADIX_RADINIT_ELF}" "${RADIX_INIT_ELF}" "${RADIX_RADSH_ELF}" "${RADIX_LOGIN_ELF}" "${RADIX_SH_ELF}" "${RADIX_RADGFX_ELF}" "${RADIX_TTY_STRESS_ELF}" "${RADIX_SLEEP_STRESS_ELF}" "${RADIX_SIGNAL_STRESS_ELF}" "${RADIX_TUI_STRESS_ELF}" "${RADIX_TERMINAL_STRESS_ELF}" ${RADIX_NANO_DEPENDS} ${RADIX_VIM_DEPENDS} "${RADIX_LIBC_ARCHIVE}" "${RADIX_NCURSESW_ARCHIVE}" "${RADIX_TINFO_ARCHIVE}" "${RADIX_RKCONFIG_STAMP}" "${RADIX_TERMINFO_STAMP}" "${RADIX_SYSROOT_STAMP}" "${CMAKE_CURRENT_LIST_DIR}/test_script.sh"
+            "${CMAKE_CURRENT_LIST_DIR}/services/storage-root.json" "${RADIX_GENERATED_SERVICES_DIR}/userspace-shell.json"
+            "${CMAKE_CURRENT_LIST_DIR}/services/base-terminal.json" "${RADIX_GENERATED_SERVICES_DIR}/terminal-stress.json" "${RADIX_GENERATED_SERVICES_DIR}/boot-session.json" "${CMAKE_CURRENT_LIST_DIR}/services/network-smoke.json"
             "${CMAKE_CURRENT_LIST_DIR}/services/fatfs.json"
     VERBATIM
 )
@@ -529,6 +854,7 @@ add_custom_command(
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /usr/bin" "${RADIX_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /usr/lib" "${RADIX_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /usr/share" "${RADIX_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /usr/share/licenses" "${RADIX_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /usr/share/terminfo" "${RADIX_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /usr/share/terminfo/r" "${RADIX_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /lib" "${RADIX_ROOTFS_IMAGE}"
@@ -547,9 +873,13 @@ add_custom_command(
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_RADSH_ELF} /bin/tui-smoke" "${RADIX_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_LOGIN_ELF} /bin/login" "${RADIX_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_RADGFX_ELF} /bin/radgfx-smoke" "${RADIX_ROOTFS_IMAGE}"
-    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_NANO_TINY_ELF} /usr/bin/nano-tiny" "${RADIX_ROOTFS_IMAGE}"
-    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_NANO_FULL_ELF} /usr/bin/nano-full" "${RADIX_ROOTFS_IMAGE}"
-    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_UPSTREAM_NANO_ELF} /usr/bin/nano" "${RADIX_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_TTY_STRESS_ELF} /usr/bin/tty-stress" "${RADIX_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_SLEEP_STRESS_ELF} /usr/bin/sleep-stress" "${RADIX_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_SIGNAL_STRESS_ELF} /usr/bin/signal-stress" "${RADIX_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_TUI_STRESS_ELF} /usr/bin/tui-stress" "${RADIX_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_TERMINAL_STRESS_ELF} /usr/bin/terminal-stress" "${RADIX_ROOTFS_IMAGE}"
+    ${RADIX_NANO_EXT4_WRITE_COMMANDS}
+    ${RADIX_VIM_EXT4_WRITE_COMMANDS}
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_RKCONFIG_DIR}/rkconfig /etc/radix/rkconfig" "${RADIX_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_RKCONFIG_DIR}/terminal.theme /etc/radix/terminal.theme" "${RADIX_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_RKCONFIG_DIR}/radpm-index.json /etc/radix/radpm-index.json" "${RADIX_ROOTFS_IMAGE}"
@@ -562,19 +892,20 @@ add_custom_command(
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_LIBC_ARCHIVE} /usr/lib/libradixc.a" "${RADIX_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_NCURSESW_ARCHIVE} /usr/lib/libncursesw.a" "${RADIX_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_TINFO_ARCHIVE} /usr/lib/libtinfo.a" "${RADIX_ROOTFS_IMAGE}"
-    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${CMAKE_CURRENT_LIST_DIR}/ports/nano/radix-nano.meta /etc/radix/packages/radix-nano.radpm" "${RADIX_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${CMAKE_CURRENT_LIST_DIR}/ports/ncurses/radix-ncurses.meta /etc/radix/packages/radix-ncurses.radpm" "${RADIX_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_TERMINFO_DIR}/r/radix /usr/share/terminfo/r/radix" "${RADIX_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${CMAKE_CURRENT_LIST_DIR}/test_script.sh /bin/test.sh" "${RADIX_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${CMAKE_CURRENT_LIST_DIR}/services/storage-root.json /etc/radix/services/storage-root.json" "${RADIX_ROOTFS_IMAGE}"
-    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${CMAKE_CURRENT_LIST_DIR}/services/userspace-shell.json /etc/radix/services/userspace-shell.json" "${RADIX_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_GENERATED_SERVICES_DIR}/userspace-shell.json /etc/radix/services/userspace-shell.json" "${RADIX_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${CMAKE_CURRENT_LIST_DIR}/services/base-terminal.json /etc/radix/services/base-terminal.json" "${RADIX_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_GENERATED_SERVICES_DIR}/terminal-stress.json /etc/radix/services/terminal-stress.json" "${RADIX_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_GENERATED_SERVICES_DIR}/boot-session.json /etc/radix/services/boot-session.json" "${RADIX_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${CMAKE_CURRENT_LIST_DIR}/services/network-smoke.json /etc/radix/services/network-smoke.json" "${RADIX_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${CMAKE_CURRENT_LIST_DIR}/services/fatfs.json /etc/radix/services/fatfs.json" "${RADIX_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_EXT4_WRITE_SEED} /tmp/radwrite.txt" "${RADIX_ROOTFS_IMAGE}"
-    DEPENDS "${RADIX_RADINIT_ELF}" "${RADIX_INIT_ELF}" "${RADIX_RADSH_ELF}" "${RADIX_LOGIN_ELF}" "${RADIX_SH_ELF}" "${RADIX_RADGFX_ELF}" "${RADIX_NANO_TINY_ELF}" "${RADIX_NANO_FULL_ELF}" radix_upstream_nano "${RADIX_LIBC_ARCHIVE}" "${RADIX_NCURSESW_ARCHIVE}" "${RADIX_TINFO_ARCHIVE}" "${RADIX_RKCONFIG_STAMP}" "${RADIX_TERMINFO_STAMP}" "${RADIX_SYSROOT_STAMP}" "${CMAKE_CURRENT_LIST_DIR}/test_script.sh"
-            "${CMAKE_CURRENT_LIST_DIR}/services/storage-root.json" "${CMAKE_CURRENT_LIST_DIR}/services/userspace-shell.json"
-            "${CMAKE_CURRENT_LIST_DIR}/services/base-terminal.json" "${CMAKE_CURRENT_LIST_DIR}/services/network-smoke.json"
+    DEPENDS "${RADIX_RADINIT_ELF}" "${RADIX_INIT_ELF}" "${RADIX_RADSH_ELF}" "${RADIX_LOGIN_ELF}" "${RADIX_SH_ELF}" "${RADIX_RADGFX_ELF}" "${RADIX_TTY_STRESS_ELF}" "${RADIX_SLEEP_STRESS_ELF}" "${RADIX_SIGNAL_STRESS_ELF}" "${RADIX_TUI_STRESS_ELF}" "${RADIX_TERMINAL_STRESS_ELF}" ${RADIX_NANO_DEPENDS} ${RADIX_VIM_DEPENDS} "${RADIX_LIBC_ARCHIVE}" "${RADIX_NCURSESW_ARCHIVE}" "${RADIX_TINFO_ARCHIVE}" "${RADIX_RKCONFIG_STAMP}" "${RADIX_TERMINFO_STAMP}" "${RADIX_SYSROOT_STAMP}" "${CMAKE_CURRENT_LIST_DIR}/test_script.sh"
+            "${CMAKE_CURRENT_LIST_DIR}/services/storage-root.json" "${RADIX_GENERATED_SERVICES_DIR}/userspace-shell.json"
+            "${CMAKE_CURRENT_LIST_DIR}/services/base-terminal.json" "${RADIX_GENERATED_SERVICES_DIR}/terminal-stress.json" "${RADIX_GENERATED_SERVICES_DIR}/boot-session.json" "${CMAKE_CURRENT_LIST_DIR}/services/network-smoke.json"
             "${CMAKE_CURRENT_LIST_DIR}/services/fatfs.json"
     VERBATIM
 )

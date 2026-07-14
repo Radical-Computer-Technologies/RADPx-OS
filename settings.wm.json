@@ -44,7 +44,9 @@
           "terminal_posix_compat": true,
           "terminal_ncurses": true,
           "terminal_nano": true,
-          "terminal_nano_variant": "both"
+          "terminal_nano_variant": "both",
+          "terminal_vim": true,
+          "terminal_vim_variant": "tiny"
         },
         "radpm": {
           "repository": "../RadicalPackages",
@@ -52,7 +54,8 @@
           "packages": [
             "radix-core",
             "radlib",
-            "radlib-ui"
+            "radlib-ui",
+            "radix-vim-tiny"
           ]
         },
         "build_dir": "build/embedded/x86_64_grub_wm",

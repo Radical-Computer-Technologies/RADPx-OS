@@ -581,7 +581,7 @@ extern "C" void x86_cpu_set_kernel_stack_top(uint64_t kernel_stack_top) {
 
 extern "C" int x86_cpu_self_test(void) {
     const intptr_t pid = x86_test_int80_getpid();
-    if (pid == 1) {
+    if (pid == 0) {
         rad_debug_marker("RADIX_INT80_OK");
         return 1;
     }

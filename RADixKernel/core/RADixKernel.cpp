@@ -526,7 +526,7 @@ rad_status_t tty_push_input_record(TtyRecord *tty, const void *buffer, size_t si
         const char *bytes = static_cast<const char*>(buffer);
         for (size_t i = 0; i < size; ++i) {
             char ch = bytes[i];
-            if ((tty->mode & RAD_TTY_MODE_CRLF) && ch == '\r') ch = '\n';
+            if (ch == '\r') ch = '\n';
             if ((ch == '\b' || ch == 0x7f) && (tty->mode & RAD_TTY_MODE_CANONICAL)) {
                 if (!tty->line_buffer.empty()) {
                     tty->line_buffer.pop_back();
@@ -709,18 +709,18 @@ void reset_posix_state_locked() {
     }
     state().fds.clear();
     state().processes.clear();
-    state().current_pid = 1;
+    state().current_pid = 0;
     state().next_pid = 2;
     state().next_fd_slot = 1;
     state().has_process_arch_ops = false;
     state().process_arch_ops = {};
-    ProcessRecord init;
-    init.pid = 1;
-    init.parent_pid = 0;
-    init.state = RAD_PROCESS_RUNNING;
-    init.path = "/bin/init";
-    init.credentials = {0, 0, 0, 0};
-    state().processes[init.pid] = init;
+    ProcessRecord kernel;
+    kernel.pid = 0;
+    kernel.parent_pid = 0;
+    kernel.state = RAD_PROCESS_RUNNING;
+    kernel.path = "[kernel]";
+    kernel.credentials = {0, 0, 0, 0};
+    state().processes[kernel.pid] = kernel;
 }
 
 int32_t install_fd(FdObject *object, int32_t requested = -1, int32_t owner_pid = -1, uint32_t fd_flags = 0) {
@@ -1144,24 +1144,58 @@ const char *rad_kernel_backend_name(void) {
 }
 
 const char *rad_kernel_version_string(void) {
-    return "0.1.2";
+    return "0.1.3";
 }
 
-int rad_vprintk(const char *format, va_list args) {
+rad_log_level_t kernel_print_to_log_level(rad_kernel_print_level_t level) {
+    switch (level) {
+    case RKERN_DBG: return RAD_LOG_DEBUG;
+    case RKERN_WARN: return RAD_LOG_WARNING;
+    case RKERN_ERR: return RAD_LOG_ERROR;
+    case RKERN_STAT:
+    default: return RAD_LOG_INFO;
+    }
+}
+
+const char *kernel_print_prefix(rad_kernel_print_level_t level) {
+    switch (level) {
+    case RKERN_DBG: return "[DBG] ";
+    case RKERN_WARN: return "[WARN] ";
+    case RKERN_ERR: return "[ERR] ";
+    case RKERN_STAT:
+    default: return "";
+    }
+}
+
+int rad_vkprintk(rad_kernel_print_level_t level, const char *format, va_list args) {
     if (!format) return 0;
     char buffer[512];
     const int written = std::vsnprintf(buffer, sizeof(buffer), format, args);
     if (written > 0) {
+        std::fputs(kernel_print_prefix(level), stderr);
         std::fputs(buffer, stderr);
         std::fflush(stderr);
+        rad_log_write(kernel_print_to_log_level(level), "kernel", buffer);
     }
     return written;
+}
+
+int rad_vprintk(const char *format, va_list args) {
+    return rad_vkprintk(RKERN_STAT, format, args);
 }
 
 int rad_printk(const char *format, ...) {
     va_list args;
     va_start(args, format);
     const int written = rad_vprintk(format, args);
+    va_end(args);
+    return written;
+}
+
+int rad_kprintk(rad_kernel_print_level_t level, const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+    const int written = rad_vkprintk(level, format, args);
     va_end(args);
     return written;
 }
@@ -1995,10 +2029,24 @@ int32_t rad_process_fork(void) {
 int32_t rad_process_create(const char *path, int32_t parent_pid) {
     if (!path || !*path) return RAD_STATUS_INVALID_ARGUMENT;
     std::lock_guard<std::mutex> lock(state().mutex);
+    if ((strcmp(path, "/bin/init") == 0 || strcmp(path, "/sbin/radinit") == 0)
+        && state().processes.find(1) == state().processes.end()) {
+        ProcessRecord init;
+        init.pid = 1;
+        init.parent_pid = 0;
+        init.path = path;
+        init.state = RAD_PROCESS_RUNNING;
+        init.exit_code = 0;
+        init.credentials = {0, 0, 0, 0};
+        state().processes[1] = init;
+        return 1;
+    }
+    if (parent_pid <= 0 && state().processes.find(1) != state().processes.end()) parent_pid = 1;
+    while (state().processes.find(state().next_pid) != state().processes.end()) ++state().next_pid;
     const int32_t pid = state().next_pid++;
     ProcessRecord process;
     process.pid = pid;
-    process.parent_pid = parent_pid > 0 ? parent_pid : state().current_pid;
+    process.parent_pid = parent_pid >= 0 ? parent_pid : state().current_pid;
     process.path = path;
     process.state = RAD_PROCESS_RUNNING;
     process.exit_code = 0;
@@ -2015,7 +2063,7 @@ rad_status_t rad_process_attach_task(int32_t, rad_task_t) {
 
 void rad_process_set_current_pid(int32_t pid) {
     std::lock_guard<std::mutex> lock(state().mutex);
-    state().current_pid = pid > 0 ? pid : 1;
+    state().current_pid = pid >= 0 ? pid : 0;
 }
 
 rad_status_t rad_process_mark_exec(int32_t pid, const char *path) {
@@ -2084,6 +2132,7 @@ int32_t rad_process_waitpid(int32_t pid, int32_t *status, uint32_t options) {
 
 void rad_process_exit(int32_t status) {
     std::lock_guard<std::mutex> lock(state().mutex);
+    if (state().current_pid == 0) return;
     ProcessRecord& process = state().processes[state().current_pid];
     process.pid = state().current_pid;
     if (process.parent_pid == 0 && process.path.empty()) process.path = "/bin/init";
@@ -2382,7 +2431,7 @@ intptr_t rad_fd_read(int32_t fd, void *buffer, size_t size) {
             if (status != RAD_STATUS_OK) return static_cast<intptr_t>(status);
             if (done > 0 || size == 0 || !tty) return static_cast<intptr_t>(done);
             if (object->flags & RAD_FD_NONBLOCK) return RAD_STATUS_TIMEOUT;
-            rad_task_sleep_ms(1);
+            rad_task_yield();
         }
     }
     if (object->kind == FdKind::Pipe) {

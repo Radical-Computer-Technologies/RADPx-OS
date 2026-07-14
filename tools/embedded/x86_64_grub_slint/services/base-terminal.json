@@ -6,7 +6,7 @@
   "autostart": true,
   "order": 30,
   "requires": ["storage-root"],
-  "after": ["userspace-shell"],
+  "after": ["storage-root"],
   "restart": "no",
   "stdout": "/var/log/radix/base-terminal.log",
   "stderr": "/var/log/radix/base-terminal.log"

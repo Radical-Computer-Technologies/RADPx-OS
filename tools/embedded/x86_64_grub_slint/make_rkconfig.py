@@ -22,13 +22,19 @@ def main() -> int:
     parser.add_argument("--terminal-ncurses", default="true")
     parser.add_argument("--terminal-nano", default="false")
     parser.add_argument("--terminal-nano-variant", default="none")
+    parser.add_argument("--terminal-vim", default="false")
+    parser.add_argument("--terminal-vim-variant", default="none")
+    parser.add_argument("--kernel-max-tasks", default="128")
+    parser.add_argument("--kernel-max-processes", default="128")
+    parser.add_argument("--kernel-task-stack-bytes", default="524288")
+    parser.add_argument("--kernel-task-stack-policy", default="dynamic")
     args = parser.parse_args()
 
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     salt = "radix-root-v1"
     digest = password_hash(salt, args.root_password)
-    version = "0.1.2"
+    version = "0.1.3"
     autocomplete = str(args.terminal_autocomplete).strip().lower() in ("1", "true", "yes", "on", "y")
     posix_compat = str(args.terminal_posix_compat).strip().lower() in ("1", "true", "yes", "on", "y")
     ncurses = str(args.terminal_ncurses).strip().lower() in ("1", "true", "yes", "on", "y")
@@ -38,6 +44,17 @@ def main() -> int:
         nano_variant = "none"
     if nano_variant != "none":
         nano = True
+    vim = str(args.terminal_vim).strip().lower() in ("1", "true", "yes", "on", "y")
+    vim_variant = str(args.terminal_vim_variant).strip().lower()
+    if vim_variant not in ("none", "tiny"):
+        vim_variant = "none"
+    if vim and vim_variant == "none":
+        vim_variant = "tiny"
+    if vim_variant != "none":
+        vim = True
+    stack_policy = str(args.kernel_task_stack_policy).strip().lower()
+    if stack_policy not in ("dynamic", "static"):
+        stack_policy = "dynamic"
 
     (out / "rkconfig").write_text(
         "\n".join(
@@ -53,6 +70,12 @@ def main() -> int:
                 f"CONFIG_RADIX_TERMINAL_NCURSES={'y' if ncurses else 'n'}",
                 f"CONFIG_RADIX_TERMINAL_NANO={'y' if nano else 'n'}",
                 f'CONFIG_RADIX_TERMINAL_NANO_VARIANT="{nano_variant}"',
+                f"CONFIG_RADIX_TERMINAL_VIM={'y' if vim else 'n'}",
+                f'CONFIG_RADIX_TERMINAL_VIM_VARIANT="{vim_variant}"',
+                f"CONFIG_RADIX_KERNEL_MAX_TASKS={args.kernel_max_tasks}",
+                f"CONFIG_RADIX_KERNEL_MAX_PROCESSES={args.kernel_max_processes}",
+                f"CONFIG_RADIX_KERNEL_TASK_STACK_BYTES={args.kernel_task_stack_bytes}",
+                f'CONFIG_RADIX_KERNEL_TASK_STACK_POLICY="{stack_policy}"',
                 'CONFIG_RADIX_TERMINAL_PALETTE_BACKGROUND="#090716"',
                 'CONFIG_RADIX_TERMINAL_PALETTE_FOREGROUND="#d8f7ee"',
                 'CONFIG_RADIX_TERMINAL_PALETTE_PROMPT="#4ade80"',
@@ -79,6 +102,12 @@ def main() -> int:
                 f"#define RADIX_RKCONFIG_TERMINAL_NCURSES {1 if ncurses else 0}",
                 f"#define RADIX_RKCONFIG_TERMINAL_NANO {1 if nano else 0}",
                 f'#define RADIX_RKCONFIG_TERMINAL_NANO_VARIANT "{nano_variant}"',
+                f"#define RADIX_RKCONFIG_TERMINAL_VIM {1 if vim else 0}",
+                f'#define RADIX_RKCONFIG_TERMINAL_VIM_VARIANT "{vim_variant}"',
+                f"#define RADIX_RKCONFIG_KERNEL_MAX_TASKS {args.kernel_max_tasks}",
+                f"#define RADIX_RKCONFIG_KERNEL_MAX_PROCESSES {args.kernel_max_processes}",
+                f"#define RADIX_RKCONFIG_KERNEL_TASK_STACK_BYTES {args.kernel_task_stack_bytes}",
+                f'#define RADIX_RKCONFIG_KERNEL_TASK_STACK_POLICY "{stack_policy}"',
                 "#define RADIX_RKCONFIG_AUTH_PASSWORDS 1",
                 "#endif",
                 "",
@@ -99,6 +128,8 @@ def main() -> int:
                 f"ncurses={'true' if ncurses else 'false'}",
                 f"nano={'true' if nano else 'false'}",
                 f"nano_variant={nano_variant}",
+                f"vim={'true' if vim else 'false'}",
+                f"vim_variant={vim_variant}",
                 "background=#090716",
                 "foreground=#d8f7ee",
                 "cursor=#f8fafc",

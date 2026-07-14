@@ -20,7 +20,9 @@ typedef unsigned int speed_t;
 #define IGNCR 0x00000200u
 #define ISTRIP 0x00000400u
 #define OPOST 0x00000001u
+#define ONLCR 0x00000002u
 #define NOFLSH 0x00000020u
+#define ECHOE 0x00000080u
 #define ECHONL 0x00000040u
 #define CSIZE 0x00000300u
 #define CS8 0x00000300u

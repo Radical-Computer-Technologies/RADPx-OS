@@ -9,6 +9,7 @@
 #define SIGINT 2
 #define SIGQUIT 3
 #define SIGABRT 6
+#define SIGKILL 9
 #define SIGSEGV 11
 #define SIGTERM 15
 #define SIGCONT 18
@@ -42,6 +43,7 @@ struct sigaction {
 
 sighandler_t signal(int signum, sighandler_t handler);
 int kill(int pid, int sig);
+int raise(int sig);
 int sigemptyset(sigset_t *set);
 int sigfillset(sigset_t *set);
 int sigaddset(sigset_t *set, int signum);

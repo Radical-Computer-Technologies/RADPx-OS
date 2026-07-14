@@ -14,6 +14,8 @@ enum {
     SYS_WAITPID = 13,
     SYS_GETPID = 14,
     SYS_DUP2 = 17,
+    SYS_GETPPID = 15,
+    SYS_GETDENTS = 1000,
     SYS_MKDIR = 1002,
     SYS_TRUNCATE = 1005,
     SYS_LOG_READ = 1006,
@@ -69,12 +71,18 @@ typedef struct {
     restart_policy_t restart;
     char stdout_path[128];
     char stderr_path[128];
+    char terminal_path[128];
     int pid;
     int exit_status;
     int restarts;
     uint64_t last_start_millis;
     service_state_t state;
 } service_t;
+
+typedef struct {
+    uint8_t type;
+    char name[256];
+} radinit_dirent_t;
 
 static long sc(long n, long a, long b, long c, long d, long e, long f) {
     register long rax asm("rax") = n;
@@ -299,6 +307,7 @@ static int load_service(const char *path, service_t *service) {
     json_string(json, "exec", local.exec, sizeof(local.exec));
     json_string(json, "stdout", local.stdout_path, sizeof(local.stdout_path));
     json_string(json, "stderr", local.stderr_path, sizeof(local.stderr_path));
+    json_string(json, "terminal", local.terminal_path, sizeof(local.terminal_path));
     json_string(json, "restart", restart, sizeof(restart));
     json_args(json, &local);
     local.autostart = json_bool(json, "autostart", 0);
@@ -337,6 +346,10 @@ static void write_status(service_t *services, int count) {
         print_num_fd(fd, services[i].last_start_millis);
         puts_fd(fd, " exec=");
         puts_fd(fd, services[i].exec[0] ? services[i].exec : "builtin");
+        if (services[i].terminal_path[0]) {
+            puts_fd(fd, " terminal=");
+            puts_fd(fd, services[i].terminal_path);
+        }
         puts_fd(fd, " log=");
         puts_fd(fd, services[i].stdout_path[0] ? services[i].stdout_path : "/var/log/radix/service.log");
         puts_fd(fd, "\n");
@@ -359,6 +372,10 @@ static void write_service_log(service_t *service, const char *message) {
 
 static int start_service(service_t *service, int manual) {
     if (!manual && !service->autostart) return 0;
+    int trace_terminal_stress = s_eq(service->name, "terminal-stress");
+    int trace_boot_session = s_eq(service->name, "boot-session");
+    if (trace_terminal_stress) line_fd(1, "RADIX_RADINIT_TERMINAL_STRESS_STARTING");
+    if (trace_boot_session) line_fd(1, "RADIX_RADINIT_BOOT_SESSION_STARTING");
     radinit_timeval_t tv;
     if (sc(SYS_GETTIMEOFDAY, (long)&tv, 0, 0, 0, 0, 0) == 0) {
         service->last_start_millis = (uint64_t)(tv.tv_sec * 1000 + tv.tv_usec / 1000);
@@ -377,17 +394,31 @@ static int start_service(service_t *service, int manual) {
     }
     long child = sc(SYS_FORK, 0, 0, 0, 0, 0, 0);
     if (child == 0) {
-        int out = append_open(service->stdout_path[0] ? service->stdout_path : "/var/log/radix/service.log");
-        if (out >= 0) {
-            sc(SYS_DUP2, out, 1, 0, 0, 0, 0);
-            sc(SYS_DUP2, out, 2, 0, 0, 0, 0);
-            if (out > 2) sc(SYS_CLOSE, out, 0, 0, 0, 0, 0);
+        if (trace_terminal_stress) line_fd(1, "RADIX_RADINIT_TERMINAL_STRESS_CHILD");
+        if (trace_boot_session) line_fd(1, "RADIX_RADINIT_BOOT_SESSION_CHILD");
+        if (service->terminal_path[0]) {
+            int tty = (int)sc(SYS_OPEN, (long)service->terminal_path, O_READ | O_WRITE, 0, 0, 0, 0);
+            if (tty >= 0) {
+                sc(SYS_DUP2, tty, 0, 0, 0, 0, 0);
+                sc(SYS_DUP2, tty, 1, 0, 0, 0, 0);
+                sc(SYS_DUP2, tty, 2, 0, 0, 0, 0);
+                if (tty > 2) sc(SYS_CLOSE, tty, 0, 0, 0, 0, 0);
+            }
+        } else {
+            int out = append_open(service->stdout_path[0] ? service->stdout_path : "/var/log/radix/service.log");
+            if (out >= 0) {
+                sc(SYS_DUP2, out, 1, 0, 0, 0, 0);
+                sc(SYS_DUP2, out, 2, 0, 0, 0, 0);
+                if (out > 2) sc(SYS_CLOSE, out, 0, 0, 0, 0, 0);
+            }
         }
         char *argv[8];
         argv[0] = service->exec;
         for (int i = 0; i < service->argc && i < 6; ++i) argv[i + 1] = service->args[i];
         argv[service->argc + 1] = 0;
         sc(SYS_EXECVE, (long)service->exec, (long)argv, 0, 0, 0, 0);
+        if (trace_terminal_stress) line_fd(1, "RADIX_RADINIT_TERMINAL_STRESS_EXEC_FAIL");
+        if (trace_boot_session) line_fd(1, "RADIX_RADINIT_BOOT_SESSION_EXEC_FAIL");
         sc(SYS_EXIT, 127, 0, 0, 0, 0, 0);
     }
     if (child < 0) {
@@ -398,6 +429,8 @@ static int start_service(service_t *service, int manual) {
     service->pid = (int)child;
     service->exit_status = 0;
     service->state = SERVICE_RUNNING;
+    if (trace_terminal_stress) line_fd(1, "RADIX_RADINIT_TERMINAL_STRESS_FORK_OK");
+    if (trace_boot_session) line_fd(1, "RADIX_RADINIT_BOOT_SESSION_FORK_OK");
     return 0;
 }
 
@@ -514,8 +547,43 @@ static void sort_services(service_t *services, int count) {
     }
 }
 
+static int load_services_from_dir(const char *dir_path, service_t *services, int capacity) {
+    int dir = (int)sc(SYS_OPEN, (long)dir_path, O_READ | (1u << 5), 0, 0, 0, 0);
+    int count = 0;
+    if (dir >= 0) {
+        radinit_dirent_t entries[8];
+        long got = 0;
+        while (count < capacity && (got = sc(SYS_GETDENTS, dir, (long)entries, 8, 0, 0, 0)) > 0) {
+            for (long i = 0; i < got && count < capacity; ++i) {
+                if (!entries[i].name[0] || entries[i].name[0] == '.') continue;
+                char path[192];
+                s_copy(path, sizeof(path), dir_path);
+                s_cat(path, sizeof(path), "/");
+                s_cat(path, sizeof(path), entries[i].name);
+                if (load_service(path, &services[count])) ++count;
+            }
+        }
+        sc(SYS_CLOSE, dir, 0, 0, 0, 0, 0);
+    }
+    if (count > 0) return count;
+    const char *fallback[] = {
+        "/etc/radix/services/storage-root.json",
+        "/etc/radix/services/userspace-shell.json",
+        "/etc/radix/services/base-terminal.json",
+        "/etc/radix/services/network-smoke.json",
+        "/etc/radix/services/fatfs.json",
+        "/etc/radix/services/boot-session.json",
+        "/etc/radix/services/terminal-stress.json",
+    };
+    for (int i = 0; i < 7 && count < capacity; ++i) {
+        if (load_service(fallback[i], &services[count])) ++count;
+    }
+    return count;
+}
+
 static void emit_boot_selftest_markers(void) {
-    if (sc(SYS_GETPID, 0, 0, 0, 0, 0, 0) >= 1) line_fd(1, "RADIX_RADINIT_BOOT_OK");
+    if (sc(SYS_GETPID, 0, 0, 0, 0, 0, 0) == 1) line_fd(1, "RADIX_RADINIT_BOOT_OK");
+    if (sc(SYS_GETPPID, 0, 0, 0, 0, 0, 0) == 0) line_fd(1, "RADIX_PID1_PPID0_OK");
     radinit_timeval_t tv;
     if (sc(SYS_GETTIMEOFDAY, (long)&tv, 0, 0, 0, 0, 0) == 0) line_fd(1, "RADIX_POSIX_ABI_OK");
     char cwd[64];
@@ -539,25 +607,15 @@ int radinit_main(long argc, char **argv, char **envp) {
     radinit_log_entry_t entries[4];
     long log_count = sc(SYS_LOG_READ, (long)entries, 4, 0, 0, 0, 0);
     if (log_count > 0) line_fd(1, "RADIX_LOG_RING_OK");
-    if (sc(SYS_LOG_FLUSH, (long)"/var/log/radix/kernel.log", 0, 0, 0, 0, 0) == 0) {
+    if (sc(SYS_LOG_FLUSH, (long)"/var/log/radix/rkernel.log", 0, 0, 0, 0, 0) == 0) {
         line_fd(1, "RADIX_LOG_KERNEL_FILE_OK");
     }
     log_line("radinit", "RADIX_LOG_INIT_FILE_OK");
     line_fd(1, "RADIX_LOG_INIT_FILE_OK");
     line_fd(1, "RADIX_LOG_SERVICE_FILE_OK");
 
-    service_t services[8];
-    int count = 0;
-    const char *paths[] = {
-        "/etc/radix/services/storage-root.json",
-        "/etc/radix/services/userspace-shell.json",
-        "/etc/radix/services/base-terminal.json",
-        "/etc/radix/services/network-smoke.json",
-        "/etc/radix/services/fatfs.json",
-    };
-    for (int i = 0; i < 5 && count < 8; ++i) {
-        if (load_service(paths[i], &services[count])) ++count;
-    }
+    service_t services[12];
+    int count = load_services_from_dir("/etc/radix/services", services, 12);
     if (count > 0) line_fd(1, "RADIX_RADINIT_JSON_OK");
     sort_services(services, count);
     line_fd(1, "RADIX_RADINIT_SERVICE_ORDER_OK");
@@ -565,13 +623,25 @@ int radinit_main(long argc, char **argv, char **envp) {
     for (int i = 0; i < count; ++i) {
         if (start_service(&services[i], 0) == 0) line_fd(1, "RADIX_RADINIT_SERVICE_START_OK");
         write_status(services, count);
+        if (services[i].autostart && s_eq(services[i].name, "terminal-stress")) {
+            for (int poll = 0; poll < 80 && services[i].state == SERVICE_RUNNING; ++poll) {
+                supervise_once(services, count);
+                write_status(services, count);
+                sc(SYS_NANOSLEEP, 50000000, 0, 0, 0, 0, 0);
+            }
+        }
     }
     for (int poll = 0; poll < 20; ++poll) {
         supervise_once(services, count);
         write_status(services, count);
         sc(SYS_NANOSLEEP, 50000000, 0, 0, 0, 0, 0);
     }
-    copy_file_to_fd("/var/log/radix/userspace-shell.log", 1);
+    for (int i = 0; i < count; ++i) {
+        if (s_eq(services[i].name, "userspace-shell") && services[i].autostart) {
+            copy_file_to_fd("/var/log/radix/userspace-shell.log", 1);
+            break;
+        }
+    }
     line_fd(1, "RADIX_USER_PROCESS_WAIT_OK");
     line_fd(1, "RADIX_USER_WAIT_WAKE_OK");
     line_fd(1, "RADIX_USER_ZOMBIE_REAP_OK");

@@ -1,0 +1,14 @@
+{
+  "name": "boot-session",
+  "description": "Primary boot terminal login or autologin session owned by radinit PID1",
+  "exec": "@RADIX_BOOT_SESSION_EXEC@",
+  "args": [],
+  "terminal": "/dev/pts/boot-terminal",
+  "autostart": true,
+  "order": 70,
+  "requires": ["base-terminal"],
+  "after": ["terminal-stress"],
+  "restart": "no",
+  "stdout": "/var/log/radix/boot-session.log",
+  "stderr": "/var/log/radix/boot-session.log"
+}

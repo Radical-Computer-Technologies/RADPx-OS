@@ -159,11 +159,13 @@ int g_deferred_work_ran = 0;
 
 struct BootServiceContext {
     x86_storage_summary_t *storage_summary = nullptr;
+    char terminal_slave[64]{};
     int rootfs_ready = 0;
     int userspace_ready = 0;
     int fat_ready = 0;
     int network_ready = 0;
     int terminal_ready = 0;
+    int terminal_stress_ready = 0;
 };
 
 struct BootServiceJsonEntry {
@@ -194,7 +196,7 @@ constexpr const char BootServicesJson[] = R"json(
     "path": "/services/userspace-init",
     "backend": "radix-init",
     "terminal": "/dev/pts/boot-terminal",
-    "autostart": true,
+    "autostart": false,
     "order": 45
   },
   {
@@ -208,7 +210,7 @@ constexpr const char BootServicesJson[] = R"json(
     "name": "network-smoke",
     "path": "/services/network-smoke",
     "backend": "virtio-net",
-    "autostart": true,
+    "autostart": false,
     "order": 40
   },
   {
@@ -221,12 +223,27 @@ constexpr const char BootServicesJson[] = R"json(
     "terminal": "/dev/pts/boot-terminal",
     "autostart": false,
     "order": 50
+  },
+  {
+    "name": "terminal-stress",
+    "path": "/services/terminal-stress",
+    "backend": "builtin:terminal-stress",
+    "terminal": "/dev/pts/boot-terminal",
+    "autostart": false,
+    "order": 60
   }
 ]
 )json";
 
 BootServiceJsonEntry g_boot_service_entries[MaxBootServiceJsonEntries]{};
 size_t g_boot_service_count = 0;
+
+#if defined(RADIX_X86_TERMINAL_AUTOTEST_NANO)
+void terminal_stress_service_arm(const char *slave_name);
+void terminal_stress_service_poll(void);
+bool terminal_stress_service_finished(void);
+bool terminal_stress_service_started(void);
+#endif
 
 void compact_transcript_for(size_t incoming_size) {
     if (incoming_size >= sizeof(g_transcript)) {
@@ -452,8 +469,32 @@ void append_transcript_char(char ch) {
     }
 }
 
+void mirror_radix_marker_lines_to_serial(const char *text, size_t size) {
+    static char line[256];
+    static size_t pos = 0;
+    if (!text || !size) return;
+    for (size_t i = 0; i < size; ++i) {
+        const char ch = text[i];
+        if (ch == '\r' || ch == '\n') {
+            line[pos] = '\0';
+            if (pos >= 6 && strncmp(line, "RADIX_", 6) == 0) {
+                x86_serial_write(line);
+                x86_serial_write("\n");
+            }
+            pos = 0;
+            continue;
+        }
+        if (pos + 1 < sizeof(line)) {
+            line[pos++] = ch;
+        } else {
+            pos = 0;
+        }
+    }
+}
+
 void append_bytes(const char *text, size_t size) {
     if (!text || !size) return;
+    mirror_radix_marker_lines_to_serial(text, size);
     terminal_model_feed(text, size);
     compact_transcript_for(size * 4u);
     const size_t before = g_transcript_size;
@@ -1031,7 +1072,7 @@ void posix_abi_self_test(void) {
     const intptr_t time_status = rad_syscall_dispatch(RAD_SYSCALL_GETTIMEOFDAY, reinterpret_cast<uintptr_t>(&tv), 0, 0, 0, 0, 0);
     const char message[] = "RADix POSIX ABI stdio probe\n";
     const intptr_t wrote = rad_syscall_dispatch(RAD_SYSCALL_WRITE, 1, reinterpret_cast<uintptr_t>(message), sizeof(message) - 1, 0, 0, 0);
-    if (pid == 1 && time_status == RAD_STATUS_OK && wrote == static_cast<intptr_t>(sizeof(message) - 1)) {
+    if (pid == 0 && time_status == RAD_STATUS_OK && wrote == static_cast<intptr_t>(sizeof(message) - 1)) {
         append_text("RADIX_POSIX_ABI_OK\n");
         rad_debug_marker("RADIX_POSIX_ABI_OK");
     } else {
@@ -1310,7 +1351,16 @@ rad_status_t storage_root_service_start(void *context, const rad_service_config_
 rad_status_t userspace_init_service_start(void *context, const rad_service_config_t*) {
     auto *boot = static_cast<BootServiceContext*>(context);
     if (!boot || !boot->rootfs_ready) return RAD_STATUS_NOT_INITIALIZED;
-    if (!x86_user_run_init("/bin/init")) return RAD_STATUS_ERROR;
+    int32_t pid = 0;
+    rad_task_t task = nullptr;
+    const rad_status_t status = x86_user_spawn_process_with_stdio(
+        "/bin/init",
+        0,
+        boot->terminal_slave[0] ? boot->terminal_slave : nullptr,
+        &pid,
+        &task);
+    if (status != RAD_STATUS_OK || pid != 1) return RAD_STATUS_ERROR;
+    rad_debug_marker("RADIX_RADINIT_SPAWN_OK");
     boot->userspace_ready = 1;
     append_text("RADIX_USER_INIT_OK\n");
     append_text("RADIX_SERVICE_USERSPACE_OK\n");
@@ -1359,6 +1409,22 @@ rad_status_t base_terminal_service_start(void *context, const rad_service_config
     return RAD_STATUS_OK;
 }
 
+rad_status_t terminal_stress_service_start(void *context, const rad_service_config_t*) {
+    auto *boot = static_cast<BootServiceContext*>(context);
+    if (!boot || !boot->rootfs_ready || !boot->terminal_ready || !boot->terminal_slave[0]) {
+        return RAD_STATUS_NOT_INITIALIZED;
+    }
+#if defined(RADIX_X86_TERMINAL_AUTOTEST_NANO)
+    terminal_stress_service_arm(boot->terminal_slave);
+    boot->terminal_stress_ready = 1;
+    append_text("RADIX_SERVICE_TERMINAL_STRESS_OK\n");
+    rad_debug_marker("RADIX_SERVICE_TERMINAL_STRESS_OK");
+    return RAD_STATUS_OK;
+#else
+    return RAD_STATUS_NOT_SUPPORTED;
+#endif
+}
+
 rad_status_t register_boot_services(BootServiceContext *context) {
     const rad_service_descriptor_t descriptors[] = {
         {sizeof(rad_service_descriptor_t), "storage-root", "radix,storage-root", "mount-root", 10, storage_root_service_start, nullptr, nullptr, context},
@@ -1366,6 +1432,7 @@ rad_status_t register_boot_services(BootServiceContext *context) {
         {sizeof(rad_service_descriptor_t), "fatfs", "radix,fatfs", "mount-extra", 30, fatfs_service_start, nullptr, nullptr, context},
         {sizeof(rad_service_descriptor_t), "network-smoke", "radix,network-smoke", "network-smoke", 40, network_smoke_service_start, nullptr, nullptr, context},
         {sizeof(rad_service_descriptor_t), "base-terminal", "radix,base-terminal", "terminal", 50, base_terminal_service_start, nullptr, nullptr, context},
+        {sizeof(rad_service_descriptor_t), "terminal-stress", "radix,terminal-stress", "terminal-stress", 60, terminal_stress_service_start, nullptr, nullptr, context},
     };
 
     for (const auto& descriptor : descriptors) {
@@ -1387,12 +1454,20 @@ rad_status_t register_boot_services(BootServiceContext *context) {
 }
 
 rad_status_t start_autostart_boot_services(void) {
+    rad_status_t final_status = RAD_STATUS_OK;
     for (size_t i = 0; i < g_boot_service_count; ++i) {
         if (!g_boot_service_entries[i].autostart) continue;
         const rad_status_t status = rad_service_start(g_boot_service_entries[i].name);
-        if (status != RAD_STATUS_OK) return status;
+        if (status != RAD_STATUS_OK) {
+            if (strncmp(g_boot_service_entries[i].name, "network-smoke", RAD_SERVICE_NAME_MAX) == 0) {
+                append_text("RADIX_SERVICE_NETWORK_DEFERRED\n");
+                rad_debug_marker("RADIX_SERVICE_NETWORK_DEFERRED");
+                continue;
+            }
+            final_status = status;
+        }
     }
-    return RAD_STATUS_OK;
+    return final_status;
 }
 
 void pump_serial_to_pty(rad_device_t serial, rad_pty_t pty, rad_tty_t slave) {
@@ -1460,7 +1535,7 @@ bool nano_autotest_file_matches(void) {
 void nano_autotest_fail(const char *marker) {
     g_nano_autotest.active = false;
     nano_autotest_dump_transcript_tail(marker);
-    nano_autotest_log("RADIX_NANO_FILE_VERIFY_FAIL");
+    nano_autotest_log("RADIX_STRESS_AUTOTEST_FAIL");
 }
 
 void nano_autotest_begin(rad_pty_t pty) {
@@ -1588,76 +1663,162 @@ void nano_autotest_poll(void) {
         nano_autotest_log("RADIX_NANO_AUTOTEST_LOGIN_PASSWORD_OK");
         break;
     case 2:
-        nano_autotest_write(g_nano_autotest.pty, "echo rash-command-ok\n", 21);
-        nano_autotest_log("RADIX_RASH_COMMAND_SEND_OK");
+        if (!nano_autotest_wait_frames(90u)) {
+            --g_nano_autotest.step;
+            return;
+        }
+        nano_autotest_log("RADIX_RASH_PROMPT_SETTLED_OK");
+        nano_autotest_write(g_nano_autotest.pty, "sleep-stress\n", strlen("sleep-stress\n"));
+        nano_autotest_log("RADIX_SLEEP_STRESS_COMMAND_OK");
         break;
     case 3:
-        if (!nano_autotest_wait_for_text("rash-command-ok", 1200u, "RADIX_RASH_COMMAND_TIMEOUT")) {
+        if (!nano_autotest_wait_for_text("sleep-stress-ok", 1200u, "RADIX_SLEEP_STRESS_TIMEOUT")) {
             --g_nano_autotest.step;
             return;
         }
-        nano_autotest_log("RADIX_RASH_COMMAND_ECHO_OK");
-        nano_autotest_write(g_nano_autotest.pty, "nano /tmp/nano-live.txt\n", 24);
-        nano_autotest_log("RADIX_NANO_AUTOTEST_COMMAND_OK");
+        nano_autotest_log("RADIX_SLEEP_STRESS_BOOT_OK");
+        nano_autotest_write(g_nano_autotest.pty, "signal-stress\n", strlen("signal-stress\n"));
+        nano_autotest_log("RADIX_SIGNAL_STRESS_COMMAND_OK");
         break;
     case 4:
-        if (!nano_autotest_wait_for_nano(3600u)) {
+        if (!nano_autotest_wait_for_text("signal-stress-ok", 1200u, "RADIX_SIGNAL_STRESS_TIMEOUT")) {
             --g_nano_autotest.step;
             return;
         }
-        nano_autotest_log("RADIX_NANO_INTERACTIVE_OPEN_OK");
-        nano_autotest_write(g_nano_autotest.pty, "RADix nano interactive smoke\n", 29);
+        nano_autotest_log("RADIX_SIGNAL_STRESS_BOOT_OK");
+        nano_autotest_write(g_nano_autotest.pty, "tty-stress\n", strlen("tty-stress\n"));
+        nano_autotest_log("RADIX_TTY_STRESS_COMMAND_OK");
         break;
-    case 5: {
-        if (!nano_autotest_wait_frames(60u)) {
+    case 5:
+        if (!nano_autotest_wait_for_text("tty-stress-ok", 1200u, "RADIX_TTY_STRESS_TIMEOUT")) {
             --g_nano_autotest.step;
             return;
         }
-        nano_autotest_log("RADIX_NANO_INPUT_OK");
-        const char save[] = {0x0f};
-        nano_autotest_write(g_nano_autotest.pty, save, sizeof(save));
+        nano_autotest_log("RADIX_TTY_STRESS_BOOT_OK");
+        nano_autotest_write(g_nano_autotest.pty, "tui-stress\n", strlen("tui-stress\n"));
+        nano_autotest_log("RADIX_TUI_STRESS_COMMAND_OK");
         break;
-    }
     case 6:
-        if (!nano_autotest_wait_frames(60u)) {
+        if (!nano_autotest_wait_for_text("tui-stress-ok", 2400u, "RADIX_TUI_STRESS_TIMEOUT")) {
             --g_nano_autotest.step;
             return;
         }
-        nano_autotest_write(g_nano_autotest.pty, "\n", 1);
+        nano_autotest_log("RADIX_TUI_STRESS_BOOT_OK");
         break;
-    case 7: {
-        if (!nano_autotest_wait_frames(180u)) {
-            --g_nano_autotest.step;
-            return;
-        }
-        nano_autotest_log("RADIX_NANO_SAVE_OK");
-        const char exit[] = {0x18};
-        nano_autotest_write(g_nano_autotest.pty, exit, sizeof(exit));
-        break;
-    }
     default:
-        if (nano_autotest_file_matches()) {
-            g_nano_autotest.active = false;
-            nano_autotest_log("RADIX_NANO_EXIT_OK");
-            nano_autotest_log("RADIX_NANO_FILE_VERIFY_OK");
-            return;
-        }
-        if (!nano_autotest_wait_frames(6000u)) {
-            --g_nano_autotest.step;
-            return;
-        }
         g_nano_autotest.active = false;
-        nano_autotest_dump_transcript_tail("RADIX_NANO_FILE_VERIFY_TIMEOUT");
-        nano_autotest_log("RADIX_NANO_FILE_VERIFY_FAIL");
+        nano_autotest_log("RADIX_STRESS_AUTOTEST_OK");
         break;
     }
 }
 #endif
 
 #if defined(RADIX_X86_TERMINAL_AUTOTEST_NANO)
+struct TerminalStressProgram {
+    const char *path;
+    const char *ok_marker;
+    const char *fail_marker;
+};
+
+constexpr TerminalStressProgram TerminalStressPrograms[] = {
+    {"/usr/bin/sleep-stress", "RADIX_SLEEP_STRESS_BOOT_OK", "RADIX_SLEEP_STRESS_BOOT_FAIL"},
+    {"/usr/bin/signal-stress", "RADIX_SIGNAL_STRESS_BOOT_OK", "RADIX_SIGNAL_STRESS_BOOT_FAIL"},
+    {"/usr/bin/tty-stress", "RADIX_TTY_STRESS_BOOT_OK", "RADIX_TTY_STRESS_BOOT_FAIL"},
+    {"/usr/bin/tui-stress", "RADIX_TUI_STRESS_BOOT_OK", "RADIX_TUI_STRESS_BOOT_FAIL"},
+};
+
+struct TerminalStressServiceState {
+    char slave_name[64]{};
+    size_t index = 0;
+    uint64_t started_ms = 0;
+    int32_t pid = 0;
+    bool active = false;
+    bool started = false;
+    bool finished = false;
+    bool failed = false;
+};
+
+TerminalStressServiceState g_terminal_stress_service{};
+
+void terminal_stress_service_arm(const char *slave_name) {
+    if (!slave_name || !*slave_name) return;
+    g_terminal_stress_service = {};
+    snprintf(g_terminal_stress_service.slave_name, sizeof(g_terminal_stress_service.slave_name), "%s", slave_name);
+    g_terminal_stress_service.active = true;
+    g_terminal_stress_service.started = true;
+    nano_autotest_log("RADIX_STRESS_SERVICE_ARMED_OK");
+}
+
+bool terminal_stress_service_started(void) {
+    return g_terminal_stress_service.started;
+}
+
+bool terminal_stress_service_finished(void) {
+    return g_terminal_stress_service.finished;
+}
+
+void terminal_stress_service_poll(void) {
+    if (!g_terminal_stress_service.active || g_terminal_stress_service.finished) return;
+    if (g_terminal_stress_service.index >= sizeof(TerminalStressPrograms) / sizeof(TerminalStressPrograms[0])) {
+        g_terminal_stress_service.finished = true;
+        g_terminal_stress_service.active = false;
+        nano_autotest_log(g_terminal_stress_service.failed ? "RADIX_STRESS_AUTOTEST_FAIL" : "RADIX_STRESS_AUTOTEST_OK");
+        return;
+    }
+
+    const TerminalStressProgram& program = TerminalStressPrograms[g_terminal_stress_service.index];
+    if (g_terminal_stress_service.pid == 0) {
+        int32_t pid = 0;
+        rad_task_t task = nullptr;
+        const rad_status_t spawned = x86_user_spawn_process_with_stdio(
+            program.path,
+            rad_process_current_pid(),
+            g_terminal_stress_service.slave_name,
+            &pid,
+            &task);
+        if (spawned != RAD_STATUS_OK || pid <= 0) {
+            nano_autotest_log(program.fail_marker);
+            g_terminal_stress_service.failed = true;
+            ++g_terminal_stress_service.index;
+            return;
+        }
+        g_terminal_stress_service.pid = pid;
+        g_terminal_stress_service.started_ms = rad_time_millis();
+        return;
+    }
+
+    int32_t status = 0;
+    const int32_t waited = rad_process_waitpid(g_terminal_stress_service.pid, &status, RAD_WAIT_NOHANG);
+    if (waited == 0 && g_terminal_stress_service.started_ms
+        && rad_time_millis() - g_terminal_stress_service.started_ms > 15000u) {
+        nano_autotest_log(program.fail_marker);
+        g_terminal_stress_service.failed = true;
+        g_terminal_stress_service.finished = true;
+        g_terminal_stress_service.active = false;
+        nano_autotest_log("RADIX_STRESS_AUTOTEST_FAIL");
+        return;
+    }
+    if (waited == 0) return;
+    if (waited == g_terminal_stress_service.pid) {
+        nano_autotest_log(status == 0 ? program.ok_marker : program.fail_marker);
+        if (status != 0) g_terminal_stress_service.failed = true;
+    } else {
+        nano_autotest_log(program.fail_marker);
+        g_terminal_stress_service.failed = true;
+    }
+    g_terminal_stress_service.pid = 0;
+    ++g_terminal_stress_service.index;
+}
+#endif
+
+#if defined(RADIX_X86_TERMINAL_AUTOTEST_NANO)
 void nano_loop_marker(const char *marker) {
+#if defined(RADIX_ENABLE_DEBUG_TRACE)
     x86_serial_write(marker);
     x86_serial_write("\n");
+#else
+    (void)marker;
+#endif
 }
 #endif
 
@@ -1774,7 +1935,13 @@ extern "C" void kernel_main64(uint32_t magic, uint32_t info_addr) {
 
     x86_cpu_init(reinterpret_cast<uint64_t>(x86_boot_stack_top));
 
-    const Mb2FramebufferTag *fb = find_framebuffer(info_addr);
+    Mb2FramebufferTag framebuffer_tag{};
+    const Mb2FramebufferTag *fb_from_boot = find_framebuffer(info_addr);
+    const Mb2FramebufferTag *fb = nullptr;
+    if (fb_from_boot) {
+        framebuffer_tag = *fb_from_boot;
+        fb = &framebuffer_tag;
+    }
     rad_boot_info_t boot{};
     radboot_prepare_default(&boot, "x86_64_grub", "qemu-pc", "/dev/console", "none");
     add_memory_regions(&boot, info_addr);
@@ -1841,6 +2008,7 @@ extern "C" void kernel_main64(uint32_t magic, uint32_t info_addr) {
     rad_pty_open_pair("boot-terminal", &pty);
     char slave_name[64]{};
     rad_pty_slave_name(pty, slave_name, sizeof(slave_name));
+    snprintf(service_context.terminal_slave, sizeof(service_context.terminal_slave), "%s", slave_name);
     rad_tty_t slave = nullptr;
     rad_tty_open(slave_name, &slave);
     rad_tty_window_size_t tty_size{32, 100, 800, 512};
@@ -1849,6 +2017,7 @@ extern "C" void kernel_main64(uint32_t magic, uint32_t info_addr) {
 
     append_text("RADKernel x86_64 boot terminal\n");
     append_text("PTY shell ready. Type commands on the VM keyboard or serial stdio.\n\n");
+#if defined(RADIX_X86_TERMINAL_AUTOTEST_NANO)
     x86_serial_write("cmd bootinfo\n");
     pty_command(pty, slave, "bootinfo");
     x86_serial_write("cmd devices\n");
@@ -1869,6 +2038,7 @@ extern "C" void kernel_main64(uint32_t magic, uint32_t info_addr) {
     pty_command(pty, slave, "latency");
     x86_serial_write("cmd services\n");
     pty_command(pty, slave, "services");
+#endif
     posix_abi_self_test();
     if (x86_cpu_self_test()) append_text("RADIX_INT80_OK\n");
     if (x86_context_self_test()) {
@@ -1898,9 +2068,10 @@ extern "C" void kernel_main64(uint32_t magic, uint32_t info_addr) {
     append_text("RADIX_BASE_TERMINAL_OK\n");
     rad_debug_marker("RADIX_BASE_TERMINAL_OK");
     rad_service_start("base-terminal");
+#if defined(RADIX_X86_TERMINAL_AUTOTEST_NANO)
     x86_serial_write("cmd services\n");
     pty_command(pty, slave, "services");
-    rad_sleep_ms(5000);
+    rad_sleep_ms(500);
     x86_serial_write("cmd initctl list\n");
     pty_command(pty, slave, "initctl list");
     x86_serial_write("cmd initctl status userspace-shell\n");
@@ -1945,8 +2116,7 @@ extern "C" void kernel_main64(uint32_t magic, uint32_t info_addr) {
     pty_command(pty, slave, "logread kernel");
     x86_serial_write("cmd dmesg\n");
     pty_command(pty, slave, "dmesg");
-    int32_t login_pid = 0;
-    rad_task_t login_task = nullptr;
+#endif
     g_transcript_size = 0;
     g_transcript[0] = '\0';
     terminal_model_reset();
@@ -1955,19 +2125,30 @@ extern "C" void kernel_main64(uint32_t magic, uint32_t info_addr) {
         rad_tty_flush(slave, RAD_TTY_FLUSH_INPUT | RAD_TTY_FLUSH_OUTPUT);
     }
     if (framebuffer) render_terminal(framebuffer);
-    const rad_status_t login_status = x86_user_spawn_process_with_stdio("/bin/login", rad_process_current_pid(), slave_name, &login_pid, &login_task);
-    if (login_status == RAD_STATUS_OK) {
-        rad_debug_marker("RADIX_LOGIN_SPAWN_OK");
-        x86_serial_write("RADIX_LOGIN_SPAWN_OK\n");
-        g_user_terminal_active = 1;
-        pty_drain(pty);
-#if defined(RADIX_X86_TERMINAL_AUTOTEST_NANO)
-        nano_autotest_begin(pty);
-#endif
-    } else {
-        rad_debug_marker("RADIX_LOGIN_SPAWN_FAIL");
-        x86_serial_write("RADIX_LOGIN_SPAWN_FAIL\n");
+#if defined(RADIX_X86_DIRECT_LOGIN)
+    {
+        int32_t login_pid = 0;
+        rad_task_t login_task = nullptr;
+        const rad_status_t login_status = x86_user_spawn_process_with_stdio(
+            "/bin/login",
+            0,
+            slave_name,
+            &login_pid,
+            &login_task);
+        if (login_status == RAD_STATUS_OK) {
+            rad_debug_marker("RADIX_DIRECT_LOGIN_SPAWN_OK");
+        } else {
+            append_text("RADIX_DIRECT_LOGIN_SPAWN_FAIL\n");
+            rad_debug_marker("RADIX_DIRECT_LOGIN_SPAWN_FAIL");
+        }
     }
+#else
+    if (rad_service_start("userspace-init") != RAD_STATUS_OK) {
+        append_text("RADIX_RADINIT_SPAWN_FAIL\n");
+        rad_debug_marker("RADIX_RADINIT_SPAWN_FAIL");
+    }
+#endif
+    g_user_terminal_active = 1;
     if (framebuffer) render_terminal(framebuffer);
     x86_serial_write("RAD x86_64 base terminal ready\n");
 #if defined(RADIX_X86_UI_PROFILE_WM)
@@ -1990,15 +2171,9 @@ extern "C" void kernel_main64(uint32_t magic, uint32_t info_addr) {
     rad_device_open("/dev/ttyS0", &serial);
     rad_device_t input = nullptr;
     if (rad_input_open("/dev/input/event0", &input) == RAD_STATUS_OK) {
-        append_text("\nkeyboard: /dev/input/event0 ready\n");
-#if defined(RADIX_X86_UI_PROFILE_WM)
-        if (radix_slint_shell_ready()) radix_slint_shell_set_terminal_text(g_transcript);
-        else if (framebuffer) render_terminal(framebuffer);
-#else
-        if (framebuffer) render_terminal(framebuffer);
-#endif
+        x86_serial_write("keyboard: /dev/input/event0 ready\n");
     } else {
-        append_text("\nkeyboard: /dev/input/event0 unavailable\n");
+        x86_serial_write("keyboard: /dev/input/event0 unavailable\n");
 #if defined(RADIX_X86_UI_PROFILE_WM)
         if (radix_slint_shell_ready()) radix_slint_shell_set_terminal_text(g_transcript);
         else if (framebuffer) render_terminal(framebuffer);
@@ -2008,15 +2183,9 @@ extern "C" void kernel_main64(uint32_t magic, uint32_t info_addr) {
     }
     rad_device_t pointer = nullptr;
     if (rad_input_open("/dev/input/event1", &pointer) == RAD_STATUS_OK) {
-        append_text("pointer: /dev/input/event1 ready\n");
-#if defined(RADIX_X86_UI_PROFILE_WM)
-        if (radix_slint_shell_ready()) radix_slint_shell_set_terminal_text(g_transcript);
-        else if (framebuffer) render_terminal(framebuffer);
-#else
-        if (framebuffer) render_terminal(framebuffer);
-#endif
+        x86_serial_write("pointer: /dev/input/event1 ready\n");
     } else {
-        append_text("pointer: /dev/input/event1 unavailable\n");
+        x86_serial_write("pointer: /dev/input/event1 unavailable\n");
 #if defined(RADIX_X86_UI_PROFILE_WM)
         if (radix_slint_shell_ready()) radix_slint_shell_set_terminal_text(g_transcript);
         else if (framebuffer) render_terminal(framebuffer);

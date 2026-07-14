@@ -152,6 +152,10 @@ extern "C" void free(void*);
 #define RADIX_KERNEL_TASK_STACK_BYTES 8192u
 #endif
 
+#ifndef RADIX_KERNEL_TASK_DYNAMIC_STACKS
+#define RADIX_KERNEL_TASK_DYNAMIC_STACKS 0
+#endif
+
 extern "C" uint64_t rad_hal_time_micros(void) __attribute__((weak));
 extern "C" void rad_hal_sleep_us(uint32_t microseconds) __attribute__((weak));
 extern "C" rad_status_t rad_hal_register_default_devices(void) __attribute__((weak));
@@ -200,8 +204,17 @@ struct rad_task_handle {
     int arch_context_ready;
     int32_t process_pid;
     uintptr_t arch_context[RADIX_KERNEL_ARCH_CONTEXT_WORDS];
+#if RADIX_KERNEL_TASK_DYNAMIC_STACKS
+    uint8_t *arch_stack;
+    uint8_t *arch_stack_allocation;
+    size_t arch_stack_bytes;
+#else
     alignas(16) uint8_t arch_stack[RADIX_KERNEL_TASK_STACK_BYTES];
+#endif
 };
+
+constexpr uint8_t TaskStackCanary = 0xa5u;
+constexpr size_t TaskStackGuardBytes = RADIX_KERNEL_TASK_STACK_BYTES < 256u ? RADIX_KERNEL_TASK_STACK_BYTES : 256u;
 
 struct rad_mutex_handle {
     volatile int locked;
@@ -578,8 +591,8 @@ uint32_t hal_current_core() {
 int32_t current_process_pid() {
     const uint32_t core = hal_current_core();
     int32_t pid = g_current_pid[core];
-    if (pid > 0) return pid;
-    return g_state.current_pid > 0 ? g_state.current_pid : 1;
+    if (pid >= 0) return pid;
+    return g_state.current_pid >= 0 ? g_state.current_pid : 0;
 }
 
 bool arch_context_enabled() {
@@ -1111,7 +1124,7 @@ rad_status_t tty_push_input_record(TtyRecord *tty, const void *buffer, size_t si
     const char *bytes = static_cast<const char*>(buffer);
     for (size_t i = 0; i < size; ++i) {
         char ch = bytes[i];
-        if ((tty->mode & RAD_TTY_MODE_CRLF) && ch == '\r') ch = '\n';
+        if (ch == '\r') ch = '\n';
         if ((ch == '\b' || ch == 0x7f) && (tty->mode & RAD_TTY_MODE_CANONICAL)) {
             if (tty->line_size) {
                 --tty->line_size;
@@ -1338,15 +1351,15 @@ void init_process_table(void) {
     memset(g_state.processes, 0, sizeof(g_state.processes));
     memset(&g_state.process_arch_ops, 0, sizeof(g_state.process_arch_ops));
     g_state.has_process_arch_ops = 0;
-    g_state.current_pid = 1;
+    g_state.current_pid = 0;
     g_state.next_pid = 2;
-    for (size_t i = 0; i < RADIX_KERNEL_MAX_CORES; ++i) g_current_pid[i] = 1;
+    for (size_t i = 0; i < RADIX_KERNEL_MAX_CORES; ++i) g_current_pid[i] = 0;
     g_state.processes[0].used = 1;
-    g_state.processes[0].pid = 1;
+    g_state.processes[0].pid = 0;
     g_state.processes[0].parent_pid = 0;
     g_state.processes[0].state = RAD_PROCESS_RUNNING;
     g_state.processes[0].credentials = rad_credentials_t{0, 0, 0, 0};
-    copy_string(g_state.processes[0].path, sizeof(g_state.processes[0].path), "/bin/init");
+    copy_string(g_state.processes[0].path, sizeof(g_state.processes[0].path), "[kernel]");
 }
 
 int32_t install_fd_record(const FdRecord& source, int32_t requested) {
@@ -2042,7 +2055,7 @@ rad_status_t cmd_logread(int argc, const char **argv, rad_terminal_write_t write
     if (argc < 2) {
         copy_string(path, sizeof(path), "/var/log/radix/init.log");
     } else if (strcmp(argv[1], "kernel") == 0) {
-        copy_string(path, sizeof(path), "/var/log/radix/kernel.log");
+        copy_string(path, sizeof(path), "/var/log/radix/rkernel.log");
     } else if (strcmp(argv[1], "init") == 0) {
         copy_string(path, sizeof(path), "/var/log/radix/init.log");
     } else {
@@ -2507,6 +2520,89 @@ rad_task_handle *find_task_by_id(uint64_t id) {
     return nullptr;
 }
 
+size_t effective_task_stack_size(const rad_task_config_t *config) {
+    size_t size = config && config->stack_size ? config->stack_size : static_cast<size_t>(RADIX_KERNEL_TASK_STACK_BYTES);
+    if (size < 4096u) size = 4096u;
+    return (size + 15u) & ~static_cast<size_t>(15u);
+}
+
+uint8_t *align_stack_base(uint8_t *base) {
+    const uintptr_t value = reinterpret_cast<uintptr_t>(base);
+    return reinterpret_cast<uint8_t*>((value + 15u) & ~static_cast<uintptr_t>(15u));
+}
+
+uint8_t *task_stack_base(rad_task_handle& task) {
+#if RADIX_KERNEL_TASK_DYNAMIC_STACKS
+    return task.arch_stack;
+#else
+    return task.arch_stack;
+#endif
+}
+
+const uint8_t *task_stack_base(const rad_task_handle& task) {
+#if RADIX_KERNEL_TASK_DYNAMIC_STACKS
+    return task.arch_stack;
+#else
+    return task.arch_stack;
+#endif
+}
+
+size_t task_stack_capacity(const rad_task_handle& task) {
+#if RADIX_KERNEL_TASK_DYNAMIC_STACKS
+    return task.arch_stack_bytes;
+#else
+    (void)task;
+    return sizeof(task.arch_stack);
+#endif
+}
+
+void *task_stack_top(rad_task_handle& task) {
+    uint8_t *base = task_stack_base(task);
+    const size_t capacity = task_stack_capacity(task);
+    uintptr_t top = reinterpret_cast<uintptr_t>(base + capacity);
+    top &= ~static_cast<uintptr_t>(15u);
+    return reinterpret_cast<void*>(top);
+}
+
+#if RADIX_KERNEL_TASK_DYNAMIC_STACKS
+bool allocate_task_stack(size_t size, uint8_t **allocation, uint8_t **stack_base) {
+    if (!allocation || !stack_base) return false;
+    *allocation = static_cast<uint8_t*>(malloc(size + 16u));
+    if (!*allocation) return false;
+    *stack_base = align_stack_base(*allocation);
+    return true;
+}
+
+void release_task_stack(rad_task_handle& task) {
+    if (task.arch_stack_allocation) {
+        free(task.arch_stack_allocation);
+        task.arch_stack_allocation = nullptr;
+        task.arch_stack = nullptr;
+        task.arch_stack_bytes = 0;
+    }
+}
+#else
+void release_task_stack(rad_task_handle&) {}
+#endif
+
+void initialize_task_stack_guard(rad_task_handle& task) {
+    uint8_t *base = task_stack_base(task);
+    const size_t capacity = task_stack_capacity(task);
+    if (base && capacity) memset(base, TaskStackCanary, capacity);
+}
+
+void check_task_stack_guard(const rad_task_handle& task) {
+    const uint8_t *base = task_stack_base(task);
+    const size_t guard = task_stack_capacity(task) < TaskStackGuardBytes ? task_stack_capacity(task) : TaskStackGuardBytes;
+    for (size_t i = 0; base && i < guard; ++i) {
+        if (base[i] == TaskStackCanary) continue;
+        rad_kprintk(RKERN_WARN, "RADIX_TASK_STACK_LOW task=%s id=%llu\n",
+            task.name,
+            static_cast<unsigned long long>(task.id));
+        return;
+    }
+}
+
 void task_context_entry(void) {
     const uint32_t core = hal_current_core();
     const uint64_t task_id = g_current_task_id[core];
@@ -2519,7 +2615,7 @@ void task_context_entry(void) {
         task->state = task->detached ? RAD_TASK_DETACHED : RAD_TASK_FINISHED;
     }
     g_current_task_id[core] = 0;
-    g_current_pid[core] = 1;
+    g_current_pid[core] = 0;
     unlock_tasks();
     if (rad_hal_worker_wake) rad_hal_worker_wake();
     rad_arch_task_context_switch(task ? task->arch_context : g_scheduler_context[core], g_scheduler_context[core]);
@@ -2546,7 +2642,7 @@ bool run_one_task_on_core(uint32_t core) {
             selected->preempt_saved_target_core = RAD_TASK_CORE_ANY;
         }
         g_current_task_id[core] = selected->id;
-        g_current_pid[core] = selected->process_pid > 0 ? selected->process_pid : 1;
+        g_current_pid[core] = selected->process_pid >= 0 ? selected->process_pid : 0;
         g_last_task_index[core] = static_cast<uint32_t>(selected_index);
         break;
     }
@@ -2561,7 +2657,7 @@ bool run_one_task_on_core(uint32_t core) {
         if (!selected->arch_context_ready) {
             memset(selected->arch_context, 0, sizeof(selected->arch_context));
             rad_arch_task_context_init(selected->arch_context,
-                &selected->arch_stack[RADIX_KERNEL_TASK_STACK_BYTES],
+                task_stack_top(*selected),
                 task_context_entry);
             selected->arch_context_ready = 1;
         }
@@ -2570,6 +2666,7 @@ bool run_one_task_on_core(uint32_t core) {
             rad_debug_marker("RADIX_CONTEXT_DISPATCH_OK");
         }
         rad_arch_task_context_switch(g_scheduler_context[core], selected->arch_context);
+        check_task_stack_guard(*selected);
         if (selected->finished && selected->running) {
             lock_tasks();
             if (selected->finished && selected->running) {
@@ -2715,14 +2812,35 @@ const char *rad_kernel_backend_name(void) {
 }
 
 const char *rad_kernel_version_string(void) {
-    return "0.1.2";
+    return "0.1.3";
 }
 
-int rad_vprintk(const char *format, va_list args) {
+rad_log_level_t kernel_print_to_log_level(rad_kernel_print_level_t level) {
+    switch (level) {
+    case RKERN_DBG: return RAD_LOG_DEBUG;
+    case RKERN_WARN: return RAD_LOG_WARNING;
+    case RKERN_ERR: return RAD_LOG_ERROR;
+    case RKERN_STAT:
+    default: return RAD_LOG_INFO;
+    }
+}
+
+const char *kernel_print_prefix(rad_kernel_print_level_t level) {
+    switch (level) {
+    case RKERN_DBG: return "[DBG] ";
+    case RKERN_WARN: return "[WARN] ";
+    case RKERN_ERR: return "[ERR] ";
+    case RKERN_STAT:
+    default: return "";
+    }
+}
+
+int rad_vkprintk(rad_kernel_print_level_t level, const char *format, va_list args) {
     if (!format) return 0;
     char buffer[512];
     size_t pos = 0;
     buffer[0] = '\0';
+    append_text(buffer, sizeof(buffer), pos, kernel_print_prefix(level));
     int logical_written = 0;
     for (const char *cursor = format; *cursor; ++cursor) {
         if (*cursor != '%') {
@@ -2812,16 +2930,28 @@ int rad_vprintk(const char *format, va_list args) {
         }
     }
     if (pos > 0) {
-        rad_log_write(RAD_LOG_INFO, "kernel", buffer);
+        rad_log_write(kernel_print_to_log_level(level), "kernel", buffer);
         if (rad_hal_console_write) rad_hal_console_write(buffer);
     }
     return logical_written;
+}
+
+int rad_vprintk(const char *format, va_list args) {
+    return rad_vkprintk(RKERN_STAT, format, args);
 }
 
 int rad_printk(const char *format, ...) {
     va_list args;
     va_start(args, format);
     const int written = rad_vprintk(format, args);
+    va_end(args);
+    return written;
+}
+
+int rad_kprintk(rad_kernel_print_level_t level, const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+    const int written = rad_vkprintk(level, format, args);
     va_end(args);
     return written;
 }
@@ -3355,17 +3485,41 @@ size_t rad_timer_list(rad_timer_source_info_t *timers, size_t capacity) {
 
 rad_status_t rad_task_create_config(rad_task_t *task, const rad_task_config_t *config, rad_task_entry_t entry, void *context) {
     if (!task || !entry) return RAD_STATUS_INVALID_ARGUMENT;
-    if (!g_state.initialized) return RAD_STATUS_NOT_INITIALIZED;
+    if (!g_state.initialized) {
+        rad_kprintk(RKERN_ERR,
+            "RADIX_TASK_CREATE_NOT_INITIALIZED init=%d shutdown=%d next_task=%llu cores=%u workers=0x%x current_pid=%d\n",
+            g_state.initialized,
+            g_state.shutdown_requested,
+            static_cast<unsigned long long>(g_state.next_task_id),
+            g_state.detected_cores,
+            g_state.worker_running_mask,
+            current_process_pid());
+        return RAD_STATUS_NOT_INITIALIZED;
+    }
     const int target_core = config ? config->target_core : RAD_TASK_CORE_SERVICE;
     if (target_core >= static_cast<int>(g_state.detected_cores)) return RAD_STATUS_NOT_SUPPORTED;
     if (target_core > 0 && !(g_state.worker_running_mask & (1u << static_cast<uint32_t>(target_core)))) {
         return RAD_STATUS_NOT_SUPPORTED;
     }
+    const size_t stack_bytes = effective_task_stack_size(config);
+#if RADIX_KERNEL_TASK_DYNAMIC_STACKS
+    uint8_t *stack_allocation = nullptr;
+    uint8_t *stack_base = nullptr;
+    if (!allocate_task_stack(stack_bytes, &stack_allocation, &stack_base)) {
+        return RAD_STATUS_NO_MEMORY;
+    }
+#endif
     lock_tasks();
     for (size_t i = 0; i < RADIX_KERNEL_MAX_TASKS; ++i) {
         if (g_state.tasks[i].entry && (!g_state.tasks[i].finished || g_state.tasks[i].running)) continue;
         rad_task_handle& handle = g_state.tasks[i];
+        release_task_stack(handle);
         memset(&handle, 0, sizeof(handle));
+#if RADIX_KERNEL_TASK_DYNAMIC_STACKS
+        handle.arch_stack_allocation = stack_allocation;
+        handle.arch_stack = stack_base;
+        handle.arch_stack_bytes = stack_bytes;
+#endif
         handle.id = g_state.next_task_id++;
         copy_string(handle.name, sizeof(handle.name), config && config->name ? config->name : "task");
         handle.entry = entry;
@@ -3374,14 +3528,18 @@ rad_status_t rad_task_create_config(rad_task_t *task, const rad_task_config_t *c
         handle.target_core = target_core;
         handle.current_core = RAD_TASK_CORE_ANY;
         handle.priority = config ? config->priority : 0;
-        handle.stack_size = config ? config->stack_size : 0;
+        handle.stack_size = stack_bytes;
         handle.user_context = config ? config->user_context : nullptr;
+        initialize_task_stack_guard(handle);
         *task = &handle;
         unlock_tasks();
         if (rad_hal_worker_wake) rad_hal_worker_wake();
         return RAD_STATUS_OK;
     }
     unlock_tasks();
+#if RADIX_KERNEL_TASK_DYNAMIC_STACKS
+    free(stack_allocation);
+#endif
     return RAD_STATUS_NO_MEMORY;
 }
 
@@ -3442,7 +3600,7 @@ void rad_task_yield(void) {
                     task->preempt_pinned = 1;
                 }
                 g_current_task_id[core] = 0;
-                g_current_pid[core] = 1;
+                g_current_pid[core] = 0;
             } else {
                 task = nullptr;
             }
@@ -3473,7 +3631,7 @@ void rad_task_sleep_us(uint32_t microseconds) {
             task->wake_micros = hal_now() + microseconds;
             task->current_core = RAD_TASK_CORE_ANY;
             g_current_task_id[core] = 0;
-            g_current_pid[core] = 1;
+            g_current_pid[core] = 0;
         } else {
             task = nullptr;
         }
@@ -4283,14 +4441,28 @@ int32_t rad_process_fork(void) {
 int32_t rad_process_create(const char *path, int32_t parent_pid) {
     if (!path || !*path) return RAD_STATUS_INVALID_ARGUMENT;
     if (parent_pid < 0) parent_pid = current_process_pid();
-    if (strcmp(path, "/bin/init") == 0 && g_state.processes[0].used && g_state.processes[0].pid == 1 && !g_state.processes[0].task) {
-        g_state.processes[0].parent_pid = 0;
-        g_state.processes[0].state = RAD_PROCESS_RUNNING;
-        g_state.processes[0].exit_code = 0;
-        g_state.processes[0].credentials = rad_credentials_t{0, 0, 0, 0};
-        copy_string(g_state.processes[0].path, sizeof(g_state.processes[0].path), path);
-        return 1;
+    if ((strcmp(path, "/bin/init") == 0 || strcmp(path, "/sbin/radinit") == 0) && !find_process_record(1)) {
+        for (size_t i = 0; i < RADIX_KERNEL_MAX_PROCESSES; ++i) {
+            if (g_state.processes[i].used) continue;
+            ProcessRecord& process = g_state.processes[i];
+            memset(&process, 0, sizeof(process));
+            process.used = 1;
+            process.pid = 1;
+            process.parent_pid = 0;
+            process.state = RAD_PROCESS_RUNNING;
+            process.exit_code = 0;
+            process.credentials = rad_credentials_t{0, 0, 0, 0};
+            copy_string(process.path, sizeof(process.path), path);
+            return 1;
+        }
+        return RAD_STATUS_NO_MEMORY;
     }
+    if (parent_pid <= 0 && strcmp(path, "/bin/init") != 0 && strcmp(path, "/sbin/radinit") != 0) {
+        if (find_process_record(1)) parent_pid = 1;
+    }
+    if (g_state.next_pid < 2) g_state.next_pid = 2;
+    while (find_process_record(g_state.next_pid)) ++g_state.next_pid;
+    if (g_state.next_pid == 1) ++g_state.next_pid;
     rad_credentials_t credentials = rad_credentials_t{0, 0, 0, 0};
     if (ProcessRecord *parent = find_process_record(parent_pid)) credentials = parent->credentials;
     for (size_t i = 0; i < RADIX_KERNEL_MAX_PROCESSES; ++i) {
@@ -4323,7 +4495,7 @@ rad_status_t rad_process_attach_task(int32_t pid, rad_task_t task) {
 
 void rad_process_set_current_pid(int32_t pid) {
     const uint32_t core = hal_current_core();
-    g_current_pid[core] = pid > 0 ? pid : 1;
+    g_current_pid[core] = pid >= 0 ? pid : 0;
     const uint64_t task_id = g_current_task_id[core];
     rad_task_handle *task = find_task_by_id(task_id);
     if (task) task->process_pid = g_current_pid[core];
@@ -4399,6 +4571,7 @@ int32_t rad_process_waitpid(int32_t pid, int32_t *status, uint32_t options) {
 
 void rad_process_exit(int32_t status) {
     const int32_t current = current_process_pid();
+    if (current == 0) return;
     for (size_t i = 0; i < RADIX_KERNEL_MAX_PROCESSES; ++i) {
         if (!g_state.processes[i].used || g_state.processes[i].pid != current) continue;
         g_state.processes[i].state = RAD_PROCESS_ZOMBIE;
@@ -4689,7 +4862,7 @@ intptr_t rad_fd_read(int32_t fd, void *buffer, size_t size) {
             if (status != RAD_STATUS_OK) return static_cast<intptr_t>(status);
             if (done > 0 || size == 0 || !tty) return static_cast<intptr_t>(done);
             if (record->flags & RAD_FD_NONBLOCK) return RAD_STATUS_TIMEOUT;
-            rad_task_sleep_ms(1);
+            rad_task_yield();
         }
     }
     if (record->kind == FD_PIPE) return pipe_read(record, buffer, size);

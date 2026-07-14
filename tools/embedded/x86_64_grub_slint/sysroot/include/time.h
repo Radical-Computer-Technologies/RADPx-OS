@@ -29,6 +29,7 @@ struct tm {
 int nanosleep(const struct timespec *req, struct timespec *rem);
 time_t time(time_t *tloc);
 clock_t clock(void);
+struct tm *localtime(const time_t *timep);
 size_t strftime(char *s, size_t max, const char *format, const struct tm *tm);
 
 #endif

@@ -15,11 +15,12 @@ constexpr uint16_t PitCommand = 0x43;
 constexpr uint16_t Ps2Data = 0x60;
 constexpr uint16_t Ps2StatusCommand = 0x64;
 constexpr const char *PicInterruptControllerPath = "/soc/interrupt-controller@20";
-uint64_t g_ticks = 0;
+volatile uint64_t g_ticks = 0;
 int g_timer_started = 0;
 int g_interrupts_enabled = 0;
 int g_timer_irq_seen = 0;
 int g_idle_hlt_seen = 0;
+int g_interrupts_enable_marker_seen = 0;
 uint32_t g_keyboard_modifiers = 0;
 int g_keyboard_extended = 0;
 uint8_t g_mouse_packet[3];
@@ -377,7 +378,7 @@ void mouse_irq_handler(uint32_t, void*) {
 }
 
 void timer_irq_handler(uint32_t, void*) {
-    ++g_ticks;
+    __atomic_fetch_add(&g_ticks, 1u, __ATOMIC_RELAXED);
     rad_timer_tick(1000u);
     rad_arch_scheduler_tick(x86_cpu_current_core());
     rad_perf_counter_add("timer.irq", 1);
@@ -524,7 +525,7 @@ extern "C" void rad_hal_early_console_write(const char *text) {
 }
 
 extern "C" uint64_t rad_hal_time_micros(void) {
-    return g_ticks * 1000u;
+    return __atomic_load_n(&g_ticks, __ATOMIC_RELAXED) * 1000u;
 }
 
 extern "C" uint32_t rad_hal_core_count(void) {
@@ -557,21 +558,25 @@ extern "C" void rad_hal_sleep_us(uint32_t microseconds) {
         return;
     }
     if (g_timer_started && g_interrupts_enabled) {
-        const uint64_t target = g_ticks + ((static_cast<uint64_t>(microseconds) + 999u) / 1000u);
-        while (g_ticks < target) {
+        const uint64_t target = __atomic_load_n(&g_ticks, __ATOMIC_RELAXED)
+            + ((static_cast<uint64_t>(microseconds) + 999u) / 1000u);
+        while (__atomic_load_n(&g_ticks, __ATOMIC_RELAXED) < target) {
             rad_cpu_idle();
         }
         return;
     }
     const uint32_t loops = microseconds ? microseconds * 16u : 1u;
     for (uint32_t i = 0; i < loops; ++i) asm volatile("pause");
-    g_ticks += microseconds / 1000u;
+    __atomic_fetch_add(&g_ticks, microseconds / 1000u, __ATOMIC_RELAXED);
 }
 
 extern "C" rad_status_t rad_hal_interrupts_enable(void) {
     asm volatile("sti");
     g_interrupts_enabled = 1;
-    rad_debug_marker("RADIX_USER_IF_OK");
+    if (!g_interrupts_enable_marker_seen) {
+        g_interrupts_enable_marker_seen = 1;
+        rad_debug_marker("RADIX_USER_IF_OK");
+    }
     return RAD_STATUS_OK;
 }
 

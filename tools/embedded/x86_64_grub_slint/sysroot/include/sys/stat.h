@@ -11,6 +11,7 @@ struct stat {
     uint64_t st_size;
     int st_is_directory;
     uint32_t st_mode;
+    nlink_t st_nlink;
     uint32_t st_uid;
     uint32_t st_gid;
     blksize_t st_blksize;
@@ -57,5 +58,6 @@ int lstat(const char *pathname, struct stat *statbuf);
 int mkdir(const char *pathname, mode_t mode);
 int chmod(const char *pathname, mode_t mode);
 int futimens(int fd, const struct timespec times[2]);
+mode_t umask(mode_t mask);
 
 #endif

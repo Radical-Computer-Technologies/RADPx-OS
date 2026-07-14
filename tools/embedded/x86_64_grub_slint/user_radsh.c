@@ -458,7 +458,7 @@ static int cmd_logread(int argc, char **argv, int outfd) {
     if (argc < 2) {
         s_copy(path, sizeof(path), "/var/log/radix/init.log");
     } else if (s_eq(argv[1], "kernel")) {
-        s_copy(path, sizeof(path), "/var/log/radix/kernel.log");
+        s_copy(path, sizeof(path), "/var/log/radix/rkernel.log");
     } else if (s_eq(argv[1], "init")) {
         s_copy(path, sizeof(path), "/var/log/radix/init.log");
     } else {
