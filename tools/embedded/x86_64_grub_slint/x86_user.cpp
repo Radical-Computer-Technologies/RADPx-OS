@@ -36,6 +36,9 @@ constexpr size_t MaxUserProcesses = RADIX_X86_MAX_USER_PROCESSES;
 constexpr size_t MaxUserCores = 8u;
 constexpr size_t MaxUserArgs = 8u;
 constexpr size_t MaxUserEnvs = 4u;
+constexpr size_t MaxRsoModules = 6u;
+constexpr size_t MaxRsoCacheEntries = 4u;
+constexpr size_t MaxRsoPages = 256u;
 
 [[maybe_unused]] void rkdbg(const char *text) {
 #if defined(RADIX_ENABLE_DEBUG_TRACE)
@@ -46,7 +49,30 @@ constexpr size_t MaxUserEnvs = 4u;
 }
 constexpr size_t MaxUserArgBytes = 128u;
 constexpr uint32_t ElfPtLoad = 1u;
+constexpr uint32_t ElfPtDynamic = 2u;
+constexpr uint16_t ElfTypeExec = 2u;
+constexpr uint16_t ElfTypeDyn = 3u;
 constexpr uint16_t ElfMachineX86_64 = 62u;
+constexpr uint32_t ElfPfWrite = 2u;
+constexpr int64_t ElfDtNull = 0;
+constexpr int64_t ElfDtNeeded = 1;
+constexpr int64_t ElfDtHash = 4;
+constexpr int64_t ElfDtStrtab = 5;
+constexpr int64_t ElfDtSymtab = 6;
+constexpr int64_t ElfDtRela = 7;
+constexpr int64_t ElfDtRelasz = 8;
+constexpr int64_t ElfDtRelaent = 9;
+constexpr int64_t ElfDtStrsz = 10;
+constexpr int64_t ElfDtSyment = 11;
+constexpr int64_t ElfDtPltrelsz = 2;
+constexpr int64_t ElfDtPltrel = 20;
+constexpr int64_t ElfDtJmprel = 23;
+constexpr uint32_t R_X86_64_64 = 1u;
+constexpr uint32_t R_X86_64_GLOB_DAT = 6u;
+constexpr uint32_t R_X86_64_JUMP_SLOT = 7u;
+constexpr uint32_t R_X86_64_RELATIVE = 8u;
+constexpr uintptr_t RsoMainBase = 0x40000000u;
+constexpr uintptr_t RsoLibraryBase = 0x50000000u;
 constexpr unsigned long LinuxSysSocket = 41;
 constexpr unsigned long LinuxSysConnect = 42;
 constexpr unsigned long LinuxSysAccept = 43;
@@ -137,7 +163,59 @@ struct [[gnu::packed]] Elf64ProgramHeader {
     uint64_t align;
 };
 
+struct [[gnu::packed]] Elf64Dynamic {
+    int64_t tag;
+    uint64_t value;
+};
+
+struct [[gnu::packed]] Elf64Symbol {
+    uint32_t name;
+    uint8_t info;
+    uint8_t other;
+    uint16_t shndx;
+    uint64_t value;
+    uint64_t size;
+};
+
+struct [[gnu::packed]] Elf64Rela {
+    uint64_t offset;
+    uint64_t info;
+    int64_t addend;
+};
+
+struct RsoPage {
+    uint64_t offset;
+    uint64_t physical;
+};
+
+struct RsoCacheEntry {
+    int used;
+    char path[128];
+    uint8_t *image;
+    size_t image_size;
+    RsoPage pages[MaxRsoPages];
+    size_t page_count;
+};
+
+struct RsoModule {
+    char path[128];
+    uint64_t base;
+    const uint8_t *image;
+    size_t image_size;
+    const Elf64Header *header;
+    const char *strtab;
+    size_t strsz;
+    const Elf64Symbol *symtab;
+    size_t sym_count;
+    const Elf64Rela *rela;
+    size_t rela_count;
+    const Elf64Rela *jmprela;
+    size_t jmprela_count;
+    int cache_index;
+};
+
 uint8_t g_init_image[MaxInitImage];
+RsoCacheEntry g_rso_cache[MaxRsoCacheEntries];
 
 struct X86UserProcess {
     int used;
@@ -290,6 +368,315 @@ int load_user_elf(x86_address_space_t *space, const uint8_t *image, size_t size,
     }
     *entry = header->entry;
     *image_end = highest_end;
+    return 1;
+}
+
+const void *elf_ptr_from_vaddr(const Elf64Header *header, const uint8_t *image, size_t image_size, uint64_t vaddr, size_t size) {
+    if (!header || !image || size > image_size) return nullptr;
+    for (uint16_t i = 0; i < header->phnum; ++i) {
+        const auto *ph = reinterpret_cast<const Elf64ProgramHeader*>(image + header->phoff + i * header->phentsize);
+        if (ph->type != ElfPtLoad) continue;
+        if (vaddr < ph->vaddr || size > ph->filesz) continue;
+        const uint64_t offset = vaddr - ph->vaddr;
+        if (offset > ph->filesz || size > ph->filesz - offset || ph->offset > image_size || ph->filesz > image_size - ph->offset) continue;
+        return image + ph->offset + offset;
+    }
+    return nullptr;
+}
+
+int read_vfs_image(const char *path, uint8_t **image_out, size_t *size_out) {
+    if (!path || !image_out || !size_out) return 0;
+    *image_out = nullptr;
+    *size_out = 0;
+    rad_vfs_stat_t stat{};
+    if (rad_vfs_stat(path, &stat) != RAD_STATUS_OK || stat.is_directory || stat.size == 0 || stat.size > MaxInitImage) return 0;
+    uint8_t *image = static_cast<uint8_t*>(rad_memory_alloc(static_cast<size_t>(stat.size)));
+    if (!image) return 0;
+    rad_file_t file = nullptr;
+    if (rad_vfs_open(path, RAD_VFS_READ, &file) != RAD_STATUS_OK) return 0;
+    size_t bytes_read = 0;
+    const rad_status_t read_status = rad_vfs_read(file, image, static_cast<size_t>(stat.size), &bytes_read);
+    rad_vfs_close(file);
+    if (read_status != RAD_STATUS_OK || bytes_read != static_cast<size_t>(stat.size) || !elf_ident_ok(image, bytes_read)) return 0;
+    *image_out = image;
+    *size_out = bytes_read;
+    return 1;
+}
+
+RsoCacheEntry *find_rso_cache(const char *path) {
+    for (size_t i = 0; i < MaxRsoCacheEntries; ++i) {
+        if (g_rso_cache[i].used && strcmp(g_rso_cache[i].path, path) == 0) return &g_rso_cache[i];
+    }
+    return nullptr;
+}
+
+RsoCacheEntry *create_rso_cache(const char *path, const uint8_t *image, size_t image_size) {
+    for (size_t i = 0; i < MaxRsoCacheEntries; ++i) {
+        if (g_rso_cache[i].used) continue;
+        RsoCacheEntry *cache = &g_rso_cache[i];
+        memset(cache, 0, sizeof(*cache));
+        cache->used = 1;
+        copy_string(cache->path, sizeof(cache->path), path);
+        cache->image = const_cast<uint8_t*>(image);
+        cache->image_size = image_size;
+        return cache;
+    }
+    return nullptr;
+}
+
+RsoPage *find_rso_page(RsoCacheEntry *cache, uint64_t offset) {
+    if (!cache) return nullptr;
+    for (size_t i = 0; i < cache->page_count; ++i) {
+        if (cache->pages[i].offset == offset) return &cache->pages[i];
+    }
+    return nullptr;
+}
+
+uint64_t get_or_create_rso_page(RsoCacheEntry *cache, const uint8_t *image, size_t image_size, const Elf64ProgramHeader *ph, uint64_t page_vaddr) {
+    RsoPage *existing = find_rso_page(cache, page_vaddr);
+    if (existing) return existing->physical;
+    if (!cache || cache->page_count >= MaxRsoPages) return 0;
+    const uint64_t phys = x86_vm_alloc_page();
+    if (!phys) return 0;
+    memset(reinterpret_cast<void*>(static_cast<uintptr_t>(phys)), 0, PageSize);
+    const uint64_t segment_start = ph->vaddr;
+    const uint64_t file_end = ph->vaddr + ph->filesz;
+    const uint64_t va = page_vaddr;
+    const uint64_t copy_start = max_u64(va, segment_start);
+    const uint64_t copy_end = min_u64(va + PageSize, file_end);
+    if (copy_end > copy_start) {
+        const uint64_t src_offset = ph->offset + (copy_start - segment_start);
+        if (src_offset <= image_size && copy_end - copy_start <= image_size - src_offset) {
+            memcpy(reinterpret_cast<void*>(static_cast<uintptr_t>(phys + (copy_start - va))),
+                image + src_offset,
+                static_cast<size_t>(copy_end - copy_start));
+        }
+    }
+    cache->pages[cache->page_count++] = RsoPage{page_vaddr, phys};
+    return phys;
+}
+
+int map_rso_module_segments(x86_address_space_t *space, RsoModule *module, RsoCacheEntry *cache) {
+    if (!space || !module || !module->header) return 0;
+    const uint8_t *image = module->image;
+    const size_t image_size = module->image_size;
+    const Elf64Header *header = module->header;
+    for (uint16_t i = 0; i < header->phnum; ++i) {
+        const auto *ph = reinterpret_cast<const Elf64ProgramHeader*>(image + header->phoff + i * header->phentsize);
+        if (ph->type != ElfPtLoad) continue;
+        if (ph->filesz > ph->memsz || ph->offset > image_size || ph->filesz > image_size - ph->offset) return 0;
+        const bool writable = (ph->flags & ElfPfWrite) != 0;
+        const uint64_t segment_start = ph->vaddr;
+        const uint64_t file_end = ph->vaddr + ph->filesz;
+        const uint64_t memory_end = ph->vaddr + ph->memsz;
+        for (uint64_t va = align_down(segment_start, PageSize); va < memory_end; va += PageSize) {
+            uint64_t phys = 0;
+            if (cache && !writable) {
+                phys = get_or_create_rso_page(cache, image, image_size, ph, va);
+                if (!phys || !x86_vm_map_shared_page(space, module->base + va, phys, 0)) return 0;
+                continue;
+            }
+            phys = x86_vm_alloc_page();
+            if (!phys) return 0;
+            memset(reinterpret_cast<void*>(static_cast<uintptr_t>(phys)), 0, PageSize);
+            const uint64_t copy_start = max_u64(va, segment_start);
+            const uint64_t copy_end = min_u64(va + PageSize, file_end);
+            if (copy_end > copy_start) {
+                const uint64_t src_offset = ph->offset + (copy_start - segment_start);
+                memcpy(reinterpret_cast<void*>(static_cast<uintptr_t>(phys + (copy_start - va))),
+                    image + src_offset,
+                    static_cast<size_t>(copy_end - copy_start));
+            }
+            if (!x86_vm_map_user_page(space, module->base + va, phys, writable ? 1 : 0)) {
+                x86_vm_free_page(phys);
+                return 0;
+            }
+        }
+    }
+    return 1;
+}
+
+int parse_rso_dynamic(RsoModule *module) {
+    if (!module || !module->header) return 0;
+    const Elf64Header *header = module->header;
+    const uint8_t *image = module->image;
+    size_t dynamic_count = 0;
+    const Elf64Dynamic *dynamic = nullptr;
+    for (uint16_t i = 0; i < header->phnum; ++i) {
+        const auto *ph = reinterpret_cast<const Elf64ProgramHeader*>(image + header->phoff + i * header->phentsize);
+        if (ph->type != ElfPtDynamic) continue;
+        dynamic = reinterpret_cast<const Elf64Dynamic*>(image + ph->offset);
+        dynamic_count = static_cast<size_t>(ph->filesz / sizeof(Elf64Dynamic));
+        break;
+    }
+    if (!dynamic) return 1;
+    uint64_t strtab = 0, symtab = 0, hash = 0, rela = 0, relasz = 0, relaent = sizeof(Elf64Rela), jmprel = 0, pltrelsz = 0;
+    for (size_t i = 0; i < dynamic_count && dynamic[i].tag != ElfDtNull; ++i) {
+        switch (dynamic[i].tag) {
+        case ElfDtStrtab: strtab = dynamic[i].value; break;
+        case ElfDtStrsz: module->strsz = static_cast<size_t>(dynamic[i].value); break;
+        case ElfDtSymtab: symtab = dynamic[i].value; break;
+        case ElfDtHash: hash = dynamic[i].value; break;
+        case ElfDtRela: rela = dynamic[i].value; break;
+        case ElfDtRelasz: relasz = dynamic[i].value; break;
+        case ElfDtRelaent: relaent = dynamic[i].value; break;
+        case ElfDtJmprel: jmprel = dynamic[i].value; break;
+        case ElfDtPltrelsz: pltrelsz = dynamic[i].value; break;
+        default: break;
+        }
+    }
+    if (strtab) module->strtab = static_cast<const char*>(elf_ptr_from_vaddr(header, image, module->image_size, strtab, module->strsz ? module->strsz : 1));
+    if (symtab) module->symtab = static_cast<const Elf64Symbol*>(elf_ptr_from_vaddr(header, image, module->image_size, symtab, sizeof(Elf64Symbol)));
+    if (hash) {
+        const auto *hash_words = static_cast<const uint32_t*>(elf_ptr_from_vaddr(header, image, module->image_size, hash, 8));
+        if (hash_words) module->sym_count = hash_words[1];
+    }
+    if (rela && relaent == sizeof(Elf64Rela)) {
+        module->rela = static_cast<const Elf64Rela*>(elf_ptr_from_vaddr(header, image, module->image_size, rela, relasz));
+        module->rela_count = module->rela ? static_cast<size_t>(relasz / sizeof(Elf64Rela)) : 0;
+    }
+    if (jmprel) {
+        module->jmprela = static_cast<const Elf64Rela*>(elf_ptr_from_vaddr(header, image, module->image_size, jmprel, pltrelsz));
+        module->jmprela_count = module->jmprela ? static_cast<size_t>(pltrelsz / sizeof(Elf64Rela)) : 0;
+    }
+    return 1;
+}
+
+const char *symbol_name(const RsoModule *module, uint32_t name_offset) {
+    if (!module || !module->strtab || name_offset >= module->strsz) return "";
+    return module->strtab + name_offset;
+}
+
+uint64_t find_rso_symbol(RsoModule *modules, size_t module_count, const char *name) {
+    if (!name || !*name) return 0;
+    for (size_t m = 0; m < module_count; ++m) {
+        RsoModule& module = modules[m];
+        if (!module.symtab || !module.strtab || !module.sym_count) continue;
+        for (size_t i = 1; i < module.sym_count; ++i) {
+            const Elf64Symbol& sym = module.symtab[i];
+            if (!sym.name || !sym.shndx || !sym.value) continue;
+            if (strcmp(symbol_name(&module, sym.name), name) == 0) return module.base + sym.value;
+        }
+    }
+    return 0;
+}
+
+int apply_rso_rela(RsoModule *modules, size_t module_count, RsoModule *module, const Elf64Rela *rela, size_t count) {
+    if (!module || !rela) return 1;
+    for (size_t i = 0; i < count; ++i) {
+        const uint32_t type = static_cast<uint32_t>(rela[i].info & 0xffffffffu);
+        const uint32_t sym_index = static_cast<uint32_t>(rela[i].info >> 32u);
+        auto *where = reinterpret_cast<uint64_t*>(static_cast<uintptr_t>(module->base + rela[i].offset));
+        switch (type) {
+        case R_X86_64_RELATIVE:
+            *where = module->base + static_cast<uint64_t>(rela[i].addend);
+            break;
+        case R_X86_64_64:
+        case R_X86_64_GLOB_DAT:
+        case R_X86_64_JUMP_SLOT: {
+            if (!module->symtab || sym_index >= module->sym_count) {
+                rad_debug_marker("RADIX_RSO_UNSUPPORTED_RELOC");
+                return 0;
+            }
+            const char *name = symbol_name(module, module->symtab[sym_index].name);
+            const uint64_t value = find_rso_symbol(modules, module_count, name);
+            if (!value) {
+                rad_debug_marker("RADIX_RSO_SYMBOL_FAIL");
+                return 0;
+            }
+            *where = value + static_cast<uint64_t>(rela[i].addend);
+            break;
+        }
+        default:
+            rad_debug_marker("RADIX_RSO_UNSUPPORTED_RELOC");
+            return 0;
+        }
+    }
+    return 1;
+}
+
+int apply_rso_relocations(RsoModule *modules, size_t module_count) {
+    for (size_t i = 0; i < module_count; ++i) {
+        if (!apply_rso_rela(modules, module_count, &modules[i], modules[i].rela, modules[i].rela_count)) return 0;
+        if (!apply_rso_rela(modules, module_count, &modules[i], modules[i].jmprela, modules[i].jmprela_count)) return 0;
+    }
+    rad_debug_marker("RADIX_RSO_RELOC_OK");
+    return 1;
+}
+
+int load_rso_library(x86_address_space_t *space, const char *name, RsoModule *modules, size_t *module_count) {
+    if (!space || !name || !modules || !module_count || *module_count >= MaxRsoModules) return 0;
+    char path[128];
+    if (name[0] == '/') copy_string(path, sizeof(path), name);
+    else {
+        copy_string(path, sizeof(path), "/usr/lib/");
+        size_t at = strlen(path);
+        copy_string(path + at, sizeof(path) - at, name);
+    }
+    RsoCacheEntry *cache = find_rso_cache(path);
+    uint8_t *image = cache ? cache->image : nullptr;
+    size_t image_size = cache ? cache->image_size : 0;
+    if (!cache) {
+        if (!read_vfs_image(path, &image, &image_size)) return 0;
+        cache = create_rso_cache(path, image, image_size);
+        if (!cache) return 0;
+    }
+    const auto *header = reinterpret_cast<const Elf64Header*>(image);
+    if (header->type != ElfTypeDyn || header->machine != ElfMachineX86_64) return 0;
+    RsoModule& module = modules[*module_count];
+    memset(&module, 0, sizeof(module));
+    copy_string(module.path, sizeof(module.path), path);
+    module.base = RsoLibraryBase + (*module_count - 1u) * 0x01000000u;
+    module.image = image;
+    module.image_size = image_size;
+    module.header = header;
+    module.cache_index = static_cast<int>(cache - g_rso_cache);
+    if (!map_rso_module_segments(space, &module, cache)) return 0;
+    if (!parse_rso_dynamic(&module)) return 0;
+    ++(*module_count);
+    rad_debug_marker("RADIX_RSO_SHARED_TEXT_OK");
+    return 1;
+}
+
+int load_dynamic_dependencies(x86_address_space_t *space, RsoModule *modules, size_t *module_count) {
+    RsoModule *main = &modules[0];
+    if (!main->header || !main->strtab) return 1;
+    for (uint16_t i = 0; i < main->header->phnum; ++i) {
+        const auto *ph = reinterpret_cast<const Elf64ProgramHeader*>(main->image + main->header->phoff + i * main->header->phentsize);
+        if (ph->type != ElfPtDynamic) continue;
+        const auto *dynamic = reinterpret_cast<const Elf64Dynamic*>(main->image + ph->offset);
+        const size_t count = static_cast<size_t>(ph->filesz / sizeof(Elf64Dynamic));
+        for (size_t d = 0; d < count && dynamic[d].tag != ElfDtNull; ++d) {
+            if (dynamic[d].tag != ElfDtNeeded || dynamic[d].value >= main->strsz) continue;
+            if (!load_rso_library(space, main->strtab + dynamic[d].value, modules, module_count)) return 0;
+        }
+    }
+    return 1;
+}
+
+int load_user_elf_dynamic(x86_address_space_t *space, const uint8_t *image, size_t size, uint64_t *entry, uint64_t *image_end) {
+    if (!space || !image || !entry || !image_end || !elf_ident_ok(image, size)) return 0;
+    const auto *header = reinterpret_cast<const Elf64Header*>(image);
+    if (header->type != ElfTypeDyn || header->machine != ElfMachineX86_64) return 0;
+    RsoModule modules[MaxRsoModules]{};
+    size_t module_count = 1;
+    RsoModule& main = modules[0];
+    copy_string(main.path, sizeof(main.path), "<main>");
+    main.base = RsoMainBase;
+    main.image = image;
+    main.image_size = size;
+    main.header = header;
+    main.cache_index = -1;
+    if (!map_rso_module_segments(space, &main, nullptr)) return 0;
+    if (!parse_rso_dynamic(&main)) return 0;
+    if (!load_dynamic_dependencies(space, modules, &module_count)) return 0;
+    x86_vm_activate_address_space(space);
+    const int relocated = apply_rso_relocations(modules, module_count);
+    x86_vm_activate_kernel_address_space();
+    if (!relocated) return 0;
+    *entry = main.base + header->entry;
+    *image_end = main.base + 0x02000000u;
+    rad_debug_marker("RADIX_RSO_LOAD_OK");
     return 1;
 }
 
@@ -502,7 +889,11 @@ rad_status_t load_user_program(X86UserProcess *process, const char *path) {
         return RAD_STATUS_ERROR;
     }
     uint64_t image_end = 0;
-    if (!load_user_elf(&new_space, g_init_image, bytes_read, &entry, &image_end)) {
+    const auto *header = reinterpret_cast<const Elf64Header*>(g_init_image);
+    int loaded = 0;
+    if (header->type == ElfTypeDyn) loaded = load_user_elf_dynamic(&new_space, g_init_image, bytes_read, &entry, &image_end);
+    else if (header->type == ElfTypeExec) loaded = load_user_elf(&new_space, g_init_image, bytes_read, &entry, &image_end);
+    if (!loaded) {
         x86_vm_destroy_address_space(&new_space);
         rad_debug_marker("RADIX_USER_EXECVE_LOAD_MAP_FAIL");
         return RAD_STATUS_ERROR;

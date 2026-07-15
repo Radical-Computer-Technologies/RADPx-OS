@@ -81,6 +81,7 @@ static int run_one(const char *path, const char *ok, const char *fail) {
 
 int main(void) {
     int failed = 0;
+    failed |= run_one("/usr/bin/tui-stress-dyn", "RADIX_TUI_STRESS_DYN_BOOT_OK", "RADIX_TUI_STRESS_DYN_BOOT_FAIL");
     failed |= run_one("/usr/bin/sleep-stress", "RADIX_SLEEP_STRESS_BOOT_OK", "RADIX_SLEEP_STRESS_BOOT_FAIL");
     failed |= run_one("/usr/bin/signal-stress", "RADIX_SIGNAL_STRESS_BOOT_OK", "RADIX_SIGNAL_STRESS_BOOT_FAIL");
     failed |= run_one("/usr/bin/tty-stress", "RADIX_TTY_STRESS_BOOT_OK", "RADIX_TTY_STRESS_BOOT_FAIL");
