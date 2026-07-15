@@ -15,6 +15,7 @@ enum {
     SYS_GETPID = 14,
     SYS_DUP2 = 17,
     SYS_GETPPID = 15,
+    SYS_KILL = 1019,
     SYS_GETDENTS = 1000,
     SYS_MKDIR = 1002,
     SYS_TRUNCATE = 1005,
@@ -60,6 +61,11 @@ typedef enum {
     RESTART_ALWAYS = 2,
 } restart_policy_t;
 
+typedef enum {
+    SERVICE_TYPE_SIMPLE = 0,
+    SERVICE_TYPE_ONESHOT = 1,
+} service_type_t;
+
 typedef struct {
     char name[48];
     char description[96];
@@ -69,9 +75,11 @@ typedef struct {
     int autostart;
     int order;
     restart_policy_t restart;
+    service_type_t type;
     char stdout_path[128];
     char stderr_path[128];
     char terminal_path[128];
+    char ready_marker[64];
     int pid;
     int exit_status;
     int restarts;
@@ -83,6 +91,9 @@ typedef struct {
     uint8_t type;
     char name[256];
 } radinit_dirent_t;
+
+static void sort_services(service_t *services, int count);
+static int load_services_from_dir(const char *dir_path, service_t *services, int capacity);
 
 static long sc(long n, long a, long b, long c, long d, long e, long f) {
     register long rax asm("rax") = n;
@@ -295,11 +306,19 @@ static restart_policy_t restart_policy(const char *text) {
     return RESTART_NO;
 }
 
+static service_type_t service_type_policy(const char *text) {
+    if (s_eq(text, "oneshot")) return SERVICE_TYPE_ONESHOT;
+    return SERVICE_TYPE_SIMPLE;
+}
+
 static int load_service(const char *path, service_t *service) {
     char json[1024];
     int n = read_file(path, json, sizeof(json));
     if (n <= 0) return 0;
     char restart[24];
+    char type[24];
+    restart[0] = 0;
+    type[0] = 0;
     service_t local;
     for (size_t i = 0; i < sizeof(local); ++i) ((char*)&local)[i] = 0;
     json_string(json, "name", local.name, sizeof(local.name));
@@ -308,11 +327,14 @@ static int load_service(const char *path, service_t *service) {
     json_string(json, "stdout", local.stdout_path, sizeof(local.stdout_path));
     json_string(json, "stderr", local.stderr_path, sizeof(local.stderr_path));
     json_string(json, "terminal", local.terminal_path, sizeof(local.terminal_path));
+    json_string(json, "ready_marker", local.ready_marker, sizeof(local.ready_marker));
     json_string(json, "restart", restart, sizeof(restart));
+    json_string(json, "type", type, sizeof(type));
     json_args(json, &local);
     local.autostart = json_bool(json, "autostart", 0);
     local.order = json_int(json, "order", 100);
     local.restart = restart_policy(restart);
+    local.type = service_type_policy(type);
     local.state = SERVICE_INACTIVE;
     if (!local.name[0]) return 0;
     *service = local;
@@ -340,6 +362,8 @@ static void write_status(service_t *services, int count) {
         print_num_fd(fd, services[i].pid > 0 ? (uint64_t)services[i].pid : 0);
         puts_fd(fd, " status=");
         print_num_fd(fd, services[i].exit_status < 0 ? (uint64_t)(-services[i].exit_status) : (uint64_t)services[i].exit_status);
+        puts_fd(fd, " type=");
+        puts_fd(fd, services[i].type == SERVICE_TYPE_ONESHOT ? "oneshot" : "simple");
         puts_fd(fd, " restart=");
         print_num_fd(fd, (uint64_t)services[i].restarts);
         puts_fd(fd, " last_start_ms=");
@@ -370,6 +394,31 @@ static void write_service_log(service_t *service, const char *message) {
     }
 }
 
+static int text_contains(const char *text, const char *needle) {
+    if (!text || !needle || !needle[0]) return 0;
+    size_t needle_len = s_len(needle);
+    for (const char *p = text; *p; ++p) {
+        size_t i = 0;
+        while (i < needle_len && p[i] == needle[i]) ++i;
+        if (i == needle_len) return 1;
+    }
+    return 0;
+}
+
+static int service_ready(service_t *service) {
+    if (!service->ready_marker[0]) return 1;
+    char log[1024];
+    const char *path = service->stdout_path[0] ? service->stdout_path : "/var/log/radix/service.log";
+    if (read_file(path, log, sizeof(log)) <= 0) return 0;
+    return text_contains(log, service->ready_marker);
+}
+
+static void reset_service_ready_log(service_t *service) {
+    if (!service->ready_marker[0]) return;
+    const char *path = service->stdout_path[0] ? service->stdout_path : "/var/log/radix/service.log";
+    (void)sc(SYS_TRUNCATE, (long)path, 0, 0, 0, 0, 0);
+}
+
 static int start_service(service_t *service, int manual) {
     if (!manual && !service->autostart) return 0;
     int trace_terminal_stress = s_eq(service->name, "terminal-stress");
@@ -392,6 +441,7 @@ static int start_service(service_t *service, int manual) {
         write_service_log(service, "builtin ready");
         return 0;
     }
+    reset_service_ready_log(service);
     long child = sc(SYS_FORK, 0, 0, 0, 0, 0, 0);
     if (child == 0) {
         if (trace_terminal_stress) line_fd(1, "RADIX_RADINIT_TERMINAL_STRESS_CHILD");
@@ -431,6 +481,32 @@ static int start_service(service_t *service, int manual) {
     service->state = SERVICE_RUNNING;
     if (trace_terminal_stress) line_fd(1, "RADIX_RADINIT_TERMINAL_STRESS_FORK_OK");
     if (trace_boot_session) line_fd(1, "RADIX_RADINIT_BOOT_SESSION_FORK_OK");
+    if (service->type == SERVICE_TYPE_ONESHOT) {
+        int status = 0;
+        long waited = sc(SYS_WAITPID, child, (long)&status, 0, 0, 0, 0);
+        if (waited == child) {
+            service->pid = 0;
+            service->exit_status = status;
+            service->state = status == 0 ? SERVICE_EXITED : SERVICE_FAILED;
+            return status == 0 ? 0 : status;
+        }
+        service->pid = 0;
+        service->exit_status = (int)waited;
+        service->state = SERVICE_FAILED;
+        return (int)waited;
+    }
+    for (int poll = 0; service->ready_marker[0] && poll < 80; ++poll) {
+        if (service_ready(service)) break;
+        int status = 0;
+        long waited = sc(SYS_WAITPID, service->pid, (long)&status, WAIT_NOHANG, 0, 0, 0);
+        if (waited == service->pid) {
+            service->pid = 0;
+            service->exit_status = status;
+            service->state = status == 0 ? SERVICE_EXITED : SERVICE_FAILED;
+            return status == 0 ? 0 : status;
+        }
+        sc(SYS_NANOSLEEP, 50000000, 0, 0, 0, 0, 0);
+    }
     return 0;
 }
 
@@ -438,6 +514,49 @@ static service_t *find_service(service_t *services, int count, const char *name)
     for (int i = 0; i < count; ++i) {
         if (s_eq(services[i].name, name)) return &services[i];
     }
+    return 0;
+}
+
+static void preserve_runtime_state(service_t *fresh, service_t *previous) {
+    if (!fresh || !previous) return;
+    fresh->pid = previous->pid;
+    fresh->exit_status = previous->exit_status;
+    fresh->restarts = previous->restarts;
+    fresh->last_start_millis = previous->last_start_millis;
+    fresh->state = previous->state;
+}
+
+static int reload_services(service_t *services, int count, int capacity) {
+    service_t fresh[24];
+    if (capacity > 24) capacity = 24;
+    int fresh_count = load_services_from_dir("/etc/radix/services", fresh, capacity);
+    sort_services(fresh, fresh_count);
+    for (int i = 0; i < fresh_count; ++i) {
+        service_t *previous = find_service(services, count, fresh[i].name);
+        if (previous) preserve_runtime_state(&fresh[i], previous);
+    }
+    for (int i = 0; i < fresh_count; ++i) services[i] = fresh[i];
+    for (int i = fresh_count; i < capacity; ++i) {
+        for (size_t b = 0; b < sizeof(services[i]); ++b) ((char*)&services[i])[b] = 0;
+    }
+    return fresh_count;
+}
+
+static int stop_service(service_t *service) {
+    if (!service) return -2;
+    if (service->state != SERVICE_RUNNING || service->pid <= 0) {
+        service->pid = 0;
+        service->state = SERVICE_INACTIVE;
+        service->exit_status = 0;
+        return 0;
+    }
+    int status = 0;
+    long killed = sc(SYS_KILL, service->pid, 15, 0, 0, 0, 0);
+    if (killed < 0) return (int)killed;
+    long waited = sc(SYS_WAITPID, service->pid, (long)&status, 0, 0, 0, 0);
+    service->exit_status = waited == service->pid ? status : (int)killed;
+    service->pid = 0;
+    service->state = SERVICE_INACTIVE;
     return 0;
 }
 
@@ -471,7 +590,7 @@ static char *next_word(char **cursor) {
     return word;
 }
 
-static void process_control_file(service_t *services, int count) {
+static void process_control_file(service_t *services, int *count, int capacity) {
     char control[160];
     int n = read_file("/run/radinit/control.txt", control, sizeof(control));
     if (n <= 0 || !control[0]) return;
@@ -480,25 +599,35 @@ static void process_control_file(service_t *services, int count) {
     char *cursor = control;
     char *verb = next_word(&cursor);
     char *name = next_word(&cursor);
+    if (s_eq(verb, "reload") || s_eq(verb, "list")) {
+        *count = reload_services(services, *count, capacity);
+        write_status(services, *count);
+        write_control_status("ok", "services", "reload");
+        return;
+    }
     if (!verb[0] || !name[0]) {
         write_control_status("error", "", "invalid");
         return;
     }
-    service_t *service = find_service(services, count, name);
+    service_t *service = find_service(services, *count, name);
     if (!service) {
         write_control_status("error", name, "not-found");
         return;
     }
     if (s_eq(verb, "restart")) {
         if (service->state == SERVICE_RUNNING && service->pid > 0) {
-            write_control_status("busy", name, "running");
-            return;
+            int stopped = stop_service(service);
+            if (stopped != 0) {
+                write_status(services, *count);
+                write_control_status("error", name, "stop");
+                return;
+            }
         }
         service->pid = 0;
         service->exit_status = 0;
         service->state = SERVICE_INACTIVE;
         int status = start_service(service, 1);
-        write_status(services, count);
+        write_status(services, *count);
         write_control_status(status == 0 ? "ok" : "error", name, "restart");
         return;
     }
@@ -508,15 +637,21 @@ static void process_control_file(service_t *services, int count) {
             return;
         }
         int status = start_service(service, 1);
-        write_status(services, count);
+        write_status(services, *count);
         write_control_status(status == 0 ? "ok" : "error", name, "start");
+        return;
+    }
+    if (s_eq(verb, "stop")) {
+        int status = stop_service(service);
+        write_status(services, *count);
+        write_control_status(status == 0 ? "ok" : "error", name, "stop");
         return;
     }
     write_control_status("error", name, "unsupported");
 }
 
-static void supervise_once(service_t *services, int count) {
-    for (int i = 0; i < count; ++i) {
+static void supervise_once(service_t *services, int *count, int capacity) {
+    for (int i = 0; i < *count; ++i) {
         service_t *service = &services[i];
         if (service->state != SERVICE_RUNNING || service->pid <= 0) continue;
         int status = 0;
@@ -532,7 +667,7 @@ static void supervise_once(service_t *services, int count) {
             }
         }
     }
-    process_control_file(services, count);
+    process_control_file(services, count, capacity);
 }
 
 static void sort_services(service_t *services, int count) {
@@ -566,18 +701,6 @@ static int load_services_from_dir(const char *dir_path, service_t *services, int
         sc(SYS_CLOSE, dir, 0, 0, 0, 0, 0);
     }
     if (count > 0) return count;
-    const char *fallback[] = {
-        "/etc/radix/services/storage-root.json",
-        "/etc/radix/services/userspace-shell.json",
-        "/etc/radix/services/base-terminal.json",
-        "/etc/radix/services/network-smoke.json",
-        "/etc/radix/services/fatfs.json",
-        "/etc/radix/services/boot-session.json",
-        "/etc/radix/services/terminal-stress.json",
-    };
-    for (int i = 0; i < 7 && count < capacity; ++i) {
-        if (load_service(fallback[i], &services[count])) ++count;
-    }
     return count;
 }
 
@@ -614,8 +737,9 @@ int radinit_main(long argc, char **argv, char **envp) {
     line_fd(1, "RADIX_LOG_INIT_FILE_OK");
     line_fd(1, "RADIX_LOG_SERVICE_FILE_OK");
 
-    service_t services[12];
-    int count = load_services_from_dir("/etc/radix/services", services, 12);
+    service_t services[24];
+    int capacity = 24;
+    int count = load_services_from_dir("/etc/radix/services", services, capacity);
     if (count > 0) line_fd(1, "RADIX_RADINIT_JSON_OK");
     sort_services(services, count);
     line_fd(1, "RADIX_RADINIT_SERVICE_ORDER_OK");
@@ -625,14 +749,14 @@ int radinit_main(long argc, char **argv, char **envp) {
         write_status(services, count);
         if (services[i].autostart && s_eq(services[i].name, "terminal-stress")) {
             for (int poll = 0; poll < 80 && services[i].state == SERVICE_RUNNING; ++poll) {
-                supervise_once(services, count);
+                supervise_once(services, &count, capacity);
                 write_status(services, count);
                 sc(SYS_NANOSLEEP, 50000000, 0, 0, 0, 0, 0);
             }
         }
     }
     for (int poll = 0; poll < 20; ++poll) {
-        supervise_once(services, count);
+        supervise_once(services, &count, capacity);
         write_status(services, count);
         sc(SYS_NANOSLEEP, 50000000, 0, 0, 0, 0, 0);
     }
@@ -648,7 +772,7 @@ int radinit_main(long argc, char **argv, char **envp) {
     write_status(services, count);
 
     for (;;) {
-        supervise_once(services, count);
+        supervise_once(services, &count, capacity);
         write_status(services, count);
         sc(SYS_NANOSLEEP, 250000000, 0, 0, 0, 0, 0);
     }

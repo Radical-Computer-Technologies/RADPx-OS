@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/types.h>
@@ -28,6 +29,8 @@
 #include <limits.h>
 #include <locale.h>
 #include <math.h>
+#include <netdb.h>
+#include <arpa/inet.h>
 #include <regex.h>
 #include <search.h>
 #include <strings.h>
@@ -53,6 +56,17 @@ typedef struct {
     char name[256];
 } radix_dirent_t;
 
+typedef struct {
+    unsigned char bytes[4];
+} radix_ipv4_t;
+
+typedef struct {
+    uint16_t family;
+    uint16_t port;
+    radix_ipv4_t address;
+    unsigned char zero[8];
+} radix_sockaddr_in_t;
+
 struct DIR {
     int fd;
     struct dirent current;
@@ -73,6 +87,47 @@ static int map_error(long status) {
 
 static long ok_or_errno(long status) {
     return status < 0 ? map_error(status) : status;
+}
+
+uint16_t htons(uint16_t value) { return (uint16_t)((value << 8u) | (value >> 8u)); }
+uint16_t ntohs(uint16_t value) { return htons(value); }
+uint32_t htonl(uint32_t value) {
+    return ((value & 0x000000ffu) << 24u)
+        | ((value & 0x0000ff00u) << 8u)
+        | ((value & 0x00ff0000u) >> 8u)
+        | ((value & 0xff000000u) >> 24u);
+}
+uint32_t ntohl(uint32_t value) { return htonl(value); }
+
+static int sockaddr_to_radix(const struct sockaddr *src, socklen_t len, radix_sockaddr_in_t *dst) {
+    if (!src || !dst || len < sizeof(struct sockaddr_in) || src->sa_family != AF_INET) {
+        errno = EINVAL;
+        return -1;
+    }
+    const struct sockaddr_in *in = (const struct sockaddr_in*)src;
+    memset(dst, 0, sizeof(*dst));
+    dst->family = AF_INET;
+    dst->port = ntohs(in->sin_port);
+    uint32_t host = ntohl(in->sin_addr.s_addr);
+    dst->address.bytes[0] = (unsigned char)(host >> 24u);
+    dst->address.bytes[1] = (unsigned char)(host >> 16u);
+    dst->address.bytes[2] = (unsigned char)(host >> 8u);
+    dst->address.bytes[3] = (unsigned char)(host);
+    return 0;
+}
+
+static void sockaddr_from_radix(const radix_sockaddr_in_t *src, struct sockaddr *dst, socklen_t *len) {
+    if (!src || !dst || !len || *len < sizeof(struct sockaddr_in)) return;
+    struct sockaddr_in *in = (struct sockaddr_in*)dst;
+    memset(in, 0, sizeof(*in));
+    in->sin_family = AF_INET;
+    in->sin_port = htons(src->port);
+    uint32_t host = ((uint32_t)src->address.bytes[0] << 24u)
+        | ((uint32_t)src->address.bytes[1] << 16u)
+        | ((uint32_t)src->address.bytes[2] << 8u)
+        | (uint32_t)src->address.bytes[3];
+    in->sin_addr.s_addr = htonl(host);
+    *len = sizeof(*in);
 }
 
 ssize_t read(int fd, void *buf, size_t count) {
@@ -170,6 +225,447 @@ int fcntl(int fd, int cmd, ...) {
 
 int poll(struct pollfd *fds, nfds_t nfds, int timeout) {
     return (int)ok_or_errno(radix_syscall6(RADIX_SYS_POLL, (long)fds, nfds, timeout, 0, 0, 0));
+}
+
+int socket(int domain, int type, int protocol) {
+    return (int)ok_or_errno(radix_syscall6(RADIX_SYS_SOCKET, domain, type, protocol, 0, 0, 0));
+}
+
+int bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen) {
+    radix_sockaddr_in_t radix_addr;
+    if (sockaddr_to_radix(addr, addrlen, &radix_addr) < 0) return -1;
+    return (int)ok_or_errno(radix_syscall6(RADIX_SYS_BIND, sockfd, (long)&radix_addr, sizeof(radix_addr), 0, 0, 0));
+}
+
+int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen) {
+    radix_sockaddr_in_t radix_addr;
+    if (sockaddr_to_radix(addr, addrlen, &radix_addr) < 0) return -1;
+    return (int)ok_or_errno(radix_syscall6(RADIX_SYS_CONNECT, sockfd, (long)&radix_addr, sizeof(radix_addr), 0, 0, 0));
+}
+
+int listen(int sockfd, int backlog) {
+    return (int)ok_or_errno(radix_syscall6(RADIX_SYS_LISTEN, sockfd, backlog, 0, 0, 0, 0));
+}
+
+int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen) {
+    radix_sockaddr_in_t radix_addr;
+    size_t radix_len = sizeof(radix_addr);
+    long r = radix_syscall6(RADIX_SYS_ACCEPT, sockfd, (long)(addr ? &radix_addr : 0), (long)(addrlen ? &radix_len : 0), 0, 0, 0);
+    if (r < 0) return map_error(r);
+    if (addr && addrlen) sockaddr_from_radix(&radix_addr, addr, addrlen);
+    return (int)r;
+}
+
+int shutdown(int sockfd, int how) {
+    return (int)ok_or_errno(radix_syscall6(RADIX_SYS_SHUTDOWN, sockfd, how, 0, 0, 0, 0));
+}
+
+ssize_t sendto(int sockfd, const void *buf, size_t len, int flags, const struct sockaddr *dest_addr, socklen_t addrlen) {
+    radix_sockaddr_in_t radix_addr;
+    if (sockaddr_to_radix(dest_addr, addrlen, &radix_addr) < 0) return -1;
+    return ok_or_errno(radix_syscall6(RADIX_SYS_SENDTO, sockfd, (long)buf, len, flags, (long)&radix_addr, sizeof(radix_addr)));
+}
+
+ssize_t recvfrom(int sockfd, void *buf, size_t len, int flags, struct sockaddr *src_addr, socklen_t *addrlen) {
+    radix_sockaddr_in_t radix_addr;
+    size_t radix_len = sizeof(radix_addr);
+    long r = radix_syscall6(RADIX_SYS_RECVFROM, sockfd, (long)buf, len, flags, (long)(src_addr ? &radix_addr : 0), (long)(addrlen ? &radix_len : 0));
+    if (r < 0) return map_error(r);
+    if (src_addr && addrlen) sockaddr_from_radix(&radix_addr, src_addr, addrlen);
+    return r;
+}
+
+ssize_t send(int sockfd, const void *buf, size_t len, int flags) {
+    return ok_or_errno(radix_syscall6(RADIX_SYS_SENDTO, sockfd, (long)buf, len, flags, 0, 0));
+}
+
+ssize_t recv(int sockfd, void *buf, size_t len, int flags) {
+    return ok_or_errno(radix_syscall6(RADIX_SYS_RECVFROM, sockfd, (long)buf, len, flags, 0, 0));
+}
+
+static int parse_ipv4_host_order(const char *src, uint32_t *out) {
+    if (!src || !out) return 0;
+    uint32_t octets[4] = {0, 0, 0, 0};
+    const char *p = src;
+    for (int i = 0; i < 4; ++i) {
+        if (!*p || *p < '0' || *p > '9') return 0;
+        uint32_t value = 0;
+        int digits = 0;
+        while (*p >= '0' && *p <= '9') {
+            value = value * 10u + (uint32_t)(*p - '0');
+            if (value > 255u) return 0;
+            ++p;
+            ++digits;
+        }
+        if (digits == 0) return 0;
+        octets[i] = value;
+        if (i < 3) {
+            if (*p != '.') return 0;
+            ++p;
+        }
+    }
+    if (*p) return 0;
+    *out = (octets[0] << 24u) | (octets[1] << 16u) | (octets[2] << 8u) | octets[3];
+    return 1;
+}
+
+int inet_aton(const char *cp, struct in_addr *inp) {
+    uint32_t host = 0;
+    if (!parse_ipv4_host_order(cp, &host)) return 0;
+    if (inp) inp->s_addr = htonl(host);
+    return 1;
+}
+
+int inet_pton(int af, const char *src, void *dst) {
+    if (af != AF_INET || !dst) {
+        errno = EAFNOSUPPORT;
+        return -1;
+    }
+    struct in_addr addr;
+    if (!inet_aton(src, &addr)) return 0;
+    memcpy(dst, &addr, sizeof(addr));
+    return 1;
+}
+
+const char *inet_ntop(int af, const void *src, char *dst, socklen_t size) {
+    if (af != AF_INET || !src || !dst) {
+        errno = EAFNOSUPPORT;
+        return 0;
+    }
+    if (size < 16) {
+        errno = ENOSPC;
+        return 0;
+    }
+    uint32_t host = ntohl(((const struct in_addr*)src)->s_addr);
+    snprintf(dst, size, "%u.%u.%u.%u",
+        (unsigned)((host >> 24u) & 0xffu),
+        (unsigned)((host >> 16u) & 0xffu),
+        (unsigned)((host >> 8u) & 0xffu),
+        (unsigned)(host & 0xffu));
+    return dst;
+}
+
+static uint64_t resolver_now_millis(void) {
+    struct timeval tv;
+    long status = radix_syscall6(RADIX_SYS_GETTIMEOFDAY, (long)&tv, 0, 0, 0, 0, 0);
+    if (status < 0) return 0;
+    return (uint64_t)tv.tv_sec * 1000u + (uint64_t)(tv.tv_usec / 1000u);
+}
+
+static void resolver_sleep_ms(uint32_t ms) {
+    radix_syscall6(RADIX_SYS_NANOSLEEP, (long)ms * 1000000L, 0, 0, 0, 0, 0);
+}
+
+static int resolver_read_file(const char *path, char *buffer, size_t size) {
+    if (!path || !buffer || size == 0) return -1;
+    int fd = open(path, O_RDONLY);
+    if (fd < 0) return -1;
+    ssize_t n = read(fd, buffer, size - 1);
+    close(fd);
+    if (n < 0) return -1;
+    buffer[n] = 0;
+    return (int)n;
+}
+
+static int resolver_hosts_lookup(const char *name, struct in_addr *addr) {
+    char text[1024];
+    if (!name || !addr || resolver_read_file("/etc/hosts", text, sizeof(text)) < 0) return 0;
+    char *line = text;
+    while (*line) {
+        char *next = line;
+        while (*next && *next != '\n') ++next;
+        if (*next) *next++ = 0;
+        char *hash = strchr(line, '#');
+        if (hash) *hash = 0;
+        while (*line == ' ' || *line == '\t') ++line;
+        if (!*line) {
+            line = next;
+            continue;
+        }
+        char *ip = line;
+        while (*line && *line != ' ' && *line != '\t') ++line;
+        if (*line) *line++ = 0;
+        struct in_addr parsed;
+        if (!inet_aton(ip, &parsed)) {
+            line = next;
+            continue;
+        }
+        while (*line) {
+            while (*line == ' ' || *line == '\t') ++line;
+            char *host = line;
+            while (*line && *line != ' ' && *line != '\t') ++line;
+            if (*line) *line++ = 0;
+            if (*host && strcasecmp(host, name) == 0) {
+                *addr = parsed;
+                return 1;
+            }
+        }
+        line = next;
+    }
+    return 0;
+}
+
+static struct in_addr resolver_nameserver(void) {
+    struct in_addr fallback;
+    inet_aton("10.0.2.3", &fallback);
+    char text[512];
+    if (resolver_read_file("/etc/resolv.conf", text, sizeof(text)) < 0) return fallback;
+    char *line = text;
+    while (*line) {
+        char *next = line;
+        while (*next && *next != '\n') ++next;
+        if (*next) *next++ = 0;
+        while (*line == ' ' || *line == '\t') ++line;
+        if (strncmp(line, "nameserver", 10) == 0 && (line[10] == ' ' || line[10] == '\t')) {
+            line += 10;
+            while (*line == ' ' || *line == '\t') ++line;
+            char ip[32];
+            size_t pos = 0;
+            while (line[pos] && line[pos] != ' ' && line[pos] != '\t' && pos + 1 < sizeof(ip)) {
+                ip[pos] = line[pos];
+                ++pos;
+            }
+            ip[pos] = 0;
+            struct in_addr parsed;
+            if (inet_aton(ip, &parsed)) return parsed;
+        }
+        line = next;
+    }
+    return fallback;
+}
+
+static int dns_put_name(uint8_t *packet, size_t size, size_t *pos, const char *name) {
+    const char *label = name;
+    while (*label) {
+        const char *dot = strchr(label, '.');
+        size_t len = dot ? (size_t)(dot - label) : strlen(label);
+        if (len == 0 || len > 63 || *pos + len + 1 >= size) return 0;
+        packet[(*pos)++] = (uint8_t)len;
+        memcpy(packet + *pos, label, len);
+        *pos += len;
+        if (!dot) break;
+        label = dot + 1;
+    }
+    if (*pos >= size) return 0;
+    packet[(*pos)++] = 0;
+    return 1;
+}
+
+static int dns_skip_name(const uint8_t *packet, size_t size, size_t *pos) {
+    size_t p = *pos;
+    for (unsigned hops = 0; hops < 64; ++hops) {
+        if (p >= size) return 0;
+        uint8_t len = packet[p++];
+        if (len == 0) {
+            *pos = p;
+            return 1;
+        }
+        if ((len & 0xc0u) == 0xc0u) {
+            if (p >= size) return 0;
+            *pos = p + 1;
+            return 1;
+        }
+        if ((len & 0xc0u) != 0 || p + len > size) return 0;
+        p += len;
+    }
+    return 0;
+}
+
+static uint16_t read_be16_libc(const uint8_t *p) {
+    return (uint16_t)(((uint16_t)p[0] << 8u) | p[1]);
+}
+
+static uint32_t read_be32_libc(const uint8_t *p) {
+    return ((uint32_t)p[0] << 24u) | ((uint32_t)p[1] << 16u) | ((uint32_t)p[2] << 8u) | (uint32_t)p[3];
+}
+
+static void write_be16_libc(uint8_t *p, uint16_t value) {
+    p[0] = (uint8_t)(value >> 8u);
+    p[1] = (uint8_t)value;
+}
+
+static int resolver_dns_lookup_a(const char *name, struct in_addr *addr) {
+    if (!name || !addr) return EAI_NONAME;
+    int fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if (fd < 0) return EAI_AGAIN;
+    struct sockaddr_in dns;
+    memset(&dns, 0, sizeof(dns));
+    dns.sin_family = AF_INET;
+    dns.sin_port = htons(53);
+    dns.sin_addr = resolver_nameserver();
+    uint8_t query[512];
+    memset(query, 0, sizeof(query));
+    uint16_t txid = (uint16_t)(resolver_now_millis() ^ 0x5244u);
+    write_be16_libc(query + 0, txid);
+    write_be16_libc(query + 2, 0x0100u);
+    write_be16_libc(query + 4, 1u);
+    size_t qlen = 12;
+    if (!dns_put_name(query, sizeof(query), &qlen, name) || qlen + 4 > sizeof(query)) {
+        close(fd);
+        return EAI_NONAME;
+    }
+    write_be16_libc(query + qlen, 1u);
+    qlen += 2;
+    write_be16_libc(query + qlen, 1u);
+    qlen += 2;
+    if (sendto(fd, query, qlen, 0, (struct sockaddr*)&dns, sizeof(dns)) != (ssize_t)qlen) {
+        close(fd);
+        return EAI_AGAIN;
+    }
+    uint8_t response[512];
+    struct sockaddr_in from;
+    socklen_t from_len = sizeof(from);
+    ssize_t received = 0;
+    uint64_t start = resolver_now_millis();
+    for (unsigned attempt = 0; attempt < 2000; ++attempt) {
+        from_len = sizeof(from);
+        received = recvfrom(fd, response, sizeof(response), 0, (struct sockaddr*)&from, &from_len);
+        if (received > 0) break;
+        if (received < 0 && errno != EAGAIN) {
+            close(fd);
+            return EAI_AGAIN;
+        }
+        if (attempt > 16 && start && resolver_now_millis() - start > 1000u) break;
+        resolver_sleep_ms(1);
+    }
+    close(fd);
+    if (received < 12) return EAI_AGAIN;
+    size_t rlen = (size_t)received;
+    if (read_be16_libc(response) != txid) return EAI_FAIL;
+    uint16_t flags = read_be16_libc(response + 2);
+    if ((flags & 0x000fu) != 0) return EAI_NONAME;
+    uint16_t qd = read_be16_libc(response + 4);
+    uint16_t an = read_be16_libc(response + 6);
+    size_t pos = 12;
+    for (uint16_t i = 0; i < qd; ++i) {
+        if (!dns_skip_name(response, rlen, &pos) || pos + 4 > rlen) return EAI_FAIL;
+        pos += 4;
+    }
+    for (uint16_t i = 0; i < an; ++i) {
+        if (!dns_skip_name(response, rlen, &pos) || pos + 10 > rlen) return EAI_FAIL;
+        uint16_t type = read_be16_libc(response + pos);
+        uint16_t klass = read_be16_libc(response + pos + 2);
+        (void)read_be32_libc(response + pos + 4);
+        uint16_t rdlen = read_be16_libc(response + pos + 8);
+        pos += 10;
+        if (pos + rdlen > rlen) return EAI_FAIL;
+        if (type == 1u && klass == 1u && rdlen == 4u) {
+            uint32_t host = ((uint32_t)response[pos] << 24u)
+                | ((uint32_t)response[pos + 1] << 16u)
+                | ((uint32_t)response[pos + 2] << 8u)
+                | (uint32_t)response[pos + 3];
+            addr->s_addr = htonl(host);
+            return 0;
+        }
+        pos += rdlen;
+    }
+    return EAI_NONAME;
+}
+
+static int resolver_lookup_ipv4(const char *name, struct in_addr *addr) {
+    if (inet_aton(name, addr)) return 0;
+    if (resolver_hosts_lookup(name, addr)) return 0;
+    return resolver_dns_lookup_a(name, addr);
+}
+
+int getaddrinfo(const char *node, const char *service, const struct addrinfo *hints, struct addrinfo **res) {
+    if (!res) return EAI_FAIL;
+    *res = 0;
+    if (!node && !(hints && (hints->ai_flags & AI_PASSIVE))) return EAI_NONAME;
+    if (hints && hints->ai_family != 0 && hints->ai_family != AF_INET) return EAI_FAMILY;
+    if (hints && hints->ai_socktype != 0 && hints->ai_socktype != SOCK_DGRAM && hints->ai_socktype != SOCK_STREAM) return EAI_FAIL;
+    int socktype = hints && hints->ai_socktype ? hints->ai_socktype : SOCK_STREAM;
+    int protocol = hints && hints->ai_protocol ? hints->ai_protocol : (socktype == SOCK_DGRAM ? IPPROTO_UDP : IPPROTO_TCP);
+    int port = 0;
+    if (service && *service) {
+        if (strcmp(service, "ntp") == 0) port = 123;
+        else {
+            char *end = 0;
+            long parsed = strtol(service, &end, 10);
+            if (!end || *end || parsed < 0 || parsed > 65535) return EAI_SERVICE;
+            port = (int)parsed;
+        }
+    }
+    struct in_addr address;
+    if (!node) address.s_addr = htonl(INADDR_ANY);
+    else {
+        int status = resolver_lookup_ipv4(node, &address);
+        if (status != 0) return status;
+    }
+    struct addrinfo *ai = (struct addrinfo*)calloc(1, sizeof(*ai));
+    struct sockaddr_in *sa = (struct sockaddr_in*)calloc(1, sizeof(*sa));
+    if (!ai || !sa) {
+        free(ai);
+        free(sa);
+        return EAI_MEMORY;
+    }
+    sa->sin_family = AF_INET;
+    sa->sin_port = htons((uint16_t)port);
+    sa->sin_addr = address;
+    ai->ai_family = AF_INET;
+    ai->ai_socktype = socktype;
+    ai->ai_protocol = protocol;
+    ai->ai_addrlen = sizeof(*sa);
+    ai->ai_addr = (struct sockaddr*)sa;
+    if (hints && (hints->ai_flags & AI_CANONNAME) && node) ai->ai_canonname = strdup(node);
+    *res = ai;
+    return 0;
+}
+
+void freeaddrinfo(struct addrinfo *res) {
+    while (res) {
+        struct addrinfo *next = res->ai_next;
+        free(res->ai_addr);
+        free(res->ai_canonname);
+        free(res);
+        res = next;
+    }
+}
+
+const char *gai_strerror(int ecode) {
+    switch (ecode) {
+    case 0: return "success";
+    case EAI_BADFLAGS: return "bad flags";
+    case EAI_NONAME: return "name not known";
+    case EAI_AGAIN: return "temporary failure";
+    case EAI_FAIL: return "resolver failure";
+    case EAI_FAMILY: return "address family not supported";
+    case EAI_MEMORY: return "out of memory";
+    case EAI_SERVICE: return "service not supported";
+    default: return "resolver error";
+    }
+}
+
+struct hostent *gethostbyname(const char *name) {
+    static struct hostent host;
+    static char *aliases[1];
+    static char *addr_list[2];
+    static struct in_addr address;
+    static char host_name[256];
+    struct addrinfo hints;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_INET;
+    struct addrinfo *result = 0;
+    int status = getaddrinfo(name, 0, &hints, &result);
+    if (status != 0 || !result || !result->ai_addr) {
+        freeaddrinfo(result);
+        errno = EAGAIN;
+        return 0;
+    }
+    const struct sockaddr_in *sa = (const struct sockaddr_in*)result->ai_addr;
+    address = sa->sin_addr;
+    strncpy(host_name, name ? name : "", sizeof(host_name) - 1);
+    host_name[sizeof(host_name) - 1] = 0;
+    aliases[0] = 0;
+    addr_list[0] = (char*)&address;
+    addr_list[1] = 0;
+    host.h_name = host_name;
+    host.h_aliases = aliases;
+    host.h_addrtype = AF_INET;
+    host.h_length = sizeof(address);
+    host.h_addr_list = addr_list;
+    freeaddrinfo(result);
+    return &host;
 }
 
 int tcgetattr(int fd, struct termios *termios_p) {
@@ -338,6 +834,7 @@ int fsync(int fd) { return (int)ok_or_errno(radix_syscall6(RADIX_SYS_FSYNC, fd, 
 int nanosleep(const struct timespec *req, struct timespec *rem) { (void)rem; if (!req || req->tv_sec < 0 || req->tv_nsec < 0 || req->tv_nsec >= 1000000000L) { errno = EINVAL; return -1; } return (int)ok_or_errno(radix_syscall6(RADIX_SYS_NANOSLEEP, req->tv_sec * 1000000000L + req->tv_nsec, 0, 0, 0, 0, 0)); }
 unsigned int sleep(unsigned int seconds) { struct timespec ts = {(long)seconds, 0}; return nanosleep(&ts, 0) == 0 ? 0 : seconds; }
 int gettimeofday(struct timeval *tv, void *tz) { (void)tz; return (int)ok_or_errno(radix_syscall6(RADIX_SYS_GETTIMEOFDAY, (long)tv, 0, 0, 0, 0, 0)); }
+int settimeofday(const struct timeval *tv, const void *tz) { (void)tz; if (!tv) { errno = EINVAL; return -1; } return (int)ok_or_errno(radix_syscall6(RADIX_SYS_SETTIMEOFDAY, (long)tv, 0, 0, 0, 0, 0)); }
 time_t time(time_t *tloc) { struct timeval tv; if (gettimeofday(&tv, 0) < 0) return (time_t)-1; if (tloc) *tloc = tv.tv_sec; return tv.tv_sec; }
 clock_t clock(void) { struct timeval tv; if (gettimeofday(&tv, 0) < 0) return (clock_t)-1; return tv.tv_sec * CLOCKS_PER_SEC + tv.tv_usec; }
 struct tm *localtime(const time_t *timep) {
@@ -382,8 +879,7 @@ sighandler_t signal(int signum, sighandler_t handler) {
 
 int kill(int pid, int sig) {
     if (pid <= 0 || sig <= 0 || sig >= NSIG) { errno = EINVAL; return -1; }
-    errno = ENOSYS;
-    return -1;
+    return (int)ok_or_errno(radix_syscall6(RADIX_SYS_KILL, pid, sig, 0, 0, 0, 0));
 }
 int raise(int sig) {
     if (sig <= 0 || sig >= NSIG) { errno = EINVAL; return -1; }

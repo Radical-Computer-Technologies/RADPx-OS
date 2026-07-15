@@ -3,6 +3,7 @@
   "description": "Primary boot terminal login or autologin session owned by radinit PID1",
   "exec": "@RADIX_BOOT_SESSION_EXEC@",
   "args": [],
+  "type": "simple",
   "terminal": "/dev/pts/boot-terminal",
   "autostart": true,
   "order": 70,

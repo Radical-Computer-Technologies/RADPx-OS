@@ -1,0 +1,15 @@
+{
+  "name": "network",
+  "description": "Primary network interface configuration service managed by radinit PID1",
+  "exec": "/sbin/network-service",
+  "args": ["/etc/radix/network/netinterfaces.json"],
+  "type": "simple",
+  "autostart": true,
+  "order": 40,
+  "requires": ["storage-root"],
+  "after": ["storage-root"],
+  "restart": "no",
+  "ready_marker": "RADIX_SERVICE_NETWORK_OK",
+  "stdout": "/var/log/radix/network.log",
+  "stderr": "/var/log/radix/network.log"
+}

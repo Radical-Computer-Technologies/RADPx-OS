@@ -67,6 +67,9 @@ extern "C" {
 #define RAD_DEVICE_IOCTL_NET_SEND RAD_IOW(RAD_IOCTL_TYPE_NET, 2u, struct rad_net_packet) ///< Public constant or ioctl helper.
 #define RAD_DEVICE_IOCTL_NET_POLL RAD_IO(RAD_IOCTL_TYPE_NET, 3u) ///< Public constant or ioctl helper.
 #define RAD_DEVICE_IOCTL_NET_RECV RAD_IOWR(RAD_IOCTL_TYPE_NET, 4u, struct rad_net_packet) ///< Public constant or ioctl helper.
+#define RAD_DEVICE_IOCTL_NET_STACK_INFO RAD_IOR(RAD_IOCTL_TYPE_NET, 5u, struct rad_net_stack_info) ///< Public constant or ioctl helper.
+#define RAD_DEVICE_IOCTL_NET_NTP_QUERY RAD_IOWR(RAD_IOCTL_TYPE_NET, 6u, struct rad_ntp_query) ///< Public constant or ioctl helper.
+#define RAD_DEVICE_IOCTL_NET_CONFIGURE RAD_IOW(RAD_IOCTL_TYPE_NET, 7u, struct rad_net_stack_config) ///< Public constant or ioctl helper.
 #define RAD_DEVICE_IOCTL_COMPOSITOR_CREATE_SURFACE RAD_IOWR(RAD_IOCTL_TYPE_COMPOSITOR, 1u, struct rad_compositor_ipc_surface) ///< Public constant or ioctl helper.
 #define RAD_DEVICE_IOCTL_COMPOSITOR_QUEUE_DAMAGE RAD_IOW(RAD_IOCTL_TYPE_COMPOSITOR, 2u, struct rad_compositor_ipc_damage) ///< Public constant or ioctl helper.
 #define RAD_DEVICE_IOCTL_FRAMEBUFFER_PRESENT RAD_IOW(RAD_IOCTL_TYPE_FRAMEBUFFER, 3u, struct rad_framebuffer_present) ///< Public constant or ioctl helper.
@@ -208,6 +211,7 @@ typedef enum rad_posix_syscall {
     RAD_SYSCALL_SHM_OPEN = 37, ///< RAD_SYSCALL_SHM_OPEN.
     RAD_SYSCALL_SHM_UNLINK = 38, ///< RAD_SYSCALL_SHM_UNLINK.
     RAD_SYSCALL_POLL = 39, ///< RAD_SYSCALL_POLL.
+    RAD_SYSCALL_SETTIMEOFDAY = 40, ///< RAD_SYSCALL_SETTIMEOFDAY.
     RAD_SYSCALL_GETDENTS = 1000, ///< RAD_SYSCALL_GETDENTS.
     RAD_SYSCALL_REMOVE = 1001, ///< RAD_SYSCALL_REMOVE.
     RAD_SYSCALL_MKDIR = 1002, ///< RAD_SYSCALL_MKDIR.
@@ -226,7 +230,8 @@ typedef enum rad_posix_syscall {
     RAD_SYSCALL_LINK = 1015, ///< RAD_SYSCALL_LINK.
     RAD_SYSCALL_SYMLINK = 1016, ///< RAD_SYSCALL_SYMLINK.
     RAD_SYSCALL_READLINK = 1017, ///< RAD_SYSCALL_READLINK.
-    RAD_SYSCALL_FSYNC = 1018 ///< RAD_SYSCALL_FSYNC.
+    RAD_SYSCALL_FSYNC = 1018, ///< RAD_SYSCALL_FSYNC.
+    RAD_SYSCALL_KILL = 1019 ///< RAD_SYSCALL_KILL.
 } rad_posix_syscall_t; ///< Public typedef alias.
 
 /** @brief Public enumeration for rad_process_state. */
@@ -692,6 +697,59 @@ typedef struct rad_net_link_info {
     uint64_t tx_packets; ///< Public structure field.
     uint64_t rx_packets; ///< Public structure field.
 } rad_net_link_info_t; ///< Public typedef alias.
+
+/** @brief Public data structure for rad_net_stack_info. */
+typedef struct rad_net_stack_info {
+    uint32_t size; ///< Public structure field.
+    rad_ipv4_address_t ipv4; ///< Static IPv4 address assigned to the stack.
+    rad_ipv4_address_t netmask; ///< Static IPv4 netmask.
+    rad_ipv4_address_t gateway; ///< Static default gateway.
+    rad_ipv4_address_t ntp_server; ///< Default NTP/SNTP server address.
+    uint16_t ntp_port; ///< Default NTP/SNTP UDP port.
+    uint16_t arp_entries; ///< Number of valid ARP cache entries.
+    uint64_t ethernet_rx; ///< Ethernet frames received by the stack.
+    uint64_t ethernet_tx; ///< Ethernet frames transmitted by the stack.
+    uint64_t arp_rx; ///< ARP frames received by the stack.
+    uint64_t arp_tx; ///< ARP frames transmitted by the stack.
+    uint64_t ipv4_rx; ///< IPv4 packets accepted by the stack.
+    uint64_t ipv4_tx; ///< IPv4 packets transmitted by the stack.
+    uint64_t udp_rx; ///< UDP datagrams accepted by the stack.
+    uint64_t udp_tx; ///< UDP datagrams transmitted by the stack.
+    uint64_t icmp_rx; ///< ICMP packets accepted by the stack.
+    uint64_t icmp_tx; ///< ICMP packets transmitted by the stack.
+} rad_net_stack_info_t; ///< Public typedef alias.
+
+/** @brief Public data structure for rad_net_stack_config. */
+typedef struct rad_net_stack_config {
+    uint32_t size; ///< Public structure field.
+    rad_ipv4_address_t ipv4; ///< Runtime IPv4 address assigned to the stack.
+    rad_ipv4_address_t netmask; ///< Runtime IPv4 netmask.
+    rad_ipv4_address_t gateway; ///< Runtime default gateway.
+    rad_ipv4_address_t ntp_server; ///< Runtime default NTP/SNTP server address.
+    uint16_t ntp_port; ///< Runtime default NTP/SNTP UDP port.
+    uint16_t flags; ///< Reserved for future DHCP/link policy flags.
+} rad_net_stack_config_t; ///< Public typedef alias.
+
+/** @brief Public data structure for rad_ntp_status. */
+typedef struct rad_ntp_status {
+    uint32_t size; ///< Public structure field.
+    rad_ipv4_address_t server; ///< Last queried NTP/SNTP server.
+    uint16_t port; ///< Last queried UDP port.
+    uint16_t valid; ///< Nonzero when last_unix_seconds contains a valid sample.
+    uint64_t last_unix_seconds; ///< Last sampled Unix timestamp.
+    int64_t offset_millis; ///< Sample offset against the current kernel clock.
+    uint64_t queries; ///< Number of NTP/SNTP requests sent.
+    uint64_t responses; ///< Number of valid NTP/SNTP responses received.
+} rad_ntp_status_t; ///< Public typedef alias.
+
+/** @brief Public data structure for rad_ntp_query. */
+typedef struct rad_ntp_query {
+    uint32_t size; ///< Public structure field.
+    rad_ipv4_address_t server; ///< NTP/SNTP server to query; zero uses default.
+    uint16_t port; ///< UDP port to query; zero uses default.
+    uint16_t timeout_ms; ///< Timeout in milliseconds; zero uses a small default.
+    rad_ntp_status_t status; ///< Result status after the query.
+} rad_ntp_query_t; ///< Public typedef alias.
 
 /** @brief Public data structure for rad_sockaddr_in. */
 typedef struct rad_sockaddr_in {
@@ -1361,6 +1419,8 @@ const char *rad_boot_arg_get(const char *key); ///< Return a boot argument value
 
 uint64_t rad_time_micros(void); ///< Public RADix kernel API entry point.
 uint64_t rad_time_millis(void); ///< Public RADix kernel API entry point.
+uint64_t rad_realtime_micros(void); ///< Public RADix kernel API entry point.
+rad_status_t rad_realtime_set_micros(uint64_t unix_micros); ///< Public RADix kernel API entry point.
 void rad_sleep_ms(uint32_t milliseconds); ///< Public RADix kernel API entry point.
 void rad_sleep_us(uint32_t microseconds); ///< Public RADix kernel API entry point.
 uint64_t rad_perf_now_cycles(void); ///< Public RADix kernel API entry point.
@@ -1446,6 +1506,7 @@ int32_t rad_process_fork(void); ///< Public RADix kernel API entry point.
 int32_t rad_process_execve(const char *path, const char *const argv[]); ///< Public RADix kernel API entry point.
 int32_t rad_process_waitpid(int32_t pid, int32_t *status, uint32_t options); ///< Public RADix kernel API entry point.
 void rad_process_exit(int32_t status); ///< Public RADix kernel API entry point.
+int32_t rad_process_kill(int32_t pid, int32_t signal_number); ///< Public RADix kernel API entry point.
 size_t rad_process_list(rad_process_info_t *processes, size_t capacity); ///< Public RADix kernel API entry point.
 int32_t rad_process_create(const char *path, int32_t parent_pid); ///< Public RADix kernel API entry point.
 rad_status_t rad_process_attach_task(int32_t pid, rad_task_t task); ///< Public RADix kernel API entry point.
@@ -1560,6 +1621,10 @@ rad_status_t rad_net_link_info(rad_device_t device, rad_net_link_info_t *info); 
 rad_status_t rad_net_send(rad_device_t device, const void *data, size_t length); ///< Public RADix kernel API entry point.
 intptr_t rad_net_receive(rad_device_t device, void *data, size_t length); ///< Public RADix kernel API entry point.
 rad_status_t rad_net_poll(rad_device_t device); ///< Public RADix kernel API entry point.
+rad_status_t rad_net_stack_info(rad_net_stack_info_t *info); ///< Public RADix kernel API entry point.
+rad_status_t rad_net_configure(const rad_net_stack_config_t *config); ///< Public RADix kernel API entry point.
+rad_status_t rad_net_ntp_status(rad_ntp_status_t *status); ///< Public RADix kernel API entry point.
+rad_status_t rad_net_ntp_query(rad_ntp_query_t *query); ///< Public RADix kernel API entry point.
 int32_t rad_socket_create(int domain, int type, int protocol); ///< Public RADix kernel API entry point.
 int32_t rad_socket_bind(int32_t fd, const rad_sockaddr_in_t *address, size_t address_length); ///< Public RADix kernel API entry point.
 int32_t rad_socket_listen(int32_t fd, int backlog); ///< Public RADix kernel API entry point.

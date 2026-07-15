@@ -1,0 +1,15 @@
+{
+  "name": "time-sync",
+  "description": "RADix NTP/SNTP realtime clock synchronization service",
+  "exec": "/sbin/time-sync",
+  "args": ["/etc/radix/time/time-sync.json"],
+  "type": "simple",
+  "autostart": true,
+  "order": 44,
+  "requires": ["network", "dns-resolver"],
+  "after": ["dns-resolver"],
+  "restart": "on-failure",
+  "ready_marker": "RADIX_SERVICE_TIME_SYNC_OK",
+  "stdout": "/var/log/radix/time-sync.log",
+  "stderr": "/var/log/radix/time-sync.log"
+}

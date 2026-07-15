@@ -716,6 +716,8 @@ int32_t x86_process_fork_arch(void *, void *trap_frame) {
 void x86_process_reaped_arch(void *, int32_t pid, int32_t) {
     X86UserProcess *process = find_user_process(pid);
     if (process) {
+        if (process->address_space.pml4) x86_vm_destroy_address_space(&process->address_space);
+        process->exiting = 1;
         process->used = 0;
     }
 }
@@ -947,10 +949,17 @@ extern "C" long x86_syscall_dispatch(unsigned long number, unsigned long arg0, u
         }
         if (!arg0) return RAD_STATUS_INVALID_ARGUMENT;
         rad_posix_timeval_t tv{};
-        const uint64_t micros = rad_time_micros();
+        const uint64_t micros = rad_realtime_micros();
         tv.tv_sec = static_cast<int64_t>(micros / 1000000u);
         tv.tv_usec = static_cast<int64_t>(micros % 1000000u);
         return x86_copy_to_user(arg0, &tv, sizeof(tv));
+    }
+    case RAD_SYSCALL_SETTIMEOFDAY: {
+        if (!arg0 || !user_range_ok(arg0, sizeof(rad_posix_timeval_t))) return RAD_STATUS_INVALID_ARGUMENT;
+        rad_posix_timeval_t tv{};
+        if (x86_copy_from_user(&tv, arg0, sizeof(tv)) != RAD_STATUS_OK) return RAD_STATUS_INVALID_ARGUMENT;
+        if (tv.tv_sec < 0 || tv.tv_usec < 0 || tv.tv_usec >= 1000000) return RAD_STATUS_INVALID_ARGUMENT;
+        return rad_realtime_set_micros(static_cast<uint64_t>(tv.tv_sec) * 1000000u + static_cast<uint64_t>(tv.tv_usec));
     }
     case RAD_SYSCALL_NANOSLEEP:
         x86_syscall_delay_ns(arg0);
@@ -1015,6 +1024,8 @@ extern "C" long x86_syscall_dispatch(unsigned long number, unsigned long arg0, u
         }
         return waited;
     }
+    case RAD_SYSCALL_KILL:
+        return rad_process_kill(static_cast<int32_t>(arg0), static_cast<int32_t>(arg1));
     case LinuxSysWait4: {
         int32_t status = 0;
         X86UserProcess *caller = find_user_process(rad_process_current_pid());

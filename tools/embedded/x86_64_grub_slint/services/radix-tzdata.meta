@@ -1,0 +1,7 @@
+name=radix-tzdata
+version=0.1.3-experimental
+kind=data
+data=/usr/share/zoneinfo
+config=/etc/timezone,/etc/localtime
+requires=radix-core
+note=RADix timezone data package; default image includes UTC/local selectors and package-owned zoneinfo path.

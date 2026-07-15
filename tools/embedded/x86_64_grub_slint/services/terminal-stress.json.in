@@ -3,6 +3,7 @@
   "description": "Boot-time POSIX TTY, scheduler sleep, signal, and ncurses compatibility stress suite",
   "exec": "/usr/bin/terminal-stress",
   "args": [],
+  "type": "oneshot",
   "terminal": "/dev/pts/boot-terminal",
   "autostart": @RADIX_TERMINAL_STRESS_AUTOSTART@,
   "order": 60,

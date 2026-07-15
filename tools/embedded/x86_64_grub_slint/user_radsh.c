@@ -23,7 +23,12 @@ enum {
     SYS_CHDIR = 18,
     SYS_GETCWD = 19,
     SYS_PIPE = 21,
+    SYS_SOCKET = 25,
+    SYS_BIND = 26,
+    SYS_SENDTO = 30,
+    SYS_RECVFROM = 31,
     SYS_POLL = 39,
+    SYS_SETTIMEOFDAY = 40,
     SYS_GETDENTS = 1000,
     SYS_REMOVE = 1001,
     SYS_MKDIR = 1002,
@@ -41,6 +46,7 @@ enum {
     SYS_SYMLINK = 1016,
     SYS_READLINK = 1017,
     SYS_FSYNC = 1018,
+    SYS_KILL = 1019,
 };
 
 #define RAD_IOCTL_NONE 0u
@@ -51,10 +57,14 @@ enum {
 #define RAD_IOR(type, nr, type_name) RAD_IOCTL(RAD_IOCTL_READ, type, nr, sizeof(type_name))
 #define RAD_IOW(type, nr, type_name) RAD_IOCTL(RAD_IOCTL_WRITE, type, nr, sizeof(type_name))
 #define RAD_IOCTL_TYPE_TTY 'Y'
+#define RAD_IOCTL_TYPE_NET 'N'
 #define RAD_DEVICE_IOCTL_TTY_GET_WINSIZE RAD_IOR(RAD_IOCTL_TYPE_TTY, 1u, radsh_winsize_t)
 #define RAD_DEVICE_IOCTL_TTY_SET_WINSIZE RAD_IOW(RAD_IOCTL_TYPE_TTY, 2u, radsh_winsize_t)
 #define RAD_DEVICE_IOCTL_TTY_GET_MODE RAD_IOR(RAD_IOCTL_TYPE_TTY, 3u, uint32_t)
 #define RAD_DEVICE_IOCTL_TTY_SET_MODE RAD_IOW(RAD_IOCTL_TYPE_TTY, 4u, uint32_t)
+#define RAD_DEVICE_IOCTL_NET_LINK_INFO RAD_IOR(RAD_IOCTL_TYPE_NET, 1u, radsh_net_link_info_t)
+#define RAD_DEVICE_IOCTL_NET_STACK_INFO RAD_IOR(RAD_IOCTL_TYPE_NET, 5u, radsh_net_stack_info_t)
+#define RAD_DEVICE_IOCTL_NET_NTP_QUERY RAD_IOCTL(RAD_IOCTL_READWRITE, RAD_IOCTL_TYPE_NET, 6u, sizeof(radsh_ntp_query_t))
 #define RAD_TTY_MODE_CANONICAL (1u << 0)
 #define RAD_TTY_MODE_ECHO (1u << 1)
 #define RAD_TTY_MODE_CRLF (1u << 2)
@@ -63,6 +73,38 @@ enum {
 #define RAD_POLLERR 0x0008
 #define RAD_POLLHUP 0x0010
 #define RAD_POLLNVAL 0x0020
+#define RAD_AF_INET 2
+#define RAD_SOCK_DGRAM 2
+#define RAD_IPPROTO_UDP 17
+
+#ifndef RADIX_RKCONFIG_NET_IPV4_A
+#define RADIX_RKCONFIG_NET_IPV4_A 10
+#define RADIX_RKCONFIG_NET_IPV4_B 0
+#define RADIX_RKCONFIG_NET_IPV4_C 2
+#define RADIX_RKCONFIG_NET_IPV4_D 15
+#endif
+
+#ifndef RADIX_RKCONFIG_NET_NTP_A
+#define RADIX_RKCONFIG_NET_NTP_A 216
+#define RADIX_RKCONFIG_NET_NTP_B 239
+#define RADIX_RKCONFIG_NET_NTP_C 35
+#define RADIX_RKCONFIG_NET_NTP_D 0
+#endif
+
+#ifndef RADIX_RKCONFIG_NET_NTP_HOST
+#define RADIX_RKCONFIG_NET_NTP_HOST "time.google.com"
+#endif
+
+#ifndef RADIX_RKCONFIG_NET_NTP_PORT
+#define RADIX_RKCONFIG_NET_NTP_PORT 123
+#endif
+
+#ifndef RADIX_RKCONFIG_NET_DNS_A
+#define RADIX_RKCONFIG_NET_DNS_A 10
+#define RADIX_RKCONFIG_NET_DNS_B 0
+#define RADIX_RKCONFIG_NET_DNS_C 2
+#define RADIX_RKCONFIG_NET_DNS_D 3
+#endif
 
 enum {
     O_READ = 1u << 0,
@@ -93,6 +135,69 @@ typedef struct {
     uint16_t x_pixels;
     uint16_t y_pixels;
 } radsh_winsize_t;
+
+typedef struct {
+    uint8_t bytes[6];
+} radsh_mac_t;
+
+typedef struct {
+    uint8_t bytes[4];
+} radsh_ipv4_t;
+
+typedef struct {
+    uint16_t family;
+    uint16_t port;
+    radsh_ipv4_t address;
+    uint8_t zero[8];
+} radsh_sockaddr_in_t;
+
+typedef struct {
+    uint32_t size;
+    radsh_mac_t mac;
+    uint32_t mtu;
+    int link_up;
+    uint64_t tx_packets;
+    uint64_t rx_packets;
+} radsh_net_link_info_t;
+
+typedef struct {
+    uint32_t size;
+    radsh_ipv4_t ipv4;
+    radsh_ipv4_t netmask;
+    radsh_ipv4_t gateway;
+    radsh_ipv4_t ntp_server;
+    uint16_t ntp_port;
+    uint16_t arp_entries;
+    uint64_t ethernet_rx;
+    uint64_t ethernet_tx;
+    uint64_t arp_rx;
+    uint64_t arp_tx;
+    uint64_t ipv4_rx;
+    uint64_t ipv4_tx;
+    uint64_t udp_rx;
+    uint64_t udp_tx;
+    uint64_t icmp_rx;
+    uint64_t icmp_tx;
+} radsh_net_stack_info_t;
+
+typedef struct {
+    uint32_t size;
+    radsh_ipv4_t server;
+    uint16_t port;
+    uint16_t valid;
+    uint64_t last_unix_seconds;
+    int64_t offset_millis;
+    uint64_t queries;
+    uint64_t responses;
+} radsh_ntp_status_t;
+
+typedef struct {
+    uint32_t size;
+    radsh_ipv4_t server;
+    uint16_t port;
+    uint16_t timeout_ms;
+    radsh_ntp_status_t status;
+} radsh_ntp_query_t;
 
 typedef struct {
     int fd;
@@ -160,6 +265,11 @@ static void s_cat(char *dst, size_t size, const char *src) {
     size_t at = s_len(dst);
     if (at >= size) return;
     s_copy(dst + at, size - at, src);
+}
+
+static void zero_mem(void *ptr, size_t size) {
+    unsigned char *p = (unsigned char*)ptr;
+    while (size--) *p++ = 0;
 }
 
 static long to_long(const char *s, long fallback) {
@@ -417,6 +527,35 @@ static int cmd_dmesg_user(int outfd) {
 }
 
 static int cmd_initctl_control(const char *verb, const char *name, int outfd);
+static int write_file_text(const char *path, const char *text);
+static int read_file_text(const char *path, char *buffer, size_t size);
+
+static int radinit_control_request(const char *verb, const char *name, int outfd, const char *queued_message) {
+    if (!verb || !verb[0]) return -2;
+    write_file_text("/run/radinit/control.status", "pending\n");
+    char request[96];
+    s_copy(request, sizeof(request), verb);
+    if (name && name[0]) {
+        s_cat(request, sizeof(request), " ");
+        s_cat(request, sizeof(request), name);
+    }
+    s_cat(request, sizeof(request), "\n");
+    int status = write_file_text("/run/radinit/control.txt", request);
+    if (status < 0) return status;
+    for (int i = 0; i < 40; ++i) {
+        char response[160];
+        int n = read_file_text("/run/radinit/control.status", response, sizeof(response));
+        if (n > 0) {
+            if (s_starts_with_name(response, "ok") || s_starts_with_name(response, "busy") || s_starts_with_name(response, "error")) {
+                puts_fd(outfd, response);
+                return s_starts_with_name(response, "ok") ? 0 : -1;
+            }
+        }
+        sc(SYS_NANOSLEEP, 50000000, 0, 0, 0, 0, 0);
+    }
+    line_fd(outfd, queued_message ? queued_message : "request queued");
+    return 0;
+}
 
 static int cmd_initctl(int argc, char **argv, int outfd) {
     if (argc < 2 || s_eq(argv[1], "list")) return read_file_to_fd("/run/radinit/status.txt", outfd);
@@ -445,11 +584,21 @@ static int cmd_initctl(int argc, char **argv, int outfd) {
         }
         return -3;
     }
-    if (s_eq(argv[1], "start") || s_eq(argv[1], "restart")) return cmd_initctl_control(argv[1], argc > 2 ? argv[2] : "", outfd);
-    if (s_eq(argv[1], "stop")) {
-        line_fd(outfd, "initctl stop is not wired until process signals land");
-        return -6;
+    if (s_eq(argv[1], "start") || s_eq(argv[1], "restart") || s_eq(argv[1], "stop")) return cmd_initctl_control(argv[1], argc > 2 ? argv[2] : "", outfd);
+    return -2;
+}
+
+static int cmd_radservice(int argc, char **argv, int outfd) {
+    if (argc < 2 || s_eq(argv[1], "list")) {
+        int status = radinit_control_request("reload", "", outfd, "radservice reload queued");
+        if (status < 0) return status;
+        return read_file_to_fd("/run/radinit/status.txt", outfd);
     }
+    if (s_eq(argv[1], "start") || s_eq(argv[1], "stop") || s_eq(argv[1], "restart")) {
+        if (argc < 3) return -2;
+        return radinit_control_request(argv[1], argv[2], outfd, "radservice request queued");
+    }
+    line_fd(outfd, "usage: radservice list|start <service>|stop <service>|restart <service>");
     return -2;
 }
 
@@ -599,6 +748,63 @@ static int cmd_ps(int outfd) {
     return read_file_to_fd("/run/radinit/status.txt", outfd);
 }
 
+static int field_pid_from_line(const char *line) {
+    const char *p = line;
+    while (p && *p) {
+        if (p[0] == 'p' && p[1] == 'i' && p[2] == 'd' && p[3] == '=') {
+            return (int)to_long(p + 4, 0);
+        }
+        ++p;
+    }
+    return 0;
+}
+
+static int line_exec_matches(const char *line, const char *name) {
+    const char *p = line;
+    while (p && *p) {
+        if (p[0] == 'e' && p[1] == 'x' && p[2] == 'e' && p[3] == 'c' && p[4] == '=') {
+            p += 5;
+            const char *base = p;
+            for (const char *q = p; *q && *q != ' ' && *q != '\t'; ++q) {
+                if (*q == '/' && q[1] && q[1] != ' ' && q[1] != '\t') base = q + 1;
+            }
+            size_t i = 0;
+            while (name[i] && base[i] == name[i]) ++i;
+            return name[i] == 0 && (base[i] == 0 || base[i] == ' ' || base[i] == '\t' || base[i] == '\n');
+        }
+        ++p;
+    }
+    return 0;
+}
+
+static int cmd_pkill(int argc, char **argv, int outfd) {
+    if (argc < 2 || !argv[1][0]) return -2;
+    char text[4096];
+    int n = read_file_text("/run/radinit/status.txt", text, sizeof(text));
+    if (n <= 0) return n < 0 ? n : -3;
+    int killed = 0;
+    char *line = text;
+    while (*line) {
+        char *next = line;
+        while (*next && *next != '\n') ++next;
+        char saved = *next;
+        *next = 0;
+        if (s_starts_with_name(line, argv[1]) || line_exec_matches(line, argv[1])) {
+            int pid = field_pid_from_line(line);
+            if (pid > 1 && sc(SYS_KILL, pid, 15, 0, 0, 0, 0) == 0) {
+                puts_fd(outfd, "killed ");
+                print_num(outfd, (uint64_t)pid);
+                puts_fd(outfd, " ");
+                line_fd(outfd, argv[1]);
+                ++killed;
+            }
+        }
+        if (saved) *next++ = saved;
+        line = next;
+    }
+    return killed ? 0 : -3;
+}
+
 static int cmd_clear(void) {
     puts_fd(1, "\x1b[2J\x1b[H");
     marker_fd("RADIX_RASH_CLEAR_OK");
@@ -632,33 +838,13 @@ static int cmd_tui_smoke(void) {
 
 static int cmd_initctl_control(const char *verb, const char *name, int outfd) {
     if (!name || !name[0]) return -2;
-    write_file_text("/run/radinit/control.status", "pending\n");
-    char request[96];
-    s_copy(request, sizeof(request), verb);
-    s_cat(request, sizeof(request), " ");
-    s_cat(request, sizeof(request), name);
-    s_cat(request, sizeof(request), "\n");
-    int status = write_file_text("/run/radinit/control.txt", request);
-    if (status < 0) return status;
-    for (int i = 0; i < 20; ++i) {
-        char response[160];
-        int n = read_file_text("/run/radinit/control.status", response, sizeof(response));
-        if (n > 0) {
-            if (s_starts_with_name(response, "ok") || s_starts_with_name(response, "busy") || s_starts_with_name(response, "error")) {
-                puts_fd(outfd, response);
-                return s_starts_with_name(response, "ok") ? 0 : -1;
-            }
-        }
-        sc(SYS_NANOSLEEP, 50000000, 0, 0, 0, 0, 0);
-    }
-    line_fd(outfd, "initctl request queued");
-    return 0;
+    return radinit_control_request(verb, name, outfd, "initctl request queued");
 }
 
 static const char *builtin_names[] = {
     "basename", "cat", "cd", "chmod", "clear", "cp", "date", "dirname", "dmesg", "echo",
     "env", "false", "head", "help", "hostname", "id", "initctl", "ln", "logread", "ls",
-    "mkdir", "mount", "mv", "passwd", "printf", "ps", "pwd", "readlink", "reboot", "reset",
+    "mkdir", "mount", "mv", "net", "ntpdate", "passwd", "pkill", "printf", "ps", "pwd", "radservice", "readlink", "reboot", "reset",
     "rm", "rmdir", "sleep", "stat", "stty", "tail", "test", "touch", "tput", "true",
     "tty", "tui-smoke", "uname", "wc", "which", "[", 0
 };
@@ -857,6 +1043,369 @@ static int cmd_sleep(int argc, char **argv) {
     return (int)sc(SYS_NANOSLEEP, seconds * 1000000000L, 0, 0, 0, 0, 0);
 }
 
+static void print_ipv4(int outfd, radsh_ipv4_t ip) {
+    print_num(outfd, ip.bytes[0]); puts_fd(outfd, ".");
+    print_num(outfd, ip.bytes[1]); puts_fd(outfd, ".");
+    print_num(outfd, ip.bytes[2]); puts_fd(outfd, ".");
+    print_num(outfd, ip.bytes[3]);
+}
+
+static void print_hex_nibble(int outfd, uint8_t v) {
+    char c = (char)(v < 10 ? ('0' + v) : ('a' + (v - 10)));
+    putn(outfd, &c, 1);
+}
+
+static void print_hex_byte(int outfd, uint8_t v) {
+    print_hex_nibble(outfd, (uint8_t)(v >> 4u));
+    print_hex_nibble(outfd, (uint8_t)(v & 0x0fu));
+}
+
+static void print_mac(int outfd, radsh_mac_t mac) {
+    for (int i = 0; i < 6; ++i) {
+        if (i) puts_fd(outfd, ":");
+        print_hex_byte(outfd, mac.bytes[i]);
+    }
+}
+
+static uint64_t now_millis(void) {
+    radsh_timeval_t tv;
+    if (sc(SYS_GETTIMEOFDAY, (long)&tv, 0, 0, 0, 0, 0) < 0) return 0;
+    return (uint64_t)tv.tv_sec * 1000u + (uint64_t)(tv.tv_usec / 1000u);
+}
+
+static uint32_t read_be32_radsh(const uint8_t *p) {
+    return ((uint32_t)p[0] << 24u)
+        | ((uint32_t)p[1] << 16u)
+        | ((uint32_t)p[2] << 8u)
+        | (uint32_t)p[3];
+}
+
+static uint16_t read_be16_radsh(const uint8_t *p) {
+    return (uint16_t)(((uint16_t)p[0] << 8u) | p[1]);
+}
+
+static void write_be16_radsh(uint8_t *p, uint16_t value) {
+    p[0] = (uint8_t)(value >> 8u);
+    p[1] = (uint8_t)value;
+}
+
+static int parse_ipv4_radsh(const char *text, radsh_ipv4_t *out) {
+    if (!text || !out) return 0;
+    const char *p = text;
+    uint8_t bytes[4];
+    for (int i = 0; i < 4; ++i) {
+        if (*p < '0' || *p > '9') return 0;
+        unsigned value = 0;
+        while (*p >= '0' && *p <= '9') {
+            value = value * 10u + (unsigned)(*p - '0');
+            if (value > 255u) return 0;
+            ++p;
+        }
+        bytes[i] = (uint8_t)value;
+        if (i < 3) {
+            if (*p != '.') return 0;
+            ++p;
+        }
+    }
+    if (*p) return 0;
+    out->bytes[0] = bytes[0];
+    out->bytes[1] = bytes[1];
+    out->bytes[2] = bytes[2];
+    out->bytes[3] = bytes[3];
+    return 1;
+}
+
+static int dns_put_name_radsh(uint8_t *packet, size_t size, size_t *pos, const char *name) {
+    const char *label = name;
+    while (*label) {
+        const char *dot = label;
+        while (*dot && *dot != '.') ++dot;
+        size_t len = (size_t)(dot - label);
+        if (len == 0 || len > 63 || *pos + len + 1 >= size) return 0;
+        packet[(*pos)++] = (uint8_t)len;
+        for (size_t i = 0; i < len; ++i) packet[(*pos)++] = (uint8_t)label[i];
+        if (!*dot) break;
+        label = dot + 1;
+    }
+    if (*pos >= size) return 0;
+    packet[(*pos)++] = 0;
+    return 1;
+}
+
+static int dns_skip_name_radsh(const uint8_t *packet, size_t size, size_t *pos) {
+    size_t p = *pos;
+    for (unsigned hops = 0; hops < 64; ++hops) {
+        if (p >= size) return 0;
+        uint8_t len = packet[p++];
+        if (len == 0) {
+            *pos = p;
+            return 1;
+        }
+        if ((len & 0xc0u) == 0xc0u) {
+            if (p >= size) return 0;
+            *pos = p + 1;
+            return 1;
+        }
+        if ((len & 0xc0u) != 0 || p + len > size) return 0;
+        p += len;
+    }
+    return 0;
+}
+
+static int dns_lookup_a_radsh(const char *name, radsh_ipv4_t *out) {
+    if (!name || !out) return -2;
+    long fd = sc(SYS_SOCKET, RAD_AF_INET, RAD_SOCK_DGRAM, RAD_IPPROTO_UDP, 0, 0, 0);
+    if (fd < 0) return (int)fd;
+    uint8_t query[512];
+    zero_mem(query, sizeof(query));
+    uint16_t txid = (uint16_t)(now_millis() ^ 0x444e);
+    write_be16_radsh(query + 0, txid);
+    write_be16_radsh(query + 2, 0x0100u);
+    write_be16_radsh(query + 4, 1u);
+    size_t qlen = 12;
+    if (!dns_put_name_radsh(query, sizeof(query), &qlen, name) || qlen + 4 > sizeof(query)) {
+        sc(SYS_CLOSE, fd, 0, 0, 0, 0, 0);
+        return -2;
+    }
+    write_be16_radsh(query + qlen, 1u); qlen += 2;
+    write_be16_radsh(query + qlen, 1u); qlen += 2;
+    radsh_sockaddr_in_t dns;
+    zero_mem(&dns, sizeof(dns));
+    dns.family = RAD_AF_INET;
+    dns.port = 53;
+    dns.address.bytes[0] = RADIX_RKCONFIG_NET_DNS_A;
+    dns.address.bytes[1] = RADIX_RKCONFIG_NET_DNS_B;
+    dns.address.bytes[2] = RADIX_RKCONFIG_NET_DNS_C;
+    dns.address.bytes[3] = RADIX_RKCONFIG_NET_DNS_D;
+    long sent = sc(SYS_SENDTO, fd, (long)query, qlen, 0, (long)&dns, sizeof(dns));
+    if (sent != (long)qlen) {
+        sc(SYS_CLOSE, fd, 0, 0, 0, 0, 0);
+        return sent < 0 ? (int)sent : -1;
+    }
+    uint8_t response[512];
+    radsh_sockaddr_in_t from;
+    size_t from_len = sizeof(from);
+    long received = 0;
+    uint64_t start = now_millis();
+    for (unsigned attempt = 0; attempt < 2000u; ++attempt) {
+        zero_mem(&from, sizeof(from));
+        from_len = sizeof(from);
+        received = sc(SYS_RECVFROM, fd, (long)response, sizeof(response), 0, (long)&from, (long)&from_len);
+        if (received > 0) break;
+        if (received < 0) {
+            sc(SYS_CLOSE, fd, 0, 0, 0, 0, 0);
+            return (int)received;
+        }
+        if (attempt > 16u && start && now_millis() - start > 1000u) break;
+        sc(SYS_NANOSLEEP, 1000000L, 0, 0, 0, 0, 0);
+    }
+    sc(SYS_CLOSE, fd, 0, 0, 0, 0, 0);
+    if (received < 12) return -5;
+    size_t rlen = (size_t)received;
+    if (read_be16_radsh(response + 0) != txid) return -1;
+    if ((read_be16_radsh(response + 2) & 0x000fu) != 0) return -3;
+    uint16_t qd = read_be16_radsh(response + 4);
+    uint16_t an = read_be16_radsh(response + 6);
+    size_t pos = 12;
+    for (uint16_t i = 0; i < qd; ++i) {
+        if (!dns_skip_name_radsh(response, rlen, &pos) || pos + 4 > rlen) return -1;
+        pos += 4;
+    }
+    for (uint16_t i = 0; i < an; ++i) {
+        if (!dns_skip_name_radsh(response, rlen, &pos) || pos + 10 > rlen) return -1;
+        uint16_t type = read_be16_radsh(response + pos);
+        uint16_t klass = read_be16_radsh(response + pos + 2);
+        uint16_t rdlen = read_be16_radsh(response + pos + 8);
+        pos += 10;
+        if (pos + rdlen > rlen) return -1;
+        if (type == 1u && klass == 1u && rdlen == 4u) {
+            out->bytes[0] = response[pos];
+            out->bytes[1] = response[pos + 1];
+            out->bytes[2] = response[pos + 2];
+            out->bytes[3] = response[pos + 3];
+            return 0;
+        }
+        pos += rdlen;
+    }
+    return -3;
+}
+
+static int cmd_net(int outfd) {
+    long fd = sc(SYS_OPEN, (long)"/dev/net0", O_READ | O_WRITE, 0, 0, 0, 0);
+    if (fd < 0) {
+        line_fd(outfd, "net: /dev/net0 unavailable");
+        return (int)fd;
+    }
+    radsh_net_link_info_t link;
+    radsh_net_stack_info_t stack;
+    zero_mem(&link, sizeof(link));
+    zero_mem(&stack, sizeof(stack));
+    link.size = sizeof(link);
+    stack.size = sizeof(stack);
+    long link_status = sc(SYS_IOCTL, fd, RAD_DEVICE_IOCTL_NET_LINK_INFO, (long)&link, 0, 0, 0);
+    long stack_status = sc(SYS_IOCTL, fd, RAD_DEVICE_IOCTL_NET_STACK_INFO, (long)&stack, 0, 0, 0);
+    sc(SYS_CLOSE, fd, 0, 0, 0, 0, 0);
+    if (link_status < 0) {
+        puts_fd(outfd, "net: link ioctl failed ");
+        print_signed(outfd, link_status);
+        puts_fd(outfd, "\n");
+        return (int)link_status;
+    }
+    if (stack_status < 0) {
+        puts_fd(outfd, "net: stack ioctl failed ");
+        print_signed(outfd, stack_status);
+        puts_fd(outfd, "\n");
+        return (int)stack_status;
+    }
+    puts_fd(outfd, "net0 ");
+    puts_fd(outfd, link.link_up ? "up" : "down");
+    puts_fd(outfd, " mtu "); print_num(outfd, link.mtu);
+    puts_fd(outfd, " mac "); print_mac(outfd, link.mac);
+    puts_fd(outfd, "\n");
+    puts_fd(outfd, "ipv4 "); print_ipv4(outfd, stack.ipv4);
+    puts_fd(outfd, " netmask "); print_ipv4(outfd, stack.netmask);
+    puts_fd(outfd, " gateway "); print_ipv4(outfd, stack.gateway);
+    puts_fd(outfd, "\n");
+    puts_fd(outfd, "frames tx/rx "); print_num(outfd, link.tx_packets); puts_fd(outfd, "/"); print_num(outfd, link.rx_packets);
+    puts_fd(outfd, " stack eth "); print_num(outfd, stack.ethernet_tx); puts_fd(outfd, "/"); print_num(outfd, stack.ethernet_rx);
+    puts_fd(outfd, " arp "); print_num(outfd, stack.arp_entries);
+    puts_fd(outfd, "\n");
+    puts_fd(outfd, "udp tx/rx "); print_num(outfd, stack.udp_tx); puts_fd(outfd, "/"); print_num(outfd, stack.udp_rx);
+    puts_fd(outfd, " icmp tx/rx "); print_num(outfd, stack.icmp_tx); puts_fd(outfd, "/"); print_num(outfd, stack.icmp_rx);
+    puts_fd(outfd, "\n");
+    puts_fd(outfd, "ntp default "); print_ipv4(outfd, stack.ntp_server); puts_fd(outfd, ":"); print_num(outfd, stack.ntp_port); puts_fd(outfd, "\n");
+    return 0;
+}
+
+static int cmd_ntpdate(int argc, char **argv, int outfd) {
+    int argi = 1;
+    int query_only = 0;
+    if (argc > argi && s_eq(argv[argi], "-q")) {
+        query_only = 1;
+        ++argi;
+    }
+    const char *host = argc > argi ? argv[argi++] : RADIX_RKCONFIG_NET_NTP_HOST;
+    long port_value = argc > argi ? to_long(argv[argi], RADIX_RKCONFIG_NET_NTP_PORT) : RADIX_RKCONFIG_NET_NTP_PORT;
+    if (port_value <= 0 || port_value > 65535) return -2;
+
+    radsh_ipv4_t server_ip;
+    if (!parse_ipv4_radsh(host, &server_ip)) {
+        int dns_status = dns_lookup_a_radsh(host, &server_ip);
+        if (dns_status != 0) {
+            puts_fd(outfd, "ntpdate: resolve failed ");
+            puts_fd(outfd, host);
+            puts_fd(outfd, " ");
+            print_signed(outfd, dns_status);
+            puts_fd(outfd, "\n");
+            return dns_status;
+        }
+    }
+
+    long fd = sc(SYS_SOCKET, RAD_AF_INET, RAD_SOCK_DGRAM, RAD_IPPROTO_UDP, 0, 0, 0);
+    if (fd < 0) {
+        puts_fd(outfd, "ntpdate: socket failed ");
+        print_signed(outfd, fd);
+        puts_fd(outfd, "\n");
+        return (int)fd;
+    }
+
+    radsh_sockaddr_in_t local;
+    zero_mem(&local, sizeof(local));
+    local.family = RAD_AF_INET;
+    local.port = 49124;
+    local.address.bytes[0] = RADIX_RKCONFIG_NET_IPV4_A;
+    local.address.bytes[1] = RADIX_RKCONFIG_NET_IPV4_B;
+    local.address.bytes[2] = RADIX_RKCONFIG_NET_IPV4_C;
+    local.address.bytes[3] = RADIX_RKCONFIG_NET_IPV4_D;
+    long bind_status = sc(SYS_BIND, fd, (long)&local, sizeof(local), 0, 0, 0);
+    if (bind_status < 0) {
+        sc(SYS_CLOSE, fd, 0, 0, 0, 0, 0);
+        puts_fd(outfd, "ntpdate: bind failed ");
+        print_signed(outfd, bind_status);
+        puts_fd(outfd, "\n");
+        return (int)bind_status;
+    }
+
+    uint8_t request[48];
+    zero_mem(request, sizeof(request));
+    request[0] = 0x1b;
+    radsh_sockaddr_in_t server;
+    zero_mem(&server, sizeof(server));
+    server.family = RAD_AF_INET;
+    server.port = (uint16_t)port_value;
+    server.address = server_ip;
+    long sent = sc(SYS_SENDTO, fd, (long)request, sizeof(request), 0, (long)&server, sizeof(server));
+    if (sent != (long)sizeof(request)) {
+        sc(SYS_CLOSE, fd, 0, 0, 0, 0, 0);
+        puts_fd(outfd, "ntpdate: send failed ");
+        print_signed(outfd, sent);
+        puts_fd(outfd, "\n");
+        return sent < 0 ? (int)sent : -1;
+    }
+
+    uint8_t response[64];
+    radsh_sockaddr_in_t from;
+    size_t from_len = sizeof(from);
+    const uint64_t start = now_millis();
+    long received = 0;
+    for (uint32_t attempt = 0; attempt < 5000u; ++attempt) {
+        zero_mem(&from, sizeof(from));
+        from_len = sizeof(from);
+        received = sc(SYS_RECVFROM, fd, (long)response, sizeof(response), 0, (long)&from, (long)&from_len);
+        if (received >= 48
+            && from.port == server.port
+            && from.address.bytes[0] == server.address.bytes[0]
+            && from.address.bytes[1] == server.address.bytes[1]
+            && from.address.bytes[2] == server.address.bytes[2]
+            && from.address.bytes[3] == server.address.bytes[3]) {
+            break;
+        }
+        if (received < 0) {
+            sc(SYS_CLOSE, fd, 0, 0, 0, 0, 0);
+            puts_fd(outfd, "ntpdate: recv failed ");
+            print_signed(outfd, received);
+            puts_fd(outfd, "\n");
+            return (int)received;
+        }
+        if (attempt > 32u && start && now_millis() - start > 1000u) break;
+    }
+    sc(SYS_CLOSE, fd, 0, 0, 0, 0, 0);
+    if (received < 48) {
+        line_fd(outfd, "ntpdate: timeout");
+        return -5;
+    }
+
+    const uint32_t ntp_seconds = read_be32_radsh(response + 40);
+    if (ntp_seconds < 2208988800u) {
+        line_fd(outfd, "ntpdate: invalid response");
+        return -1;
+    }
+    const uint64_t unix_seconds = (uint64_t)(ntp_seconds - 2208988800u);
+    if (!query_only) {
+        radsh_timeval_t tv;
+        tv.tv_sec = (int64_t)unix_seconds;
+        tv.tv_usec = 0;
+        long set_status = sc(SYS_SETTIMEOFDAY, (long)&tv, 0, 0, 0, 0, 0);
+        if (set_status < 0) {
+            puts_fd(outfd, "ntpdate: settimeofday failed ");
+            print_signed(outfd, set_status);
+            puts_fd(outfd, "\n");
+            return (int)set_status;
+        }
+    }
+    puts_fd(outfd, "server ");
+    puts_fd(outfd, host);
+    puts_fd(outfd, " (");
+    print_ipv4(outfd, server.address);
+    puts_fd(outfd, "):");
+    print_num(outfd, server.port);
+    puts_fd(outfd, " unix "); print_num(outfd, unix_seconds);
+    puts_fd(outfd, query_only ? " query" : " synced");
+    puts_fd(outfd, "\n");
+    marker_fd("RADIX_RASH_NTPDATE_OK");
+    return 0;
+}
+
 static int cmd_date(int outfd) {
     radsh_timeval_t tv;
     if (sc(SYS_GETTIMEOFDAY, (long)&tv, 0, 0, 0, 0, 0) < 0) return -1;
@@ -925,6 +1474,8 @@ static int run_command(int argc, char **argv, int outfd, int infd) {
     if (s_eq(argv[0], "hostname")) { char host[64]; read_hostname(host, sizeof(host)); line_fd(outfd, host); return 0; }
     if (s_eq(argv[0], "uname")) { line_fd(outfd, "RADix"); return 0; }
     if (s_eq(argv[0], "date")) return cmd_date(outfd);
+    if (s_eq(argv[0], "net")) return cmd_net(outfd);
+    if (s_eq(argv[0], "ntpdate")) return cmd_ntpdate(argc, argv, outfd);
     if (s_eq(argv[0], "sleep")) return cmd_sleep(argc, argv);
     if (s_eq(argv[0], "which")) return cmd_which(argc, argv, outfd);
     if (s_eq(argv[0], "test") || s_eq(argv[0], "[")) return cmd_test(argc, argv);
@@ -932,12 +1483,14 @@ static int run_command(int argc, char **argv, int outfd, int infd) {
     if (s_eq(argv[0], "passwd")) return cmd_passwd(outfd);
     if (s_eq(argv[0], "mount")) return cmd_mount(outfd);
     if (s_eq(argv[0], "ps")) return cmd_ps(outfd);
+    if (s_eq(argv[0], "pkill")) return cmd_pkill(argc, argv, outfd);
     if (s_eq(argv[0], "dmesg")) return cmd_dmesg_user(outfd);
     if (s_eq(argv[0], "initctl")) return cmd_initctl(argc, argv, outfd);
+    if (s_eq(argv[0], "radservice")) return cmd_radservice(argc, argv, outfd);
     if (s_eq(argv[0], "logread")) return cmd_logread(argc, argv, outfd);
     if (s_eq(argv[0], "reboot")) { line_fd(outfd, "reboot is not wired on this target yet"); return -6; }
     if (s_eq(argv[0], "help")) {
-        line_fd(outfd, "builtins: basename cat cd chmod clear cp date dirname dmesg echo env false head help hostname id initctl ln logread ls mkdir mount mv passwd printf ps pwd readlink reboot reset rm rmdir sleep stat stty tail test touch tput true tty tui-smoke uname wc which [");
+        line_fd(outfd, "builtins: basename cat cd chmod clear cp date dirname dmesg echo env false head help hostname id initctl ln logread ls mkdir mount mv net ntpdate passwd pkill printf ps pwd radservice readlink reboot reset rm rmdir sleep stat stty tail test touch tput true tty tui-smoke uname wc which [");
         return 0;
     }
     if (s_eq(argv[0], "basename")) { if (argc < 2) return -2; const char *b = argv[1]; for (const char *p = argv[1]; *p; ++p) if (*p == '/' && p[1]) b = p + 1; line_fd(outfd, b); return 0; }
@@ -1308,8 +1861,7 @@ static int read_interactive_line(char *line, size_t size, char history[8][256], 
         char ch = 0;
         long n = sc(SYS_READ, 0, (long)&ch, 1, 0, 0, 0);
         if (n <= 0) return 0;
-        if (ch == '\r') continue;
-        if (ch == '\n') {
+        if (ch == '\r' || ch == '\n') {
             puts_fd(1, "\n");
             line[pos] = 0;
             return 1;

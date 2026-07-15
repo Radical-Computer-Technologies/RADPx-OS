@@ -1,0 +1,15 @@
+{
+  "name": "dns-resolver",
+  "description": "RADix DNS resolver configuration service",
+  "exec": "/sbin/dns-resolver",
+  "args": ["/etc/radix/network/dns-resolver.json"],
+  "type": "simple",
+  "autostart": true,
+  "order": 42,
+  "requires": ["network"],
+  "after": ["network"],
+  "restart": "on-failure",
+  "ready_marker": "RADIX_SERVICE_DNS_RESOLVER_OK",
+  "stdout": "/var/log/radix/dns-resolver.log",
+  "stderr": "/var/log/radix/dns-resolver.log"
+}

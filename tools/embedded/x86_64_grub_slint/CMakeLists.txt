@@ -116,6 +116,42 @@ set(RADIX_RKCONFIG_TERMINAL_VIM_VARIANT "$ENV{RADIX_RKCONFIG_TERMINAL_VIM_VARIAN
 if(NOT RADIX_RKCONFIG_TERMINAL_VIM_VARIANT)
     set(RADIX_RKCONFIG_TERMINAL_VIM_VARIANT "none")
 endif()
+set(RADIX_RKCONFIG_NETWORK_ENABLED "$ENV{RADIX_RKCONFIG_NETWORK_ENABLED}" CACHE STRING "RADix static networking enable flag")
+if(NOT RADIX_RKCONFIG_NETWORK_ENABLED)
+    set(RADIX_RKCONFIG_NETWORK_ENABLED "true")
+endif()
+set(RADIX_RKCONFIG_NET_IPV4 "$ENV{RADIX_RKCONFIG_NET_IPV4}" CACHE STRING "RADix static IPv4 address")
+if(NOT RADIX_RKCONFIG_NET_IPV4)
+    set(RADIX_RKCONFIG_NET_IPV4 "10.0.2.15")
+endif()
+set(RADIX_RKCONFIG_NET_NETMASK "$ENV{RADIX_RKCONFIG_NET_NETMASK}" CACHE STRING "RADix static IPv4 netmask")
+if(NOT RADIX_RKCONFIG_NET_NETMASK)
+    set(RADIX_RKCONFIG_NET_NETMASK "255.255.255.0")
+endif()
+set(RADIX_RKCONFIG_NET_GATEWAY "$ENV{RADIX_RKCONFIG_NET_GATEWAY}" CACHE STRING "RADix static IPv4 gateway")
+if(NOT RADIX_RKCONFIG_NET_GATEWAY)
+    set(RADIX_RKCONFIG_NET_GATEWAY "10.0.2.2")
+endif()
+set(RADIX_RKCONFIG_NET_NTP_SERVER "$ENV{RADIX_RKCONFIG_NET_NTP_SERVER}" CACHE STRING "RADix NTP/SNTP server hostname or IPv4 address")
+if(NOT RADIX_RKCONFIG_NET_NTP_SERVER)
+    set(RADIX_RKCONFIG_NET_NTP_SERVER "time.google.com")
+endif()
+set(RADIX_RKCONFIG_NET_NTP_PORT "$ENV{RADIX_RKCONFIG_NET_NTP_PORT}" CACHE STRING "RADix NTP/SNTP UDP port")
+if(NOT RADIX_RKCONFIG_NET_NTP_PORT)
+    set(RADIX_RKCONFIG_NET_NTP_PORT "123")
+endif()
+set(RADIX_RKCONFIG_NET_DNS_SERVER "$ENV{RADIX_RKCONFIG_NET_DNS_SERVER}" CACHE STRING "RADix DNS resolver IPv4 address")
+if(NOT RADIX_RKCONFIG_NET_DNS_SERVER)
+    set(RADIX_RKCONFIG_NET_DNS_SERVER "10.0.2.3")
+endif()
+set(RADIX_RKCONFIG_TIMEZONE "$ENV{RADIX_RKCONFIG_TIMEZONE}" CACHE STRING "RADix default timezone")
+if(NOT RADIX_RKCONFIG_TIMEZONE)
+    set(RADIX_RKCONFIG_TIMEZONE "America/Los_Angeles")
+endif()
+set(RADIX_RKCONFIG_DNS_SEARCH "$ENV{RADIX_RKCONFIG_DNS_SEARCH}" CACHE STRING "RADix DNS search domain")
+if(NOT RADIX_RKCONFIG_DNS_SEARCH)
+    set(RADIX_RKCONFIG_DNS_SEARCH "local")
+endif()
 if((RADIX_RKCONFIG_TERMINAL_VIM STREQUAL "true" OR RADIX_RKCONFIG_TERMINAL_VIM STREQUAL "1" OR RADIX_RKCONFIG_TERMINAL_VIM STREQUAL "ON")
    AND RADIX_RKCONFIG_TERMINAL_VIM_VARIANT STREQUAL "none")
     set(RADIX_RKCONFIG_TERMINAL_VIM_VARIANT "tiny")
@@ -127,7 +163,7 @@ if((RADIX_RKCONFIG_TERMINAL_VIM STREQUAL "true" OR RADIX_RKCONFIG_TERMINAL_VIM S
 endif()
 set(RADIX_X86_DIRECT_LOGIN "$ENV{RADIX_X86_DIRECT_LOGIN}" CACHE STRING "Launch /bin/login directly for interactive terminal boots")
 if(NOT RADIX_X86_DIRECT_LOGIN)
-    set(RADIX_X86_DIRECT_LOGIN "true")
+    set(RADIX_X86_DIRECT_LOGIN "false")
 endif()
 set(RADIX_X86_TERMINAL_AUTOLOGIN_ENABLED FALSE)
 if(RADIX_X86_TERMINAL_AUTOLOGIN STREQUAL "true" OR RADIX_X86_TERMINAL_AUTOLOGIN STREQUAL "1" OR RADIX_X86_TERMINAL_AUTOLOGIN STREQUAL "ON")
@@ -303,6 +339,9 @@ set(RADIX_INIT_ELF "${CMAKE_BINARY_DIR}/radix-init.elf")
 set(RADIX_RADINIT_ELF "${CMAKE_BINARY_DIR}/radix-radinit.elf")
 set(RADIX_RADSH_ELF "${CMAKE_BINARY_DIR}/radix-radsh.elf")
 set(RADIX_LOGIN_ELF "${CMAKE_BINARY_DIR}/radix-login.elf")
+set(RADIX_NETWORK_SERVICE_ELF "${CMAKE_BINARY_DIR}/radix-network-service.elf")
+set(RADIX_DNS_RESOLVER_ELF "${CMAKE_BINARY_DIR}/radix-dns-resolver.elf")
+set(RADIX_TIME_SYNC_ELF "${CMAKE_BINARY_DIR}/radix-time-sync.elf")
 set(RADIX_SH_ELF "${CMAKE_BINARY_DIR}/radix-sh.elf")
 set(RADIX_RADGFX_ELF "${CMAKE_BINARY_DIR}/radix-radgfx-smoke.elf")
 set(RADIX_TTY_STRESS_ELF "${CMAKE_BINARY_DIR}/radix-tty-stress.elf")
@@ -338,7 +377,7 @@ set(RADIX_EXT4_WRITE_SEED "${CMAKE_BINARY_DIR}/radix-ext4-write-seed.txt")
 set(RADIX_FAT_IMAGE "${CMAKE_BINARY_DIR}/radix-fat32.img")
 
 add_custom_command(
-    OUTPUT "${RADIX_RKCONFIG_STAMP}" "${RADIX_RKCONFIG_DIR}/rkconfig.h" "${RADIX_RKCONFIG_DIR}/issue" "${RADIX_RKCONFIG_DIR}/hostname" "${RADIX_RKCONFIG_DIR}/terminal.theme" "${RADIX_RKCONFIG_DIR}/radpm-index.json" "${RADIX_RKCONFIG_DIR}/passwd" "${RADIX_RKCONFIG_DIR}/passwords" "${RADIX_RKCONFIG_DIR}/rko-note.txt" "${RADIX_RKCONFIG_DIR}/rso-note.txt"
+    OUTPUT "${RADIX_RKCONFIG_STAMP}" "${RADIX_RKCONFIG_DIR}/rkconfig.h" "${RADIX_RKCONFIG_DIR}/issue" "${RADIX_RKCONFIG_DIR}/hostname" "${RADIX_RKCONFIG_DIR}/hosts" "${RADIX_RKCONFIG_DIR}/resolv.conf" "${RADIX_RKCONFIG_DIR}/network/netinterfaces.json" "${RADIX_RKCONFIG_DIR}/network/dns-resolver.json" "${RADIX_RKCONFIG_DIR}/time/time-sync.json" "${RADIX_RKCONFIG_DIR}/time/timezone" "${RADIX_RKCONFIG_DIR}/time/localtime" "${RADIX_RKCONFIG_DIR}/zoneinfo/${RADIX_RKCONFIG_TIMEZONE}" "${RADIX_RKCONFIG_DIR}/terminal.theme" "${RADIX_RKCONFIG_DIR}/radpm-index.json" "${RADIX_RKCONFIG_DIR}/passwd" "${RADIX_RKCONFIG_DIR}/passwords" "${RADIX_RKCONFIG_DIR}/rko-note.txt" "${RADIX_RKCONFIG_DIR}/rso-note.txt"
     COMMAND "${PYTHON3_EXECUTABLE}" "${CMAKE_CURRENT_LIST_DIR}/make_rkconfig.py"
             --out "${RADIX_RKCONFIG_DIR}"
             --hostname "${RADIX_RKCONFIG_HOSTNAME}"
@@ -354,6 +393,15 @@ add_custom_command(
             --terminal-nano-variant "${RADIX_RKCONFIG_TERMINAL_NANO_VARIANT}"
             --terminal-vim "${RADIX_RKCONFIG_TERMINAL_VIM}"
             --terminal-vim-variant "${RADIX_RKCONFIG_TERMINAL_VIM_VARIANT}"
+            --network-enabled "${RADIX_RKCONFIG_NETWORK_ENABLED}"
+            --net-ipv4 "${RADIX_RKCONFIG_NET_IPV4}"
+            --net-netmask "${RADIX_RKCONFIG_NET_NETMASK}"
+            --net-gateway "${RADIX_RKCONFIG_NET_GATEWAY}"
+            --net-ntp-server "${RADIX_RKCONFIG_NET_NTP_SERVER}"
+            --net-ntp-port "${RADIX_RKCONFIG_NET_NTP_PORT}"
+            --net-dns-server "${RADIX_RKCONFIG_NET_DNS_SERVER}"
+            --timezone "${RADIX_RKCONFIG_TIMEZONE}"
+            --dns-search "${RADIX_RKCONFIG_DNS_SEARCH}"
             --kernel-max-tasks "${RADIX_RKCONFIG_KERNEL_MAX_TASKS}"
             --kernel-max-processes "${RADIX_RKCONFIG_KERNEL_MAX_PROCESSES}"
             --kernel-task-stack-bytes "${RADIX_RKCONFIG_KERNEL_TASK_STACK_BYTES}"
@@ -376,7 +424,9 @@ add_custom_command(
 )
 
 file(GLOB RADIX_SYSROOT_HEADERS CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_LIST_DIR}/sysroot/include/arpa/*.h"
     "${CMAKE_CURRENT_LIST_DIR}/sysroot/include/*.h"
+    "${CMAKE_CURRENT_LIST_DIR}/sysroot/include/netinet/*.h"
     "${CMAKE_CURRENT_LIST_DIR}/sysroot/include/sys/*.h"
     "${CMAKE_CURRENT_LIST_DIR}/sysroot/include/radix/*.h"
 )
@@ -559,6 +609,51 @@ add_custom_command(
             "${CMAKE_CURRENT_LIST_DIR}/user_login.c"
             "${CMAKE_CURRENT_LIST_DIR}/user_auth.c"
     DEPENDS "${CMAKE_CURRENT_LIST_DIR}/user_login_entry.S" "${CMAKE_CURRENT_LIST_DIR}/user_login.c" "${CMAKE_CURRENT_LIST_DIR}/user_auth.c" "${CMAKE_CURRENT_LIST_DIR}/user_auth.h"
+    VERBATIM
+)
+
+add_custom_command(
+    OUTPUT "${RADIX_NETWORK_SERVICE_ELF}"
+    COMMAND "${X86_64_LINUX_GNU_GCC_EXECUTABLE}" -nostdlib -static -no-pie
+            -ffreestanding -fno-stack-protector -fno-pic -fno-pie -fomit-frame-pointer -mno-red-zone
+            -I "${CMAKE_CURRENT_LIST_DIR}/sysroot/include"
+            -Wl,-Ttext=0x40000000
+            -Wl,--build-id=none
+            -o "${RADIX_NETWORK_SERVICE_ELF}"
+            "${CMAKE_CURRENT_LIST_DIR}/user_c_entry.S"
+            "${CMAKE_CURRENT_LIST_DIR}/user_network_service.c"
+            "${RADIX_LIBC_ARCHIVE}"
+    DEPENDS "${CMAKE_CURRENT_LIST_DIR}/user_c_entry.S" "${CMAKE_CURRENT_LIST_DIR}/user_network_service.c" "${RADIX_LIBC_ARCHIVE}"
+    VERBATIM
+)
+
+add_custom_command(
+    OUTPUT "${RADIX_DNS_RESOLVER_ELF}"
+    COMMAND "${X86_64_LINUX_GNU_GCC_EXECUTABLE}" -nostdlib -static -no-pie
+            -ffreestanding -fno-stack-protector -fno-pic -fno-pie -fomit-frame-pointer -mno-red-zone
+            -I "${CMAKE_CURRENT_LIST_DIR}/sysroot/include"
+            -Wl,-Ttext=0x40000000
+            -Wl,--build-id=none
+            -o "${RADIX_DNS_RESOLVER_ELF}"
+            "${CMAKE_CURRENT_LIST_DIR}/user_c_entry.S"
+            "${CMAKE_CURRENT_LIST_DIR}/user_dns_resolver_service.c"
+            "${RADIX_LIBC_ARCHIVE}"
+    DEPENDS "${CMAKE_CURRENT_LIST_DIR}/user_c_entry.S" "${CMAKE_CURRENT_LIST_DIR}/user_dns_resolver_service.c" "${RADIX_LIBC_ARCHIVE}"
+    VERBATIM
+)
+
+add_custom_command(
+    OUTPUT "${RADIX_TIME_SYNC_ELF}"
+    COMMAND "${X86_64_LINUX_GNU_GCC_EXECUTABLE}" -nostdlib -static -no-pie
+            -ffreestanding -fno-stack-protector -fno-pic -fno-pie -fomit-frame-pointer -mno-red-zone
+            -I "${CMAKE_CURRENT_LIST_DIR}/sysroot/include"
+            -Wl,-Ttext=0x40000000
+            -Wl,--build-id=none
+            -o "${RADIX_TIME_SYNC_ELF}"
+            "${CMAKE_CURRENT_LIST_DIR}/user_c_entry.S"
+            "${CMAKE_CURRENT_LIST_DIR}/user_time_sync_service.c"
+            "${RADIX_LIBC_ARCHIVE}"
+    DEPENDS "${CMAKE_CURRENT_LIST_DIR}/user_c_entry.S" "${CMAKE_CURRENT_LIST_DIR}/user_time_sync_service.c" "${RADIX_LIBC_ARCHIVE}"
     VERBATIM
 )
 
@@ -767,6 +862,8 @@ add_custom_command(
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /etc" "${RADIX_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /etc/radix" "${RADIX_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /etc/radix/services" "${RADIX_EXT2_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /etc/radix/network" "${RADIX_EXT2_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /etc/radix/time" "${RADIX_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /etc/radix/packages" "${RADIX_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /home" "${RADIX_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /home/root" "${RADIX_EXT2_ROOTFS_IMAGE}"
@@ -777,6 +874,8 @@ add_custom_command(
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /usr/lib" "${RADIX_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /usr/share" "${RADIX_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /usr/share/licenses" "${RADIX_EXT2_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /usr/share/zoneinfo" "${RADIX_EXT2_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /usr/share/zoneinfo/America" "${RADIX_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /usr/share/terminfo" "${RADIX_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /usr/share/terminfo/r" "${RADIX_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /lib" "${RADIX_EXT2_ROOTFS_IMAGE}"
@@ -789,6 +888,9 @@ add_custom_command(
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /run" "${RADIX_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_RADINIT_ELF} /bin/init" "${RADIX_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_RADINIT_ELF} /sbin/radinit" "${RADIX_EXT2_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_NETWORK_SERVICE_ELF} /sbin/network-service" "${RADIX_EXT2_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_DNS_RESOLVER_ELF} /sbin/dns-resolver" "${RADIX_EXT2_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_TIME_SYNC_ELF} /sbin/time-sync" "${RADIX_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_RADSH_ELF} /bin/radsh" "${RADIX_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_RADSH_ELF} /bin/rash" "${RADIX_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_RADSH_ELF} /bin/sh" "${RADIX_EXT2_ROOTFS_IMAGE}"
@@ -807,6 +909,14 @@ add_custom_command(
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_RKCONFIG_DIR}/radpm-index.json /etc/radix/radpm-index.json" "${RADIX_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_RKCONFIG_DIR}/issue /etc/issue" "${RADIX_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_RKCONFIG_DIR}/hostname /etc/hostname" "${RADIX_EXT2_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_RKCONFIG_DIR}/hosts /etc/hosts" "${RADIX_EXT2_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_RKCONFIG_DIR}/resolv.conf /etc/resolv.conf" "${RADIX_EXT2_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_RKCONFIG_DIR}/network/netinterfaces.json /etc/radix/network/netinterfaces.json" "${RADIX_EXT2_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_RKCONFIG_DIR}/network/dns-resolver.json /etc/radix/network/dns-resolver.json" "${RADIX_EXT2_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_RKCONFIG_DIR}/time/time-sync.json /etc/radix/time/time-sync.json" "${RADIX_EXT2_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_RKCONFIG_DIR}/time/timezone /etc/timezone" "${RADIX_EXT2_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_RKCONFIG_DIR}/time/localtime /etc/localtime" "${RADIX_EXT2_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_RKCONFIG_DIR}/zoneinfo/${RADIX_RKCONFIG_TIMEZONE} /usr/share/zoneinfo/${RADIX_RKCONFIG_TIMEZONE}" "${RADIX_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_RKCONFIG_DIR}/passwd /etc/passwd" "${RADIX_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_RKCONFIG_DIR}/passwords /etc/passwords" "${RADIX_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_RKCONFIG_DIR}/rko-note.txt /lib/radix/modules/README.rko" "${RADIX_EXT2_ROOTFS_IMAGE}"
@@ -815,17 +925,25 @@ add_custom_command(
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_NCURSESW_ARCHIVE} /usr/lib/libncursesw.a" "${RADIX_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_TINFO_ARCHIVE} /usr/lib/libtinfo.a" "${RADIX_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${CMAKE_CURRENT_LIST_DIR}/ports/ncurses/radix-ncurses.meta /etc/radix/packages/radix-ncurses.radpm" "${RADIX_EXT2_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${CMAKE_CURRENT_LIST_DIR}/services/radix-network.meta /etc/radix/packages/radix-network.radpm" "${RADIX_EXT2_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${CMAKE_CURRENT_LIST_DIR}/services/radix-dns-resolver.meta /etc/radix/packages/radix-dns-resolver.radpm" "${RADIX_EXT2_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${CMAKE_CURRENT_LIST_DIR}/services/radix-time-sync.meta /etc/radix/packages/radix-time-sync.radpm" "${RADIX_EXT2_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${CMAKE_CURRENT_LIST_DIR}/services/radix-tzdata.meta /etc/radix/packages/radix-tzdata.radpm" "${RADIX_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_TERMINFO_DIR}/r/radix /usr/share/terminfo/r/radix" "${RADIX_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${CMAKE_CURRENT_LIST_DIR}/test_script.sh /bin/test.sh" "${RADIX_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${CMAKE_CURRENT_LIST_DIR}/services/storage-root.json /etc/radix/services/storage-root.json" "${RADIX_EXT2_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${CMAKE_CURRENT_LIST_DIR}/services/network.json /etc/radix/services/network.json" "${RADIX_EXT2_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${CMAKE_CURRENT_LIST_DIR}/services/dns-resolver.json /etc/radix/services/dns-resolver.json" "${RADIX_EXT2_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${CMAKE_CURRENT_LIST_DIR}/services/time-sync.json /etc/radix/services/time-sync.json" "${RADIX_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_GENERATED_SERVICES_DIR}/userspace-shell.json /etc/radix/services/userspace-shell.json" "${RADIX_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${CMAKE_CURRENT_LIST_DIR}/services/base-terminal.json /etc/radix/services/base-terminal.json" "${RADIX_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_GENERATED_SERVICES_DIR}/terminal-stress.json /etc/radix/services/terminal-stress.json" "${RADIX_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_GENERATED_SERVICES_DIR}/boot-session.json /etc/radix/services/boot-session.json" "${RADIX_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${CMAKE_CURRENT_LIST_DIR}/services/network-smoke.json /etc/radix/services/network-smoke.json" "${RADIX_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${CMAKE_CURRENT_LIST_DIR}/services/fatfs.json /etc/radix/services/fatfs.json" "${RADIX_EXT2_ROOTFS_IMAGE}"
-    DEPENDS "${RADIX_RADINIT_ELF}" "${RADIX_INIT_ELF}" "${RADIX_RADSH_ELF}" "${RADIX_LOGIN_ELF}" "${RADIX_SH_ELF}" "${RADIX_RADGFX_ELF}" "${RADIX_TTY_STRESS_ELF}" "${RADIX_SLEEP_STRESS_ELF}" "${RADIX_SIGNAL_STRESS_ELF}" "${RADIX_TUI_STRESS_ELF}" "${RADIX_TERMINAL_STRESS_ELF}" ${RADIX_NANO_DEPENDS} ${RADIX_VIM_DEPENDS} "${RADIX_LIBC_ARCHIVE}" "${RADIX_NCURSESW_ARCHIVE}" "${RADIX_TINFO_ARCHIVE}" "${RADIX_RKCONFIG_STAMP}" "${RADIX_TERMINFO_STAMP}" "${RADIX_SYSROOT_STAMP}" "${CMAKE_CURRENT_LIST_DIR}/test_script.sh"
+    DEPENDS "${RADIX_RADINIT_ELF}" "${RADIX_INIT_ELF}" "${RADIX_RADSH_ELF}" "${RADIX_LOGIN_ELF}" "${RADIX_NETWORK_SERVICE_ELF}" "${RADIX_DNS_RESOLVER_ELF}" "${RADIX_TIME_SYNC_ELF}" "${RADIX_SH_ELF}" "${RADIX_RADGFX_ELF}" "${RADIX_TTY_STRESS_ELF}" "${RADIX_SLEEP_STRESS_ELF}" "${RADIX_SIGNAL_STRESS_ELF}" "${RADIX_TUI_STRESS_ELF}" "${RADIX_TERMINAL_STRESS_ELF}" ${RADIX_NANO_DEPENDS} ${RADIX_VIM_DEPENDS} "${RADIX_LIBC_ARCHIVE}" "${RADIX_NCURSESW_ARCHIVE}" "${RADIX_TINFO_ARCHIVE}" "${RADIX_RKCONFIG_STAMP}" "${RADIX_TERMINFO_STAMP}" "${RADIX_SYSROOT_STAMP}" "${CMAKE_CURRENT_LIST_DIR}/test_script.sh"
             "${CMAKE_CURRENT_LIST_DIR}/services/storage-root.json" "${RADIX_GENERATED_SERVICES_DIR}/userspace-shell.json"
+            "${CMAKE_CURRENT_LIST_DIR}/services/network.json" "${CMAKE_CURRENT_LIST_DIR}/services/dns-resolver.json" "${CMAKE_CURRENT_LIST_DIR}/services/time-sync.json"
             "${CMAKE_CURRENT_LIST_DIR}/services/base-terminal.json" "${RADIX_GENERATED_SERVICES_DIR}/terminal-stress.json" "${RADIX_GENERATED_SERVICES_DIR}/boot-session.json" "${CMAKE_CURRENT_LIST_DIR}/services/network-smoke.json"
             "${CMAKE_CURRENT_LIST_DIR}/services/fatfs.json"
     VERBATIM
@@ -845,6 +963,8 @@ add_custom_command(
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /etc" "${RADIX_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /etc/radix" "${RADIX_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /etc/radix/services" "${RADIX_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /etc/radix/network" "${RADIX_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /etc/radix/time" "${RADIX_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /etc/radix/packages" "${RADIX_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /home" "${RADIX_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /home/root" "${RADIX_ROOTFS_IMAGE}"
@@ -855,6 +975,8 @@ add_custom_command(
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /usr/lib" "${RADIX_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /usr/share" "${RADIX_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /usr/share/licenses" "${RADIX_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /usr/share/zoneinfo" "${RADIX_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /usr/share/zoneinfo/America" "${RADIX_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /usr/share/terminfo" "${RADIX_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /usr/share/terminfo/r" "${RADIX_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /lib" "${RADIX_ROOTFS_IMAGE}"
@@ -867,6 +989,9 @@ add_custom_command(
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "mkdir /run" "${RADIX_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_RADINIT_ELF} /bin/init" "${RADIX_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_RADINIT_ELF} /sbin/radinit" "${RADIX_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_NETWORK_SERVICE_ELF} /sbin/network-service" "${RADIX_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_DNS_RESOLVER_ELF} /sbin/dns-resolver" "${RADIX_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_TIME_SYNC_ELF} /sbin/time-sync" "${RADIX_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_RADSH_ELF} /bin/radsh" "${RADIX_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_RADSH_ELF} /bin/rash" "${RADIX_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_RADSH_ELF} /bin/sh" "${RADIX_ROOTFS_IMAGE}"
@@ -885,6 +1010,14 @@ add_custom_command(
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_RKCONFIG_DIR}/radpm-index.json /etc/radix/radpm-index.json" "${RADIX_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_RKCONFIG_DIR}/issue /etc/issue" "${RADIX_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_RKCONFIG_DIR}/hostname /etc/hostname" "${RADIX_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_RKCONFIG_DIR}/hosts /etc/hosts" "${RADIX_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_RKCONFIG_DIR}/resolv.conf /etc/resolv.conf" "${RADIX_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_RKCONFIG_DIR}/network/netinterfaces.json /etc/radix/network/netinterfaces.json" "${RADIX_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_RKCONFIG_DIR}/network/dns-resolver.json /etc/radix/network/dns-resolver.json" "${RADIX_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_RKCONFIG_DIR}/time/time-sync.json /etc/radix/time/time-sync.json" "${RADIX_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_RKCONFIG_DIR}/time/timezone /etc/timezone" "${RADIX_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_RKCONFIG_DIR}/time/localtime /etc/localtime" "${RADIX_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_RKCONFIG_DIR}/zoneinfo/${RADIX_RKCONFIG_TIMEZONE} /usr/share/zoneinfo/${RADIX_RKCONFIG_TIMEZONE}" "${RADIX_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_RKCONFIG_DIR}/passwd /etc/passwd" "${RADIX_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_RKCONFIG_DIR}/passwords /etc/passwords" "${RADIX_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_RKCONFIG_DIR}/rko-note.txt /lib/radix/modules/README.rko" "${RADIX_ROOTFS_IMAGE}"
@@ -893,9 +1026,16 @@ add_custom_command(
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_NCURSESW_ARCHIVE} /usr/lib/libncursesw.a" "${RADIX_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_TINFO_ARCHIVE} /usr/lib/libtinfo.a" "${RADIX_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${CMAKE_CURRENT_LIST_DIR}/ports/ncurses/radix-ncurses.meta /etc/radix/packages/radix-ncurses.radpm" "${RADIX_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${CMAKE_CURRENT_LIST_DIR}/services/radix-network.meta /etc/radix/packages/radix-network.radpm" "${RADIX_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${CMAKE_CURRENT_LIST_DIR}/services/radix-dns-resolver.meta /etc/radix/packages/radix-dns-resolver.radpm" "${RADIX_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${CMAKE_CURRENT_LIST_DIR}/services/radix-time-sync.meta /etc/radix/packages/radix-time-sync.radpm" "${RADIX_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${CMAKE_CURRENT_LIST_DIR}/services/radix-tzdata.meta /etc/radix/packages/radix-tzdata.radpm" "${RADIX_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_TERMINFO_DIR}/r/radix /usr/share/terminfo/r/radix" "${RADIX_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${CMAKE_CURRENT_LIST_DIR}/test_script.sh /bin/test.sh" "${RADIX_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${CMAKE_CURRENT_LIST_DIR}/services/storage-root.json /etc/radix/services/storage-root.json" "${RADIX_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${CMAKE_CURRENT_LIST_DIR}/services/network.json /etc/radix/services/network.json" "${RADIX_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${CMAKE_CURRENT_LIST_DIR}/services/dns-resolver.json /etc/radix/services/dns-resolver.json" "${RADIX_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${CMAKE_CURRENT_LIST_DIR}/services/time-sync.json /etc/radix/services/time-sync.json" "${RADIX_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_GENERATED_SERVICES_DIR}/userspace-shell.json /etc/radix/services/userspace-shell.json" "${RADIX_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${CMAKE_CURRENT_LIST_DIR}/services/base-terminal.json /etc/radix/services/base-terminal.json" "${RADIX_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_GENERATED_SERVICES_DIR}/terminal-stress.json /etc/radix/services/terminal-stress.json" "${RADIX_ROOTFS_IMAGE}"
@@ -903,8 +1043,9 @@ add_custom_command(
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${CMAKE_CURRENT_LIST_DIR}/services/network-smoke.json /etc/radix/services/network-smoke.json" "${RADIX_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${CMAKE_CURRENT_LIST_DIR}/services/fatfs.json /etc/radix/services/fatfs.json" "${RADIX_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_EXT4_WRITE_SEED} /tmp/radwrite.txt" "${RADIX_ROOTFS_IMAGE}"
-    DEPENDS "${RADIX_RADINIT_ELF}" "${RADIX_INIT_ELF}" "${RADIX_RADSH_ELF}" "${RADIX_LOGIN_ELF}" "${RADIX_SH_ELF}" "${RADIX_RADGFX_ELF}" "${RADIX_TTY_STRESS_ELF}" "${RADIX_SLEEP_STRESS_ELF}" "${RADIX_SIGNAL_STRESS_ELF}" "${RADIX_TUI_STRESS_ELF}" "${RADIX_TERMINAL_STRESS_ELF}" ${RADIX_NANO_DEPENDS} ${RADIX_VIM_DEPENDS} "${RADIX_LIBC_ARCHIVE}" "${RADIX_NCURSESW_ARCHIVE}" "${RADIX_TINFO_ARCHIVE}" "${RADIX_RKCONFIG_STAMP}" "${RADIX_TERMINFO_STAMP}" "${RADIX_SYSROOT_STAMP}" "${CMAKE_CURRENT_LIST_DIR}/test_script.sh"
+    DEPENDS "${RADIX_RADINIT_ELF}" "${RADIX_INIT_ELF}" "${RADIX_RADSH_ELF}" "${RADIX_LOGIN_ELF}" "${RADIX_NETWORK_SERVICE_ELF}" "${RADIX_DNS_RESOLVER_ELF}" "${RADIX_TIME_SYNC_ELF}" "${RADIX_SH_ELF}" "${RADIX_RADGFX_ELF}" "${RADIX_TTY_STRESS_ELF}" "${RADIX_SLEEP_STRESS_ELF}" "${RADIX_SIGNAL_STRESS_ELF}" "${RADIX_TUI_STRESS_ELF}" "${RADIX_TERMINAL_STRESS_ELF}" ${RADIX_NANO_DEPENDS} ${RADIX_VIM_DEPENDS} "${RADIX_LIBC_ARCHIVE}" "${RADIX_NCURSESW_ARCHIVE}" "${RADIX_TINFO_ARCHIVE}" "${RADIX_RKCONFIG_STAMP}" "${RADIX_TERMINFO_STAMP}" "${RADIX_SYSROOT_STAMP}" "${CMAKE_CURRENT_LIST_DIR}/test_script.sh"
             "${CMAKE_CURRENT_LIST_DIR}/services/storage-root.json" "${RADIX_GENERATED_SERVICES_DIR}/userspace-shell.json"
+            "${CMAKE_CURRENT_LIST_DIR}/services/network.json" "${CMAKE_CURRENT_LIST_DIR}/services/dns-resolver.json" "${CMAKE_CURRENT_LIST_DIR}/services/time-sync.json"
             "${CMAKE_CURRENT_LIST_DIR}/services/base-terminal.json" "${RADIX_GENERATED_SERVICES_DIR}/terminal-stress.json" "${RADIX_GENERATED_SERVICES_DIR}/boot-session.json" "${CMAKE_CURRENT_LIST_DIR}/services/network-smoke.json"
             "${CMAKE_CURRENT_LIST_DIR}/services/fatfs.json"
     VERBATIM

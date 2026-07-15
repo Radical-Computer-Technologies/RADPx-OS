@@ -7,9 +7,45 @@
 #include <ctype.h>
 #include <stdio.h>
 
+#if __has_include("rkconfig.h")
+#include "rkconfig.h"
+#endif
+
 #if defined(__cplusplus) && defined(__STDC_HOSTED__) && __STDC_HOSTED__ == 0
 extern "C" void *malloc(size_t);
 extern "C" void free(void*);
+#endif
+
+#ifndef RADIX_RKCONFIG_NET_IPV4_A
+#define RADIX_RKCONFIG_NET_IPV4_A 10
+#define RADIX_RKCONFIG_NET_IPV4_B 0
+#define RADIX_RKCONFIG_NET_IPV4_C 2
+#define RADIX_RKCONFIG_NET_IPV4_D 15
+#endif
+
+#ifndef RADIX_RKCONFIG_NET_NETMASK_A
+#define RADIX_RKCONFIG_NET_NETMASK_A 255
+#define RADIX_RKCONFIG_NET_NETMASK_B 255
+#define RADIX_RKCONFIG_NET_NETMASK_C 255
+#define RADIX_RKCONFIG_NET_NETMASK_D 0
+#endif
+
+#ifndef RADIX_RKCONFIG_NET_GATEWAY_A
+#define RADIX_RKCONFIG_NET_GATEWAY_A 10
+#define RADIX_RKCONFIG_NET_GATEWAY_B 0
+#define RADIX_RKCONFIG_NET_GATEWAY_C 2
+#define RADIX_RKCONFIG_NET_GATEWAY_D 2
+#endif
+
+#ifndef RADIX_RKCONFIG_NET_NTP_A
+#define RADIX_RKCONFIG_NET_NTP_A 10
+#define RADIX_RKCONFIG_NET_NTP_B 0
+#define RADIX_RKCONFIG_NET_NTP_C 2
+#define RADIX_RKCONFIG_NET_NTP_D 2
+#endif
+
+#ifndef RADIX_RKCONFIG_NET_NTP_PORT
+#define RADIX_RKCONFIG_NET_NTP_PORT 12300
 #endif
 
 #ifndef RADIX_KERNEL_MAX_TASKS
@@ -399,6 +435,12 @@ struct SocketRecord {
     int shutdown_write;
 };
 
+struct ArpEntry {
+    rad_ipv4_address_t ipv4;
+    rad_mac_address_t mac;
+    int valid;
+};
+
 struct FdRecord {
     FdKind kind;
     rad_file_t file;
@@ -507,6 +549,7 @@ struct KernelState {
     char backend[32];
     uint64_t next_task_id;
     uint64_t start_micros;
+    int64_t realtime_offset_micros;
     rad_task_handle tasks[RADIX_KERNEL_MAX_TASKS];
     rad_device_record devices[RADIX_KERNEL_MAX_DEVICES];
     CommandRecord commands[RADIX_KERNEL_MAX_COMMANDS];
@@ -519,6 +562,19 @@ struct KernelState {
     PipeRecord pipes[RADIX_KERNEL_MAX_PIPES];
     ShmRecord shm_objects[RADIX_KERNEL_MAX_SHM_OBJECTS];
     SocketRecord sockets[RADIX_KERNEL_MAX_UDP_SOCKETS];
+    ArpEntry arp_cache[8];
+    rad_net_stack_config_t net_config;
+    rad_ntp_status_t ntp_status;
+    uint64_t net_ethernet_rx;
+    uint64_t net_ethernet_tx;
+    uint64_t net_arp_rx;
+    uint64_t net_arp_tx;
+    uint64_t net_ipv4_rx;
+    uint64_t net_ipv4_tx;
+    uint64_t net_udp_rx;
+    uint64_t net_udp_tx;
+    uint64_t net_icmp_rx;
+    uint64_t net_icmp_tx;
     FdRecord fds[RADIX_KERNEL_MAX_POSIX_FDS];
     ProcessRecord processes[RADIX_KERNEL_MAX_PROCESSES];
     ModuleRecord modules[RADIX_KERNEL_MAX_MODULES];
@@ -1447,11 +1503,140 @@ uint16_t ipv4_checksum(const void *data, size_t size) {
 }
 
 rad_ipv4_address_t radix_default_ipv4_address() {
-    return rad_ipv4_address_t{{10, 0, 2, 15}};
+    return rad_ipv4_address_t{{RADIX_RKCONFIG_NET_IPV4_A, RADIX_RKCONFIG_NET_IPV4_B, RADIX_RKCONFIG_NET_IPV4_C, RADIX_RKCONFIG_NET_IPV4_D}};
+}
+
+rad_ipv4_address_t radix_default_netmask() {
+    return rad_ipv4_address_t{{RADIX_RKCONFIG_NET_NETMASK_A, RADIX_RKCONFIG_NET_NETMASK_B, RADIX_RKCONFIG_NET_NETMASK_C, RADIX_RKCONFIG_NET_NETMASK_D}};
+}
+
+rad_ipv4_address_t radix_default_gateway() {
+    return rad_ipv4_address_t{{RADIX_RKCONFIG_NET_GATEWAY_A, RADIX_RKCONFIG_NET_GATEWAY_B, RADIX_RKCONFIG_NET_GATEWAY_C, RADIX_RKCONFIG_NET_GATEWAY_D}};
+}
+
+rad_ipv4_address_t radix_default_ntp_server() {
+    return rad_ipv4_address_t{{RADIX_RKCONFIG_NET_NTP_A, RADIX_RKCONFIG_NET_NTP_B, RADIX_RKCONFIG_NET_NTP_C, RADIX_RKCONFIG_NET_NTP_D}};
+}
+
+void initialize_net_config() {
+    memset(&g_state.net_config, 0, sizeof(g_state.net_config));
+    g_state.net_config.size = sizeof(g_state.net_config);
+    g_state.net_config.ipv4 = radix_default_ipv4_address();
+    g_state.net_config.netmask = radix_default_netmask();
+    g_state.net_config.gateway = radix_default_gateway();
+    g_state.net_config.ntp_server = radix_default_ntp_server();
+    g_state.net_config.ntp_port = RADIX_RKCONFIG_NET_NTP_PORT;
+}
+
+const rad_net_stack_config_t& active_net_config() {
+    if (g_state.net_config.size < sizeof(uint32_t)) initialize_net_config();
+    return g_state.net_config;
 }
 
 int ipv4_equal(rad_ipv4_address_t a, rad_ipv4_address_t b) {
     return memcmp(a.bytes, b.bytes, sizeof(a.bytes)) == 0;
+}
+
+int ipv4_is_zero(rad_ipv4_address_t a) {
+    return (a.bytes[0] | a.bytes[1] | a.bytes[2] | a.bytes[3]) == 0;
+}
+
+uint16_t read_be16(const uint8_t *p) {
+    return static_cast<uint16_t>((static_cast<uint16_t>(p[0]) << 8u) | p[1]);
+}
+
+uint32_t read_be32(const uint8_t *p) {
+    return (static_cast<uint32_t>(p[0]) << 24u)
+        | (static_cast<uint32_t>(p[1]) << 16u)
+        | (static_cast<uint32_t>(p[2]) << 8u)
+        | static_cast<uint32_t>(p[3]);
+}
+
+void write_be16(uint8_t *p, uint16_t value) {
+    p[0] = static_cast<uint8_t>(value >> 8u);
+    p[1] = static_cast<uint8_t>(value);
+}
+
+uint32_t ipv4_to_u32(rad_ipv4_address_t address) {
+    return (static_cast<uint32_t>(address.bytes[0]) << 24u)
+        | (static_cast<uint32_t>(address.bytes[1]) << 16u)
+        | (static_cast<uint32_t>(address.bytes[2]) << 8u)
+        | static_cast<uint32_t>(address.bytes[3]);
+}
+
+int ipv4_same_subnet(rad_ipv4_address_t a, rad_ipv4_address_t b, rad_ipv4_address_t mask) {
+    return (ipv4_to_u32(a) & ipv4_to_u32(mask)) == (ipv4_to_u32(b) & ipv4_to_u32(mask));
+}
+
+uint16_t next_ipv4_id() {
+    static uint16_t s_id = 1;
+    return s_id++;
+}
+
+ArpEntry *find_arp_entry(rad_ipv4_address_t address) {
+    for (size_t i = 0; i < sizeof(g_state.arp_cache) / sizeof(g_state.arp_cache[0]); ++i) {
+        ArpEntry& entry = g_state.arp_cache[i];
+        if (entry.valid && ipv4_equal(entry.ipv4, address)) return &entry;
+    }
+    return nullptr;
+}
+
+void update_arp_cache(rad_ipv4_address_t address, rad_mac_address_t mac) {
+    if (ipv4_is_zero(address)) return;
+    ArpEntry *entry = find_arp_entry(address);
+    if (!entry) {
+        for (size_t i = 0; i < sizeof(g_state.arp_cache) / sizeof(g_state.arp_cache[0]); ++i) {
+            if (!g_state.arp_cache[i].valid) {
+                entry = &g_state.arp_cache[i];
+                break;
+            }
+        }
+    }
+    if (!entry) entry = &g_state.arp_cache[0];
+    entry->ipv4 = address;
+    entry->mac = mac;
+    entry->valid = 1;
+}
+
+uint16_t arp_entry_count() {
+    uint16_t count = 0;
+    for (size_t i = 0; i < sizeof(g_state.arp_cache) / sizeof(g_state.arp_cache[0]); ++i) {
+        if (g_state.arp_cache[i].valid) ++count;
+    }
+    return count;
+}
+
+rad_status_t send_arp_packet(rad_ipv4_address_t target_ip, const rad_mac_address_t *target_mac, uint16_t opcode) {
+    rad_device_t device = nullptr;
+    if (rad_net_open("/dev/net0", &device) != RAD_STATUS_OK) return RAD_STATUS_NOT_FOUND;
+    rad_net_link_info_t info{};
+    if (rad_net_link_info(device, &info) != RAD_STATUS_OK) {
+        rad_device_close(device);
+        return RAD_STATUS_NOT_FOUND;
+    }
+    uint8_t frame[60]{};
+    if (target_mac) memcpy(frame, target_mac->bytes, 6u);
+    else memset(frame, 0xff, 6u);
+    memcpy(frame + 6u, info.mac.bytes, 6u);
+    frame[12] = 0x08;
+    frame[13] = 0x06;
+    write_be16(frame + 14u, 1u);
+    write_be16(frame + 16u, 0x0800u);
+    frame[18] = 6u;
+    frame[19] = 4u;
+    write_be16(frame + 20u, opcode);
+    memcpy(frame + 22u, info.mac.bytes, 6u);
+    const rad_ipv4_address_t source = radix_default_ipv4_address();
+    memcpy(frame + 28u, source.bytes, 4u);
+    if (target_mac) memcpy(frame + 32u, target_mac->bytes, 6u);
+    memcpy(frame + 38u, target_ip.bytes, 4u);
+    const rad_status_t status = rad_net_send(device, frame, sizeof(frame));
+    rad_device_close(device);
+    if (status == RAD_STATUS_OK) {
+        ++g_state.net_ethernet_tx;
+        ++g_state.net_arp_tx;
+    }
+    return status;
 }
 
 SocketRecord *socket_from_fd(FdRecord *record) {
@@ -1504,23 +1689,113 @@ rad_status_t dispatch_udp_datagram(rad_ipv4_address_t source_address, uint16_t s
     return enqueue_udp_datagram(socket, &from, payload, size);
 }
 
-rad_status_t parse_ipv4_udp_frame(const void *frame, size_t length) {
-    const auto *bytes = static_cast<const uint8_t*>(frame);
+rad_status_t send_icmp_echo_reply(const uint8_t *request, size_t length) {
+    if (!request || length < 14u + 20u + 8u) return RAD_STATUS_INVALID_ARGUMENT;
+    const size_t ip = 14u;
+    const size_t ihl = static_cast<size_t>(request[ip] & 0x0fu) * 4u;
+    const uint16_t ip_total = read_be16(request + ip + 2u);
+    if (ihl < 20u || length < 14u + ip_total || ip_total < ihl + 8u) return RAD_STATUS_INVALID_ARGUMENT;
+    rad_device_t device = nullptr;
+    if (rad_net_open("/dev/net0", &device) != RAD_STATUS_OK) return RAD_STATUS_NOT_FOUND;
+    rad_net_link_info_t info{};
+    if (rad_net_link_info(device, &info) != RAD_STATUS_OK) {
+        rad_device_close(device);
+        return RAD_STATUS_NOT_FOUND;
+    }
+    uint8_t frame[1514]{};
+    const size_t frame_len = 14u + ip_total;
+    memcpy(frame, request + 6u, 6u);
+    memcpy(frame + 6u, info.mac.bytes, 6u);
+    frame[12] = 0x08;
+    frame[13] = 0x00;
+    memcpy(frame + ip, request + ip, ip_total);
+    memcpy(frame + ip + 12u, request + ip + 16u, 4u);
+    memcpy(frame + ip + 16u, request + ip + 12u, 4u);
+    frame[ip + 8u] = 64u;
+    frame[ip + 10u] = 0;
+    frame[ip + 11u] = 0;
+    const uint16_t ip_sum = ipv4_checksum(frame + ip, ihl);
+    write_be16(frame + ip + 10u, ip_sum);
+    const size_t icmp = ip + ihl;
+    frame[icmp] = 0u;
+    frame[icmp + 2u] = 0u;
+    frame[icmp + 3u] = 0u;
+    const uint16_t icmp_sum = ipv4_checksum(frame + icmp, ip_total - ihl);
+    write_be16(frame + icmp + 2u, icmp_sum);
+    const rad_status_t status = rad_net_send(device, frame, frame_len);
+    rad_device_close(device);
+    if (status == RAD_STATUS_OK) {
+        ++g_state.net_ethernet_tx;
+        ++g_state.net_ipv4_tx;
+        ++g_state.net_icmp_tx;
+    }
+    return status;
+}
+
+rad_status_t parse_arp_frame(const uint8_t *bytes, size_t length) {
     if (!bytes || length < 42u) return RAD_STATUS_INVALID_ARGUMENT;
-    const uint16_t ethertype = static_cast<uint16_t>((bytes[12] << 8u) | bytes[13]);
-    if (ethertype != 0x0800u) return RAD_STATUS_NOT_SUPPORTED;
+    if (read_be16(bytes + 14u) != 1u || read_be16(bytes + 16u) != 0x0800u || bytes[18] != 6u || bytes[19] != 4u) {
+        return RAD_STATUS_NOT_SUPPORTED;
+    }
+    ++g_state.net_arp_rx;
+    const uint16_t opcode = read_be16(bytes + 20u);
+    rad_mac_address_t sender_mac{};
+    memcpy(sender_mac.bytes, bytes + 22u, 6u);
+    rad_ipv4_address_t sender_ip{{bytes[28], bytes[29], bytes[30], bytes[31]}};
+    rad_ipv4_address_t target_ip{{bytes[38], bytes[39], bytes[40], bytes[41]}};
+    update_arp_cache(sender_ip, sender_mac);
+    if (opcode == 1u && ipv4_equal(target_ip, radix_default_ipv4_address())) {
+        send_arp_packet(sender_ip, &sender_mac, 2u);
+    }
+    return RAD_STATUS_OK;
+}
+
+rad_status_t parse_ipv4_frame(const uint8_t *bytes, size_t length) {
+    if (!bytes || length < 34u) return RAD_STATUS_INVALID_ARGUMENT;
     const size_t ip_offset = 14u;
     const uint8_t version_ihl = bytes[ip_offset];
     const size_t ihl = static_cast<size_t>(version_ihl & 0x0fu) * 4u;
-    if ((version_ihl >> 4u) != 4u || ihl < 20u || length < ip_offset + ihl + 8u) return RAD_STATUS_INVALID_ARGUMENT;
-    if (bytes[ip_offset + 9u] != RAD_IPPROTO_UDP) return RAD_STATUS_NOT_SUPPORTED;
-    const size_t udp_offset = ip_offset + ihl;
-    const uint16_t source_port = static_cast<uint16_t>((bytes[udp_offset] << 8u) | bytes[udp_offset + 1u]);
-    const uint16_t destination_port = static_cast<uint16_t>((bytes[udp_offset + 2u] << 8u) | bytes[udp_offset + 3u]);
-    const uint16_t udp_length = static_cast<uint16_t>((bytes[udp_offset + 4u] << 8u) | bytes[udp_offset + 5u]);
-    if (udp_length < 8u || length < udp_offset + udp_length) return RAD_STATUS_INVALID_ARGUMENT;
+    if ((version_ihl >> 4u) != 4u || ihl < 20u || length < ip_offset + ihl) return RAD_STATUS_INVALID_ARGUMENT;
+    const uint16_t ip_total = read_be16(bytes + ip_offset + 2u);
+    if (ip_total < ihl || length < ip_offset + ip_total) return RAD_STATUS_INVALID_ARGUMENT;
+    if (ipv4_checksum(bytes + ip_offset, ihl) != 0u) return RAD_STATUS_INVALID_ARGUMENT;
+    rad_mac_address_t source_mac{};
+    memcpy(source_mac.bytes, bytes + 6u, 6u);
     rad_ipv4_address_t source{{bytes[ip_offset + 12u], bytes[ip_offset + 13u], bytes[ip_offset + 14u], bytes[ip_offset + 15u]}};
-    return dispatch_udp_datagram(source, source_port, destination_port, bytes + udp_offset + 8u, udp_length - 8u);
+    rad_ipv4_address_t destination{{bytes[ip_offset + 16u], bytes[ip_offset + 17u], bytes[ip_offset + 18u], bytes[ip_offset + 19u]}};
+    update_arp_cache(source, source_mac);
+    if (!ipv4_equal(destination, radix_default_ipv4_address()) && !ipv4_equal(destination, rad_ipv4_address_t{{255, 255, 255, 255}})) {
+        return RAD_STATUS_NOT_SUPPORTED;
+    }
+    ++g_state.net_ipv4_rx;
+    const uint8_t protocol = bytes[ip_offset + 9u];
+    if (protocol == RAD_IPPROTO_UDP) {
+        const size_t udp_offset = ip_offset + ihl;
+        if (ip_total < ihl + 8u) return RAD_STATUS_INVALID_ARGUMENT;
+        const uint16_t source_port = read_be16(bytes + udp_offset);
+        const uint16_t destination_port = read_be16(bytes + udp_offset + 2u);
+        const uint16_t udp_length = read_be16(bytes + udp_offset + 4u);
+        if (udp_length < 8u || ip_total < ihl + udp_length) return RAD_STATUS_INVALID_ARGUMENT;
+        ++g_state.net_udp_rx;
+        return dispatch_udp_datagram(source, source_port, destination_port, bytes + udp_offset + 8u, udp_length - 8u);
+    }
+    if (protocol == 1u) {
+        const size_t icmp_offset = ip_offset + ihl;
+        if (ip_total < ihl + 8u) return RAD_STATUS_INVALID_ARGUMENT;
+        ++g_state.net_icmp_rx;
+        if (bytes[icmp_offset] == 8u) return send_icmp_echo_reply(bytes, length);
+    }
+    return RAD_STATUS_NOT_SUPPORTED;
+}
+
+rad_status_t parse_ethernet_frame(const void *frame, size_t length) {
+    const auto *bytes = static_cast<const uint8_t*>(frame);
+    if (!bytes || length < 14u) return RAD_STATUS_INVALID_ARGUMENT;
+    ++g_state.net_ethernet_rx;
+    const uint16_t ethertype = read_be16(bytes + 12u);
+    if (ethertype == 0x0806u) return parse_arp_frame(bytes, length);
+    if (ethertype == 0x0800u) return parse_ipv4_frame(bytes, length);
+    return RAD_STATUS_NOT_SUPPORTED;
 }
 
 void poll_network_for_udp() {
@@ -1531,7 +1806,7 @@ void poll_network_for_udp() {
     for (uint32_t i = 0; i < 16u; ++i) {
         const intptr_t received = rad_net_receive(device, frame, sizeof(frame));
         if (received <= 0) break;
-        parse_ipv4_udp_frame(frame, static_cast<size_t>(received));
+        parse_ethernet_frame(frame, static_cast<size_t>(received));
     }
     rad_device_close(device);
 }
@@ -1546,7 +1821,25 @@ rad_status_t send_udp_frame(const SocketRecord *socket, const rad_sockaddr_in_t 
         return RAD_STATUS_NOT_FOUND;
     }
     uint8_t frame[1514]{};
-    memset(frame, 0xff, 6u);
+    const rad_net_stack_config_t& config = active_net_config();
+    const rad_ipv4_address_t source = socket->local_address.bytes[0] ? socket->local_address : config.ipv4;
+    const rad_ipv4_address_t next_hop = ipv4_same_subnet(source, destination->address, config.netmask)
+        ? destination->address
+        : config.gateway;
+    ArpEntry *entry = find_arp_entry(next_hop);
+    if (!entry) {
+        send_arp_packet(next_hop, nullptr, 1u);
+        for (uint32_t i = 0; i < 20u && !entry; ++i) {
+            rad_net_poll(device);
+            uint8_t rx[1536];
+            const intptr_t received = rad_net_receive(device, rx, sizeof(rx));
+            if (received > 0) parse_ethernet_frame(rx, static_cast<size_t>(received));
+            entry = find_arp_entry(next_hop);
+            if (!entry) rad_sleep_ms(1);
+        }
+    }
+    if (entry) memcpy(frame, entry->mac.bytes, 6u);
+    else memset(frame, 0xff, 6u);
     memcpy(frame + 6u, info.mac.bytes, 6u);
     frame[12] = 0x08;
     frame[13] = 0x00;
@@ -1554,11 +1847,13 @@ rad_status_t send_udp_frame(const SocketRecord *socket, const rad_sockaddr_in_t 
     const size_t udp = ip + 20u;
     const uint16_t ip_total = static_cast<uint16_t>(20u + 8u + size);
     frame[ip] = 0x45;
+    const uint16_t packet_id = next_ipv4_id();
+    write_be16(frame + ip + 4u, packet_id);
+    write_be16(frame + ip + 6u, 0x4000u);
     frame[ip + 2u] = static_cast<uint8_t>(ip_total >> 8u);
     frame[ip + 3u] = static_cast<uint8_t>(ip_total);
     frame[ip + 8u] = 64u;
     frame[ip + 9u] = RAD_IPPROTO_UDP;
-    const rad_ipv4_address_t source = socket->local_address.bytes[0] ? socket->local_address : radix_default_ipv4_address();
     memcpy(frame + ip + 12u, source.bytes, 4u);
     memcpy(frame + ip + 16u, destination->address.bytes, 4u);
     const uint16_t sum = ipv4_checksum(frame + ip, 20u);
@@ -1574,7 +1869,122 @@ rad_status_t send_udp_frame(const SocketRecord *socket, const rad_sockaddr_in_t 
     if (size) memcpy(frame + udp + 8u, payload, size);
     const rad_status_t status = rad_net_send(device, frame, 14u + ip_total);
     rad_device_close(device);
+    if (status == RAD_STATUS_OK) {
+        ++g_state.net_ethernet_tx;
+        ++g_state.net_ipv4_tx;
+        ++g_state.net_udp_tx;
+    }
     return status;
+}
+
+rad_status_t net_stack_info_internal(rad_net_stack_info_t *info) {
+    if (!info) return RAD_STATUS_INVALID_ARGUMENT;
+    memset(info, 0, sizeof(*info));
+    info->size = sizeof(*info);
+    const rad_net_stack_config_t& config = active_net_config();
+    info->ipv4 = config.ipv4;
+    info->netmask = config.netmask;
+    info->gateway = config.gateway;
+    info->ntp_server = config.ntp_server;
+    info->ntp_port = config.ntp_port;
+    info->arp_entries = arp_entry_count();
+    info->ethernet_rx = g_state.net_ethernet_rx;
+    info->ethernet_tx = g_state.net_ethernet_tx;
+    info->arp_rx = g_state.net_arp_rx;
+    info->arp_tx = g_state.net_arp_tx;
+    info->ipv4_rx = g_state.net_ipv4_rx;
+    info->ipv4_tx = g_state.net_ipv4_tx;
+    info->udp_rx = g_state.net_udp_rx;
+    info->udp_tx = g_state.net_udp_tx;
+    info->icmp_rx = g_state.net_icmp_rx;
+    info->icmp_tx = g_state.net_icmp_tx;
+    return RAD_STATUS_OK;
+}
+
+rad_status_t net_configure_internal(const rad_net_stack_config_t *config) {
+    if (!config || config->size < offsetof(rad_net_stack_config_t, flags)) return RAD_STATUS_INVALID_ARGUMENT;
+    rad_net_stack_config_t next{};
+    next.size = sizeof(next);
+    next.ipv4 = ipv4_is_zero(config->ipv4) ? radix_default_ipv4_address() : config->ipv4;
+    next.netmask = ipv4_is_zero(config->netmask) ? radix_default_netmask() : config->netmask;
+    next.gateway = ipv4_is_zero(config->gateway) ? radix_default_gateway() : config->gateway;
+    next.ntp_server = ipv4_is_zero(config->ntp_server) ? radix_default_ntp_server() : config->ntp_server;
+    next.ntp_port = config->ntp_port ? config->ntp_port : RADIX_RKCONFIG_NET_NTP_PORT;
+    next.flags = config->flags;
+    g_state.net_config = next;
+    memset(g_state.arp_cache, 0, sizeof(g_state.arp_cache));
+    return RAD_STATUS_OK;
+}
+
+rad_status_t net_ntp_status_internal(rad_ntp_status_t *status) {
+    if (!status) return RAD_STATUS_INVALID_ARGUMENT;
+    *status = g_state.ntp_status;
+    status->size = sizeof(*status);
+    return RAD_STATUS_OK;
+}
+
+rad_status_t net_ntp_query_internal(rad_ntp_query_t *query) {
+    if (!query || query->size < sizeof(rad_ntp_query_t)) return RAD_STATUS_INVALID_ARGUMENT;
+    const rad_net_stack_config_t& config = active_net_config();
+    rad_ipv4_address_t server_ip = ipv4_is_zero(query->server) ? config.ntp_server : query->server;
+    uint16_t server_port = query->port ? query->port : config.ntp_port;
+    uint16_t timeout_ms = query->timeout_ms ? query->timeout_ms : 1000u;
+    int32_t fd = rad_socket_create(RAD_AF_INET, RAD_SOCK_DGRAM, RAD_IPPROTO_UDP);
+    if (fd < 0) return static_cast<rad_status_t>(fd);
+    rad_sockaddr_in_t local{};
+    local.family = RAD_AF_INET;
+    local.port = 49123u;
+    local.address = config.ipv4;
+    if (rad_socket_bind(fd, &local, sizeof(local)) != RAD_STATUS_OK) {
+        local.port = static_cast<uint16_t>(49152u + (rad_time_millis() % 1024u));
+        rad_socket_bind(fd, &local, sizeof(local));
+    }
+    uint8_t request[48]{};
+    request[0] = 0x1bu;
+    rad_sockaddr_in_t destination{};
+    destination.family = RAD_AF_INET;
+    destination.port = server_port;
+    destination.address = server_ip;
+    ++g_state.ntp_status.queries;
+    g_state.ntp_status.server = server_ip;
+    g_state.ntp_status.port = server_port;
+    const intptr_t sent = rad_socket_sendto(fd, request, sizeof(request), 0, &destination, sizeof(destination));
+    if (sent != static_cast<intptr_t>(sizeof(request))) {
+        rad_fd_close(fd);
+        net_ntp_status_internal(&query->status);
+        return sent < 0 ? static_cast<rad_status_t>(sent) : RAD_STATUS_ERROR;
+    }
+    uint8_t response[64]{};
+    rad_sockaddr_in_t from{};
+    size_t from_len = sizeof(from);
+    const uint64_t start = rad_time_millis();
+    const uint32_t max_attempts = static_cast<uint32_t>(timeout_ms ? timeout_ms : 1000u) + 32u;
+    for (uint32_t attempt = 0; attempt < max_attempts; ++attempt) {
+        const intptr_t received = rad_socket_recvfrom(fd, response, sizeof(response), 0, &from, &from_len);
+        if (received >= 48 && from.port == server_port && ipv4_equal(from.address, server_ip)) {
+            const uint32_t ntp_seconds = read_be32(response + 40u);
+            if (ntp_seconds >= 2208988800u) {
+                const uint64_t unix_seconds = static_cast<uint64_t>(ntp_seconds - 2208988800u);
+                g_state.ntp_status.valid = 1u;
+                g_state.ntp_status.last_unix_seconds = unix_seconds;
+                g_state.ntp_status.offset_millis = static_cast<int64_t>(unix_seconds * 1000u) - static_cast<int64_t>(rad_time_millis());
+                ++g_state.ntp_status.responses;
+                rad_fd_close(fd);
+                net_ntp_status_internal(&query->status);
+                return RAD_STATUS_OK;
+            }
+        }
+        if (received < 0 && received != RAD_STATUS_NOT_FOUND) {
+            rad_fd_close(fd);
+            net_ntp_status_internal(&query->status);
+            return static_cast<rad_status_t>(received);
+        }
+        if (attempt > 8u && rad_time_millis() - start > timeout_ms) break;
+        rad_sleep_ms(1);
+    }
+    rad_fd_close(fd);
+    net_ntp_status_internal(&query->status);
+    return RAD_STATUS_TIMEOUT;
 }
 
 void open_stdio_fd(int32_t fd) {
@@ -2759,6 +3169,22 @@ void register_builtins() {
 
 extern "C" {
 
+rad_status_t rad_net_stack_info(rad_net_stack_info_t *info) {
+    return net_stack_info_internal(info);
+}
+
+rad_status_t rad_net_configure(const rad_net_stack_config_t *config) {
+    return net_configure_internal(config);
+}
+
+rad_status_t rad_net_ntp_status(rad_ntp_status_t *status) {
+    return net_ntp_status_internal(status);
+}
+
+rad_status_t rad_net_ntp_query(rad_ntp_query_t *query) {
+    return net_ntp_query_internal(query);
+}
+
 rad_status_t rad_kernel_init(const rad_kernel_config_t *config) {
     memset(&g_state, 0, sizeof(g_state));
     memset(g_current_task_id, 0, sizeof(g_current_task_id));
@@ -2770,6 +3196,7 @@ rad_status_t rad_kernel_init(const rad_kernel_config_t *config) {
     g_state.next_program_id = 1;
     g_state.preemption_enabled = 1;
     g_state.start_micros = hal_now();
+    initialize_net_config();
     g_state.detected_cores = hal_core_count();
     copy_string(g_state.cwd, sizeof(g_state.cwd), "/");
     copy_string(g_state.backend, sizeof(g_state.backend), config && config->backend_name ? config->backend_name : "embedded");
@@ -3214,6 +3641,24 @@ uint64_t rad_time_micros(void) {
 
 uint64_t rad_time_millis(void) {
     return rad_time_micros() / 1000u;
+}
+
+uint64_t rad_realtime_micros(void) {
+    const uint64_t monotonic = rad_time_micros();
+    if (g_state.realtime_offset_micros < 0) {
+        const uint64_t offset = static_cast<uint64_t>(-g_state.realtime_offset_micros);
+        return monotonic > offset ? monotonic - offset : 0;
+    }
+    return monotonic + static_cast<uint64_t>(g_state.realtime_offset_micros);
+}
+
+rad_status_t rad_realtime_set_micros(uint64_t unix_micros) {
+    if (current_credentials().euid != 0) return RAD_STATUS_INVALID_ARGUMENT;
+    const uint64_t monotonic = rad_time_micros();
+    g_state.realtime_offset_micros = unix_micros >= monotonic
+        ? static_cast<int64_t>(unix_micros - monotonic)
+        : -static_cast<int64_t>(monotonic - unix_micros);
+    return RAD_STATUS_OK;
 }
 
 void rad_sleep_ms(uint32_t milliseconds) {
@@ -4580,6 +5025,25 @@ void rad_process_exit(int32_t status) {
     }
 }
 
+int32_t rad_process_kill(int32_t pid, int32_t signal_number) {
+    if (pid <= 1) return RAD_STATUS_INVALID_ARGUMENT;
+    if (signal_number <= 0 || signal_number >= 64) return RAD_STATUS_INVALID_ARGUMENT;
+    for (size_t i = 0; i < RADIX_KERNEL_MAX_PROCESSES; ++i) {
+        ProcessRecord& process = g_state.processes[i];
+        if (!process.used || process.pid != pid) continue;
+        if (process.state == RAD_PROCESS_ZOMBIE) return RAD_STATUS_OK;
+        process.state = RAD_PROCESS_ZOMBIE;
+        process.exit_code = 128 + signal_number;
+        if (process.task) {
+            process.task->finished = 1;
+            process.task->state = RAD_TASK_FINISHED;
+            process.task->current_core = RAD_TASK_CORE_ANY;
+        }
+        return RAD_STATUS_OK;
+    }
+    return RAD_STATUS_NOT_FOUND;
+}
+
 size_t rad_process_list(rad_process_info_t *processes, size_t capacity) {
     size_t count = 0;
     for (size_t i = 0; i < RADIX_KERNEL_MAX_PROCESSES; ++i) {
@@ -5135,8 +5599,9 @@ intptr_t rad_socket_sendto(int32_t fd, const void *buffer, size_t size, uint32_t
     SocketRecord *socket = socket_from_fd(record);
     if (!socket) return RAD_STATUS_NOT_FOUND;
     if (!socket->local_port) socket->local_port = static_cast<uint16_t>(49152u + (record->socket_index % 1024u));
-    if (!socket->local_address.bytes[0]) socket->local_address = radix_default_ipv4_address();
-    if (ipv4_equal(address->address, socket->local_address) || ipv4_equal(address->address, radix_default_ipv4_address())) {
+    const rad_net_stack_config_t& config = active_net_config();
+    if (!socket->local_address.bytes[0]) socket->local_address = config.ipv4;
+    if (ipv4_equal(address->address, socket->local_address) || ipv4_equal(address->address, config.ipv4)) {
         rad_sockaddr_in_t from{};
         from.family = RAD_AF_INET;
         from.port = socket->local_port;
@@ -5474,10 +5939,15 @@ intptr_t rad_syscall_dispatch(uintptr_t number, uintptr_t arg0, uintptr_t arg1, 
     case RAD_SYSCALL_GETTIMEOFDAY: {
         auto *tv = reinterpret_cast<rad_posix_timeval_t*>(arg0);
         if (!tv) return RAD_STATUS_INVALID_ARGUMENT;
-        const uint64_t micros = rad_time_micros();
+        const uint64_t micros = rad_realtime_micros();
         tv->tv_sec = static_cast<int64_t>(micros / 1000000u);
         tv->tv_usec = static_cast<int64_t>(micros % 1000000u);
         return RAD_STATUS_OK;
+    }
+    case RAD_SYSCALL_SETTIMEOFDAY: {
+        auto *tv = reinterpret_cast<const rad_posix_timeval_t*>(arg0);
+        if (!tv || tv->tv_sec < 0 || tv->tv_usec < 0 || tv->tv_usec >= 1000000) return RAD_STATUS_INVALID_ARGUMENT;
+        return rad_realtime_set_micros(static_cast<uint64_t>(tv->tv_sec) * 1000000u + static_cast<uint64_t>(tv->tv_usec));
     }
     case RAD_SYSCALL_NANOSLEEP:
         rad_sleep_us(static_cast<uint32_t>(arg0 / 1000u));
@@ -5488,6 +5958,7 @@ intptr_t rad_syscall_dispatch(uintptr_t number, uintptr_t arg0, uintptr_t arg1, 
     case RAD_SYSCALL_FORK: return rad_process_fork();
     case RAD_SYSCALL_EXECVE: return rad_process_execve(reinterpret_cast<const char*>(arg0), reinterpret_cast<const char *const*>(arg1));
     case RAD_SYSCALL_WAITPID: return rad_process_waitpid(static_cast<int32_t>(arg0), reinterpret_cast<int32_t*>(arg1), static_cast<uint32_t>(arg2));
+    case RAD_SYSCALL_KILL: return rad_process_kill(static_cast<int32_t>(arg0), static_cast<int32_t>(arg1));
     case RAD_SYSCALL_GETPID: return rad_process_current_pid();
     case RAD_SYSCALL_GETPPID: return rad_process_parent_pid();
     case RAD_SYSCALL_DUP: return rad_fd_dup(static_cast<int32_t>(arg0));
@@ -5520,8 +5991,14 @@ intptr_t rad_syscall_dispatch(uintptr_t number, uintptr_t arg0, uintptr_t arg1, 
     case RAD_SYSCALL_LISTEN: return rad_socket_listen(static_cast<int32_t>(arg0), static_cast<int>(arg1));
     case RAD_SYSCALL_ACCEPT: return rad_socket_accept(static_cast<int32_t>(arg0), reinterpret_cast<rad_sockaddr_in_t*>(arg1), reinterpret_cast<size_t*>(arg2));
     case RAD_SYSCALL_SHUTDOWN: return rad_socket_shutdown(static_cast<int32_t>(arg0), static_cast<int>(arg1));
-    case RAD_SYSCALL_SENDTO: return rad_socket_sendto(static_cast<int32_t>(arg0), reinterpret_cast<const void*>(arg1), static_cast<size_t>(arg2), static_cast<uint32_t>(arg3), reinterpret_cast<const rad_sockaddr_in_t*>(arg4), static_cast<size_t>(arg5));
-    case RAD_SYSCALL_RECVFROM: return rad_socket_recvfrom(static_cast<int32_t>(arg0), reinterpret_cast<void*>(arg1), static_cast<size_t>(arg2), static_cast<uint32_t>(arg3), reinterpret_cast<rad_sockaddr_in_t*>(arg4), reinterpret_cast<size_t*>(arg5));
+    case RAD_SYSCALL_SENDTO:
+        return arg4
+            ? rad_socket_sendto(static_cast<int32_t>(arg0), reinterpret_cast<const void*>(arg1), static_cast<size_t>(arg2), static_cast<uint32_t>(arg3), reinterpret_cast<const rad_sockaddr_in_t*>(arg4), static_cast<size_t>(arg5))
+            : rad_socket_send(static_cast<int32_t>(arg0), reinterpret_cast<const void*>(arg1), static_cast<size_t>(arg2), static_cast<uint32_t>(arg3));
+    case RAD_SYSCALL_RECVFROM:
+        return arg4
+            ? rad_socket_recvfrom(static_cast<int32_t>(arg0), reinterpret_cast<void*>(arg1), static_cast<size_t>(arg2), static_cast<uint32_t>(arg3), reinterpret_cast<rad_sockaddr_in_t*>(arg4), reinterpret_cast<size_t*>(arg5))
+            : rad_socket_recv(static_cast<int32_t>(arg0), reinterpret_cast<void*>(arg1), static_cast<size_t>(arg2), static_cast<uint32_t>(arg3));
     case RAD_SYSCALL_SETSOCKOPT: return rad_socket_setsockopt(static_cast<int32_t>(arg0), static_cast<int>(arg1), static_cast<int>(arg2), reinterpret_cast<const void*>(arg3), static_cast<size_t>(arg4));
     case RAD_SYSCALL_GETSOCKOPT: return rad_socket_getsockopt(static_cast<int32_t>(arg0), static_cast<int>(arg1), static_cast<int>(arg2), reinterpret_cast<void*>(arg3), reinterpret_cast<size_t*>(arg4));
     case RAD_SYSCALL_SHM_OPEN: return rad_shm_open(reinterpret_cast<const char*>(arg0), static_cast<size_t>(arg1), static_cast<uint32_t>(arg2));

@@ -7,5 +7,6 @@ struct timeval {
 };
 
 int gettimeofday(struct timeval *tv, void *tz);
+int settimeofday(const struct timeval *tv, const void *tz);
 
 #endif

@@ -29,9 +29,20 @@
 #define RADIX_SYS_FCNTL 22
 #define RADIX_SYS_ACCESS 23
 #define RADIX_SYS_ISATTY 24
+#define RADIX_SYS_SOCKET 25
+#define RADIX_SYS_BIND 26
+#define RADIX_SYS_CONNECT 27
+#define RADIX_SYS_LISTEN 28
+#define RADIX_SYS_ACCEPT 29
+#define RADIX_SYS_SENDTO 30
+#define RADIX_SYS_RECVFROM 31
+#define RADIX_SYS_SHUTDOWN 32
+#define RADIX_SYS_SETSOCKOPT 33
+#define RADIX_SYS_GETSOCKOPT 34
 #define RADIX_SYS_MMAP 35
 #define RADIX_SYS_MUNMAP 36
 #define RADIX_SYS_POLL 39
+#define RADIX_SYS_SETTIMEOFDAY 40
 #define RADIX_SYS_GETDENTS 1000
 #define RADIX_SYS_REMOVE 1001
 #define RADIX_SYS_MKDIR 1002
@@ -47,6 +58,7 @@
 #define RADIX_SYS_SYMLINK 1016
 #define RADIX_SYS_READLINK 1017
 #define RADIX_SYS_FSYNC 1018
+#define RADIX_SYS_KILL 1019
 
 static inline long radix_syscall6(long n, long a, long b, long c, long d, long e, long f) {
     register long rax asm("rax") = n;

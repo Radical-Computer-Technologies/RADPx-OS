@@ -1,0 +1,8 @@
+name=radix-dns-resolver
+version=0.1.3-experimental
+kind=system-service
+service=/etc/radix/services/dns-resolver.json
+config=/etc/radix/network/dns-resolver.json
+entry=/sbin/dns-resolver
+requires=radix-network
+note=RADix DNS resolver configuration service package.

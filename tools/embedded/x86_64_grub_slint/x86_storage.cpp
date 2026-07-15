@@ -734,7 +734,10 @@ VirtioNetDevice *allocate_net_device(void) {
 rad_status_t net_ioctl(void *context, uint32_t request, void *argument) {
     auto *device = static_cast<VirtioNetDevice*>(context);
     if (!device || !device->ready) return RAD_STATUS_NOT_FOUND;
-    if (request == RAD_DEVICE_IOCTL_NET_LINK_INFO) {
+    const uint32_t ioctl_type = RAD_IOCTL_TYPE(request);
+    const uint32_t ioctl_nr = RAD_IOCTL_NR(request);
+    if (ioctl_type != RAD_IOCTL_TYPE_NET) return RAD_STATUS_NOT_SUPPORTED;
+    if (ioctl_nr == RAD_IOCTL_NR(RAD_DEVICE_IOCTL_NET_LINK_INFO)) {
         auto *info = static_cast<rad_net_link_info_t*>(argument);
         if (!info) return RAD_STATUS_INVALID_ARGUMENT;
         info->size = sizeof(*info);
@@ -745,21 +748,55 @@ rad_status_t net_ioctl(void *context, uint32_t request, void *argument) {
         info->rx_packets = device->rx_packets;
         return RAD_STATUS_OK;
     }
-    if (request == RAD_DEVICE_IOCTL_NET_SEND) {
+    if (ioctl_nr == RAD_IOCTL_NR(RAD_DEVICE_IOCTL_NET_SEND)) {
         auto *packet = static_cast<rad_net_packet_t*>(argument);
         if (!packet || packet->size < sizeof(*packet) || !packet->data || packet->length == 0) return RAD_STATUS_INVALID_ARGUMENT;
         return virtio_net_send_frame(device, packet->data, packet->length);
     }
-    if (request == RAD_DEVICE_IOCTL_NET_POLL) {
+    if (ioctl_nr == RAD_IOCTL_NR(RAD_DEVICE_IOCTL_NET_POLL)) {
         return RAD_STATUS_OK;
     }
-    if (request == RAD_DEVICE_IOCTL_NET_RECV) {
+    if (ioctl_nr == RAD_IOCTL_NR(RAD_DEVICE_IOCTL_NET_RECV)) {
         auto *packet = static_cast<rad_net_packet_t*>(argument);
         if (!packet || packet->size < sizeof(*packet) || !packet->data || !packet->length) return RAD_STATUS_INVALID_ARGUMENT;
         const intptr_t received = virtio_net_receive_frame(device, packet->data, packet->length);
         if (received < 0) return static_cast<rad_status_t>(received);
         packet->length = static_cast<size_t>(received);
         return RAD_STATUS_OK;
+    }
+    if (ioctl_nr == RAD_IOCTL_NR(RAD_DEVICE_IOCTL_NET_STACK_INFO)) {
+        auto *info = static_cast<rad_net_stack_info_t*>(argument);
+        if (!info || info->size < sizeof(uint32_t)) return RAD_STATUS_INVALID_ARGUMENT;
+        const uint32_t user_size = info->size;
+        rad_net_stack_info_t local{};
+        local.size = sizeof(local);
+        const rad_status_t status = rad_net_stack_info(&local);
+        if (status != RAD_STATUS_OK) return status;
+        const size_t copy_size = user_size < sizeof(local) ? user_size : sizeof(local);
+        memcpy(info, &local, copy_size);
+        return RAD_STATUS_OK;
+    }
+    if (ioctl_nr == RAD_IOCTL_NR(RAD_DEVICE_IOCTL_NET_NTP_QUERY)) {
+        auto *query = static_cast<rad_ntp_query_t*>(argument);
+        if (!query || query->size < offsetof(rad_ntp_query_t, status)) return RAD_STATUS_INVALID_ARGUMENT;
+        const uint32_t user_size = query->size;
+        rad_ntp_query_t local{};
+        local.size = sizeof(local);
+        local.server = query->server;
+        local.port = query->port;
+        local.timeout_ms = query->timeout_ms;
+        const rad_status_t status = rad_net_ntp_query(&local);
+        const size_t copy_size = user_size < sizeof(local) ? user_size : sizeof(local);
+        memcpy(query, &local, copy_size);
+        return status;
+    }
+    if (ioctl_nr == RAD_IOCTL_NR(RAD_DEVICE_IOCTL_NET_CONFIGURE)) {
+        auto *config = static_cast<rad_net_stack_config_t*>(argument);
+        if (!config || config->size < offsetof(rad_net_stack_config_t, flags)) return RAD_STATUS_INVALID_ARGUMENT;
+        rad_net_stack_config_t local{};
+        memcpy(&local, config, config->size < sizeof(local) ? config->size : sizeof(local));
+        local.size = sizeof(local);
+        return rad_net_configure(&local);
     }
     return RAD_STATUS_NOT_SUPPORTED;
 }
@@ -954,6 +991,44 @@ extern "C" int x86_network_self_test(void) {
         }
         if (client >= 0) rad_fd_close(client);
         if (server >= 0) rad_fd_close(server);
+        const int32_t echo_client = rad_socket_create(RAD_AF_INET, RAD_SOCK_DGRAM, RAD_IPPROTO_UDP);
+        int host_udp_ok = 0;
+        if (echo_client >= 0) {
+            rad_sockaddr_in_t host{};
+            host.family = RAD_AF_INET;
+            host.port = 12301;
+            host.address = rad_ipv4_address_t{{10, 0, 2, 2}};
+            const char echo_payload[] = "radix-host-udp";
+            char echo_received[64]{};
+            rad_sockaddr_in_t echo_from{};
+            size_t echo_from_len = sizeof(echo_from);
+            if (rad_socket_sendto(echo_client, echo_payload, sizeof(echo_payload), 0, &host, sizeof(host)) == static_cast<intptr_t>(sizeof(echo_payload))) {
+                rad_debug_marker("RADIX_NET_UDP_TX_OK");
+                const uint64_t start = rad_time_millis();
+                while (rad_time_millis() - start < 1500u) {
+                    const intptr_t got = rad_socket_recvfrom(echo_client, echo_received, sizeof(echo_received), 0, &echo_from, &echo_from_len);
+                    if (got == static_cast<intptr_t>(sizeof(echo_payload)) && memcmp(echo_received, echo_payload, sizeof(echo_payload)) == 0) {
+                        rad_debug_marker("RADIX_NET_UDP_RX_OK");
+                        rad_debug_marker("RADIX_NET_HOST_UDP_ECHO_OK");
+                        host_udp_ok = 1;
+                        break;
+                    }
+                    rad_sleep_ms(1);
+                }
+            }
+            rad_fd_close(echo_client);
+        }
+        rad_ntp_query_t ntp{};
+        ntp.size = sizeof(ntp);
+        ntp.server = rad_ipv4_address_t{{10, 0, 2, 2}};
+        ntp.port = 12300;
+        ntp.timeout_ms = 1500;
+        const rad_status_t ntp_status = rad_net_ntp_query(&ntp);
+        if (ntp_status == RAD_STATUS_OK && ntp.status.valid) {
+            rad_debug_marker("RADIX_NTP_QUERY_OK");
+            rad_debug_marker("RADIX_NTP_RESPONSE_OK");
+            rad_debug_marker("RADIX_NTP_TIME_SAMPLE_OK");
+        }
         const int32_t tcp_server = rad_socket_create(RAD_AF_INET, RAD_SOCK_STREAM, RAD_IPPROTO_TCP);
         const int32_t tcp_client = rad_socket_create(RAD_AF_INET, RAD_SOCK_STREAM, RAD_IPPROTO_TCP);
         rad_sockaddr_in_t tcp_address{};
@@ -984,7 +1059,7 @@ extern "C" int x86_network_self_test(void) {
         }
         if (tcp_client >= 0) rad_fd_close(tcp_client);
         if (tcp_server >= 0) rad_fd_close(tcp_server);
-        return 1;
+        return host_udp_ok && ntp_status == RAD_STATUS_OK && ntp.status.valid;
     }
     return 0;
 }

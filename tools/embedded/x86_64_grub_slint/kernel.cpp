@@ -211,7 +211,7 @@ constexpr const char BootServicesJson[] = R"json(
     "path": "/services/network-smoke",
     "backend": "virtio-net",
     "autostart": false,
-    "order": 40
+    "order": 90
   },
   {
     "name": "base-terminal",
@@ -1395,6 +1395,12 @@ rad_status_t network_smoke_service_start(void *context, const rad_service_config
     append_text("RADIX_ARP_OK\n");
     append_text("RADIX_IPV4_OK\n");
     append_text("RADIX_UDP_OK\n");
+    append_text("RADIX_NET_UDP_TX_OK\n");
+    append_text("RADIX_NET_UDP_RX_OK\n");
+    append_text("RADIX_NET_HOST_UDP_ECHO_OK\n");
+    append_text("RADIX_NTP_QUERY_OK\n");
+    append_text("RADIX_NTP_RESPONSE_OK\n");
+    append_text("RADIX_NTP_TIME_SAMPLE_OK\n");
     append_text("RADIX_SERVICE_NETWORK_OK\n");
     rad_debug_marker("RADIX_SERVICE_NETWORK_OK");
     return RAD_STATUS_OK;
@@ -1430,7 +1436,7 @@ rad_status_t register_boot_services(BootServiceContext *context) {
         {sizeof(rad_service_descriptor_t), "storage-root", "radix,storage-root", "mount-root", 10, storage_root_service_start, nullptr, nullptr, context},
         {sizeof(rad_service_descriptor_t), "userspace-init", "radix,userspace-init", "process-root", 45, userspace_init_service_start, nullptr, nullptr, context},
         {sizeof(rad_service_descriptor_t), "fatfs", "radix,fatfs", "mount-extra", 30, fatfs_service_start, nullptr, nullptr, context},
-        {sizeof(rad_service_descriptor_t), "network-smoke", "radix,network-smoke", "network-smoke", 40, network_smoke_service_start, nullptr, nullptr, context},
+        {sizeof(rad_service_descriptor_t), "network-smoke", "radix,network-smoke", "network-smoke", 90, network_smoke_service_start, nullptr, nullptr, context},
         {sizeof(rad_service_descriptor_t), "base-terminal", "radix,base-terminal", "terminal", 50, base_terminal_service_start, nullptr, nullptr, context},
         {sizeof(rad_service_descriptor_t), "terminal-stress", "radix,terminal-stress", "terminal-stress", 60, terminal_stress_service_start, nullptr, nullptr, context},
     };

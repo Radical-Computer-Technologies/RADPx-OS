@@ -1,0 +1,8 @@
+name=radix-time-sync
+version=0.1.3-experimental
+kind=system-service
+service=/etc/radix/services/time-sync.json
+config=/etc/radix/time/time-sync.json
+entry=/sbin/time-sync
+requires=radix-network,radix-dns-resolver,radix-tzdata
+note=RADix NTP/SNTP time synchronization service package.

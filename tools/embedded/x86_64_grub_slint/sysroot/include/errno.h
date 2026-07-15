@@ -37,5 +37,6 @@ extern int errno;
 #define EOVERFLOW 75
 #define EOPNOTSUPP 95
 #define ENOTSUP 95
+#define EAFNOSUPPORT 97
 
 #endif

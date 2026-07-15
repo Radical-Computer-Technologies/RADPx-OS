@@ -85,11 +85,22 @@ if [[ "${RADLIB_X86_SKIP_QEMU:-0}" == "1" ]]; then
 fi
 
 qemu_log="${log_dir}/x86-64-grub-${ui_profile}-smoke.log"
+net_responder_log="${log_dir}/x86-64-grub-${ui_profile}-net-responder.log"
 monitor_sock="${TMPDIR:-/tmp}/radix-${ui_profile}-${qemu_smp}-$$.sock"
 rootfs_img="${x86_build}/radix-rootfs.ext4"
 fat_img="${x86_build}/radix-fat32.img"
-rm -f "${qemu_log}" "${monitor_sock}"
-trap 'rm -f "${monitor_sock}"' EXIT
+rm -f "${qemu_log}" "${net_responder_log}" "${monitor_sock}"
+python3 "${script_dir}/x86_64_grub_slint/host_udp_ntp_responder.py" \
+    --ntp-port "${RADIX_HOST_NTP_PORT:-12300}" \
+    --echo-port "${RADIX_HOST_UDP_ECHO_PORT:-12301}" \
+    --duration "${RADLIB_X86_HOST_NET_RESPONDER_DURATION:-180}" \
+    >"${net_responder_log}" 2>&1 &
+net_responder_pid=$!
+trap 'kill "${net_responder_pid}" >/dev/null 2>&1 || true; rm -f "${monitor_sock}"' EXIT
+for _ in $(seq 1 40); do
+    grep -q "RADIX_HOST_NET_RESPONDER_READY" "${net_responder_log}" 2>/dev/null && break
+    sleep 0.05
+done
 set +e
 timeout "${qemu_timeout}" qemu-system-x86_64 \
     -m "${RADLIB_X86_QEMU_MEMORY:-768M}" \
@@ -297,6 +308,12 @@ grep -q "RADIX_ARP_OK" "${qemu_log}"
 grep -q "RADIX_IPV4_OK" "${qemu_log}"
 grep -q "RADIX_UDP_OK" "${qemu_log}"
 grep -q "RADIX_UDP_RX_OK" "${qemu_log}"
+grep -q "RADIX_NET_UDP_TX_OK" "${qemu_log}"
+grep -q "RADIX_NET_UDP_RX_OK" "${qemu_log}"
+grep -q "RADIX_NET_HOST_UDP_ECHO_OK" "${qemu_log}"
+grep -q "RADIX_NTP_QUERY_OK" "${qemu_log}"
+grep -q "RADIX_NTP_RESPONSE_OK" "${qemu_log}"
+grep -q "RADIX_NTP_TIME_SAMPLE_OK" "${qemu_log}"
 grep -q "RADIX_SOCKET_DGRAM_OK" "${qemu_log}"
 grep -q "RADIX_TCP_SOCKET_OK" "${qemu_log}"
 grep -q "RADIX_TCP_LISTEN_ACCEPT_OK" "${qemu_log}"

@@ -261,6 +261,7 @@ struct KernelState {
     int32_t next_pid = 2;
     int32_t next_fd_slot = 1;
     Clock::time_point start = Clock::now();
+    int64_t realtime_offset_micros = 0;
     rad_process_arch_ops_t process_arch_ops{};
     bool has_process_arch_ops = false;
 };
@@ -1300,6 +1301,26 @@ uint64_t rad_time_millis(void) {
     return rad_time_micros() / 1000u;
 }
 
+uint64_t rad_realtime_micros(void) {
+    const uint64_t monotonic = rad_time_micros();
+    const int64_t offset = state().realtime_offset_micros;
+    if (offset < 0) {
+        const uint64_t magnitude = static_cast<uint64_t>(-offset);
+        return monotonic > magnitude ? monotonic - magnitude : 0;
+    }
+    return monotonic + static_cast<uint64_t>(offset);
+}
+
+rad_status_t rad_realtime_set_micros(uint64_t unix_micros) {
+    std::lock_guard<std::mutex> lock(state().mutex);
+    if (current_credentials_locked().euid != 0) return RAD_STATUS_INVALID_ARGUMENT;
+    const uint64_t monotonic = rad_time_micros();
+    state().realtime_offset_micros = unix_micros >= monotonic
+        ? static_cast<int64_t>(unix_micros - monotonic)
+        : -static_cast<int64_t>(monotonic - unix_micros);
+    return RAD_STATUS_OK;
+}
+
 void rad_sleep_ms(uint32_t milliseconds) {
     std::this_thread::sleep_for(std::chrono::milliseconds(milliseconds));
 }
@@ -2140,6 +2161,16 @@ void rad_process_exit(int32_t status) {
     process.exit_code = status;
 }
 
+int32_t rad_process_kill(int32_t pid, int32_t signal_number) {
+    if (pid <= 1 || signal_number <= 0 || signal_number >= 64) return RAD_STATUS_INVALID_ARGUMENT;
+    std::lock_guard<std::mutex> lock(state().mutex);
+    auto it = state().processes.find(pid);
+    if (it == state().processes.end()) return RAD_STATUS_NOT_FOUND;
+    it->second.state = RAD_PROCESS_ZOMBIE;
+    it->second.exit_code = 128 + signal_number;
+    return RAD_STATUS_OK;
+}
+
 size_t rad_process_list(rad_process_info_t *processes, size_t capacity) {
     std::lock_guard<std::mutex> lock(state().mutex);
     size_t count = 0;
@@ -2910,10 +2941,15 @@ intptr_t rad_syscall_dispatch(uintptr_t number, uintptr_t arg0, uintptr_t arg1, 
     case RAD_SYSCALL_GETTIMEOFDAY: {
         auto *tv = reinterpret_cast<rad_posix_timeval_t*>(arg0);
         if (!tv) return RAD_STATUS_INVALID_ARGUMENT;
-        const uint64_t micros = rad_time_micros();
+        const uint64_t micros = rad_realtime_micros();
         tv->tv_sec = static_cast<int64_t>(micros / 1000000u);
         tv->tv_usec = static_cast<int64_t>(micros % 1000000u);
         return RAD_STATUS_OK;
+    }
+    case RAD_SYSCALL_SETTIMEOFDAY: {
+        auto *tv = reinterpret_cast<const rad_posix_timeval_t*>(arg0);
+        if (!tv || tv->tv_sec < 0 || tv->tv_usec < 0 || tv->tv_usec >= 1000000) return RAD_STATUS_INVALID_ARGUMENT;
+        return rad_realtime_set_micros(static_cast<uint64_t>(tv->tv_sec) * 1000000u + static_cast<uint64_t>(tv->tv_usec));
     }
     case RAD_SYSCALL_NANOSLEEP:
         rad_sleep_us(static_cast<uint32_t>(arg0 / 1000u));
@@ -2924,6 +2960,7 @@ intptr_t rad_syscall_dispatch(uintptr_t number, uintptr_t arg0, uintptr_t arg1, 
     case RAD_SYSCALL_FORK: return rad_process_fork();
     case RAD_SYSCALL_EXECVE: return rad_process_execve(reinterpret_cast<const char*>(arg0), reinterpret_cast<const char *const*>(arg1));
     case RAD_SYSCALL_WAITPID: return rad_process_waitpid(static_cast<int32_t>(arg0), reinterpret_cast<int32_t*>(arg1), static_cast<uint32_t>(arg2));
+    case RAD_SYSCALL_KILL: return rad_process_kill(static_cast<int32_t>(arg0), static_cast<int32_t>(arg1));
     case RAD_SYSCALL_GETPID: return rad_process_current_pid();
     case RAD_SYSCALL_GETPPID: return rad_process_parent_pid();
     case RAD_SYSCALL_GETUID: return static_cast<intptr_t>(rad_process_getuid());
@@ -2954,8 +2991,14 @@ intptr_t rad_syscall_dispatch(uintptr_t number, uintptr_t arg0, uintptr_t arg1, 
     case RAD_SYSCALL_LISTEN: return rad_socket_listen(static_cast<int32_t>(arg0), static_cast<int>(arg1));
     case RAD_SYSCALL_ACCEPT: return rad_socket_accept(static_cast<int32_t>(arg0), reinterpret_cast<rad_sockaddr_in_t*>(arg1), reinterpret_cast<size_t*>(arg2));
     case RAD_SYSCALL_SHUTDOWN: return rad_socket_shutdown(static_cast<int32_t>(arg0), static_cast<int>(arg1));
-    case RAD_SYSCALL_SENDTO: return rad_socket_sendto(static_cast<int32_t>(arg0), reinterpret_cast<const void*>(arg1), static_cast<size_t>(arg2), static_cast<uint32_t>(arg3), reinterpret_cast<const rad_sockaddr_in_t*>(arg4), static_cast<size_t>(arg5));
-    case RAD_SYSCALL_RECVFROM: return rad_socket_recvfrom(static_cast<int32_t>(arg0), reinterpret_cast<void*>(arg1), static_cast<size_t>(arg2), static_cast<uint32_t>(arg3), reinterpret_cast<rad_sockaddr_in_t*>(arg4), reinterpret_cast<size_t*>(arg5));
+    case RAD_SYSCALL_SENDTO:
+        return arg4
+            ? rad_socket_sendto(static_cast<int32_t>(arg0), reinterpret_cast<const void*>(arg1), static_cast<size_t>(arg2), static_cast<uint32_t>(arg3), reinterpret_cast<const rad_sockaddr_in_t*>(arg4), static_cast<size_t>(arg5))
+            : rad_socket_send(static_cast<int32_t>(arg0), reinterpret_cast<const void*>(arg1), static_cast<size_t>(arg2), static_cast<uint32_t>(arg3));
+    case RAD_SYSCALL_RECVFROM:
+        return arg4
+            ? rad_socket_recvfrom(static_cast<int32_t>(arg0), reinterpret_cast<void*>(arg1), static_cast<size_t>(arg2), static_cast<uint32_t>(arg3), reinterpret_cast<rad_sockaddr_in_t*>(arg4), reinterpret_cast<size_t*>(arg5))
+            : rad_socket_recv(static_cast<int32_t>(arg0), reinterpret_cast<void*>(arg1), static_cast<size_t>(arg2), static_cast<uint32_t>(arg3));
     case RAD_SYSCALL_SETSOCKOPT: return rad_socket_setsockopt(static_cast<int32_t>(arg0), static_cast<int>(arg1), static_cast<int>(arg2), reinterpret_cast<const void*>(arg3), static_cast<size_t>(arg4));
     case RAD_SYSCALL_GETSOCKOPT: return rad_socket_getsockopt(static_cast<int32_t>(arg0), static_cast<int>(arg1), static_cast<int>(arg2), reinterpret_cast<void*>(arg3), reinterpret_cast<size_t*>(arg4));
     case RAD_SYSCALL_POLL: return rad_fd_poll(reinterpret_cast<rad_pollfd_t*>(arg0), static_cast<size_t>(arg1), static_cast<int32_t>(arg2));
@@ -3287,6 +3330,37 @@ rad_status_t rad_net_poll(rad_device_t device) {
     if (!device) return RAD_STATUS_INVALID_ARGUMENT;
     if (device->record.type != RAD_DEVICE_NETWORK) return RAD_STATUS_INVALID_ARGUMENT;
     return rad_device_ioctl(device, RAD_DEVICE_IOCTL_NET_POLL, nullptr);
+}
+
+rad_status_t rad_net_stack_info(rad_net_stack_info_t *info) {
+    if (!info) return RAD_STATUS_INVALID_ARGUMENT;
+    memset(info, 0, sizeof(*info));
+    info->size = sizeof(*info);
+    info->ipv4 = rad_ipv4_address_t{{10, 0, 2, 15}};
+    info->netmask = rad_ipv4_address_t{{255, 255, 255, 0}};
+    info->gateway = rad_ipv4_address_t{{10, 0, 2, 2}};
+    info->ntp_server = rad_ipv4_address_t{{10, 0, 2, 2}};
+    info->ntp_port = 12300u;
+    return RAD_STATUS_OK;
+}
+
+rad_status_t rad_net_configure(const rad_net_stack_config_t *config) {
+    return config && config->size >= offsetof(rad_net_stack_config_t, flags) ? RAD_STATUS_OK : RAD_STATUS_INVALID_ARGUMENT;
+}
+
+rad_status_t rad_net_ntp_status(rad_ntp_status_t *status) {
+    if (!status) return RAD_STATUS_INVALID_ARGUMENT;
+    memset(status, 0, sizeof(*status));
+    status->size = sizeof(*status);
+    status->server = rad_ipv4_address_t{{10, 0, 2, 2}};
+    status->port = 12300u;
+    return RAD_STATUS_OK;
+}
+
+rad_status_t rad_net_ntp_query(rad_ntp_query_t *query) {
+    if (!query || query->size < sizeof(*query)) return RAD_STATUS_INVALID_ARGUMENT;
+    rad_net_ntp_status(&query->status);
+    return RAD_STATUS_NOT_SUPPORTED;
 }
 
 rad_status_t rad_spi_transfer_device(rad_device_t device, const rad_spi_transfer_t *transfer) {

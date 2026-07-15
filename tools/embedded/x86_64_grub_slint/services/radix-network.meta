@@ -1,0 +1,8 @@
+name=radix-network
+version=0.1.3-experimental
+kind=system-service
+service=/etc/radix/services/network.json
+config=/etc/radix/network/netinterfaces.json
+entry=/sbin/network-service
+requires=radix-core
+note=RADix network interface configuration service package.
