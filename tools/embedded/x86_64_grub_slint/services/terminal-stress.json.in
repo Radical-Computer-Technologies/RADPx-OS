@@ -6,7 +6,7 @@
   "type": "oneshot",
   "terminal": "/dev/pts/boot-terminal",
   "autostart": @RADIX_TERMINAL_STRESS_AUTOSTART@,
-  "order": 60,
+  "order": @RADIX_TERMINAL_STRESS_ORDER@,
   "requires": ["storage-root", "base-terminal"],
   "after": ["base-terminal"],
   "restart": "no",

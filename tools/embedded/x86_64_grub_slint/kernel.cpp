@@ -1692,10 +1692,19 @@ void nano_autotest_poll(void) {
             return;
         }
         nano_autotest_log("RADIX_SIGNAL_STRESS_BOOT_OK");
+        nano_autotest_write(g_nano_autotest.pty, "posix-stress\n", strlen("posix-stress\n"));
+        nano_autotest_log("RADIX_POSIX_STRESS_COMMAND_OK");
+        break;
+    case 5:
+        if (!nano_autotest_wait_for_text("posix-stress-ok", 1200u, "RADIX_POSIX_STRESS_TIMEOUT")) {
+            --g_nano_autotest.step;
+            return;
+        }
+        nano_autotest_log("RADIX_POSIX_STRESS_BOOT_OK");
         nano_autotest_write(g_nano_autotest.pty, "tty-stress\n", strlen("tty-stress\n"));
         nano_autotest_log("RADIX_TTY_STRESS_COMMAND_OK");
         break;
-    case 5:
+    case 6:
         if (!nano_autotest_wait_for_text("tty-stress-ok", 1200u, "RADIX_TTY_STRESS_TIMEOUT")) {
             --g_nano_autotest.step;
             return;
@@ -1704,7 +1713,7 @@ void nano_autotest_poll(void) {
         nano_autotest_write(g_nano_autotest.pty, "tui-stress\n", strlen("tui-stress\n"));
         nano_autotest_log("RADIX_TUI_STRESS_COMMAND_OK");
         break;
-    case 6:
+    case 7:
         if (!nano_autotest_wait_for_text("tui-stress-ok", 2400u, "RADIX_TUI_STRESS_TIMEOUT")) {
             --g_nano_autotest.step;
             return;
@@ -1729,6 +1738,7 @@ struct TerminalStressProgram {
 constexpr TerminalStressProgram TerminalStressPrograms[] = {
     {"/usr/bin/sleep-stress", "RADIX_SLEEP_STRESS_BOOT_OK", "RADIX_SLEEP_STRESS_BOOT_FAIL"},
     {"/usr/bin/signal-stress", "RADIX_SIGNAL_STRESS_BOOT_OK", "RADIX_SIGNAL_STRESS_BOOT_FAIL"},
+    {"/usr/bin/posix-stress", "RADIX_POSIX_STRESS_BOOT_OK", "RADIX_POSIX_STRESS_BOOT_FAIL"},
     {"/usr/bin/tty-stress", "RADIX_TTY_STRESS_BOOT_OK", "RADIX_TTY_STRESS_BOOT_FAIL"},
     {"/usr/bin/tui-stress", "RADIX_TUI_STRESS_BOOT_OK", "RADIX_TUI_STRESS_BOOT_FAIL"},
 };
@@ -2199,6 +2209,9 @@ extern "C" void kernel_main64(uint32_t magic, uint32_t info_addr) {
         if (framebuffer) render_terminal(framebuffer);
 #endif
     }
+#if defined(RADIX_X86_TERMINAL_AUTOTEST_NANO)
+    nano_autotest_begin(pty);
+#endif
     for (;;) {
 #if defined(RADIX_X86_TERMINAL_AUTOTEST_NANO)
         static bool loop_begin_seen = false;

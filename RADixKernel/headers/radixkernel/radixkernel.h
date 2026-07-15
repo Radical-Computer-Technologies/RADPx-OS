@@ -231,7 +231,17 @@ typedef enum rad_posix_syscall {
     RAD_SYSCALL_SYMLINK = 1016, ///< RAD_SYSCALL_SYMLINK.
     RAD_SYSCALL_READLINK = 1017, ///< RAD_SYSCALL_READLINK.
     RAD_SYSCALL_FSYNC = 1018, ///< RAD_SYSCALL_FSYNC.
-    RAD_SYSCALL_KILL = 1019 ///< RAD_SYSCALL_KILL.
+    RAD_SYSCALL_KILL = 1019, ///< RAD_SYSCALL_KILL.
+    RAD_SYSCALL_FCHDIR = 1020, ///< RAD_SYSCALL_FCHDIR.
+    RAD_SYSCALL_FTRUNCATE = 1021, ///< RAD_SYSCALL_FTRUNCATE.
+    RAD_SYSCALL_UTIME = 1022, ///< RAD_SYSCALL_UTIME.
+    RAD_SYSCALL_GETPGID = 1023, ///< RAD_SYSCALL_GETPGID.
+    RAD_SYSCALL_SETPGID = 1024, ///< RAD_SYSCALL_SETPGID.
+    RAD_SYSCALL_GETSID = 1025, ///< RAD_SYSCALL_GETSID.
+    RAD_SYSCALL_SETSID = 1026, ///< RAD_SYSCALL_SETSID.
+    RAD_SYSCALL_TCGETPGRP = 1027, ///< RAD_SYSCALL_TCGETPGRP.
+    RAD_SYSCALL_TCSETPGRP = 1028, ///< RAD_SYSCALL_TCSETPGRP.
+    RAD_SYSCALL_PIPE2 = 1029 ///< RAD_SYSCALL_PIPE2.
 } rad_posix_syscall_t; ///< Public typedef alias.
 
 /** @brief Public enumeration for rad_process_state. */
@@ -802,6 +812,8 @@ typedef struct rad_pollfd {
 typedef struct rad_process_info {
     int32_t pid; ///< Public structure field.
     int32_t parent_pid; ///< Public structure field.
+    int32_t process_group_id; ///< POSIX process group ID.
+    int32_t session_id; ///< POSIX session ID.
     int32_t exited; ///< Public structure field.
     int32_t exit_code; ///< Public structure field.
     rad_process_state_t state; ///< Public structure field.
@@ -1524,6 +1536,12 @@ rad_gid_t rad_process_getgid(void); ///< Public RADix kernel API entry point.
 rad_gid_t rad_process_getegid(void); ///< Public RADix kernel API entry point.
 rad_status_t rad_process_setuid(rad_uid_t uid); ///< Public RADix kernel API entry point.
 rad_status_t rad_process_setgid(rad_gid_t gid); ///< Public RADix kernel API entry point.
+int32_t rad_process_getpgid(int32_t pid); ///< Public RADix kernel API entry point.
+int32_t rad_process_setpgid(int32_t pid, int32_t pgid); ///< Public RADix kernel API entry point.
+int32_t rad_process_getsid(int32_t pid); ///< Public RADix kernel API entry point.
+int32_t rad_process_setsid(void); ///< Public RADix kernel API entry point.
+int32_t rad_process_tcgetpgrp(int32_t fd); ///< Public RADix kernel API entry point.
+int32_t rad_process_tcsetpgrp(int32_t fd, int32_t pgid); ///< Public RADix kernel API entry point.
 
 rad_status_t rad_module_register(const rad_module_descriptor_t *descriptor); ///< Public RADix kernel API entry point.
 rad_status_t rad_module_unregister(const char *name); ///< Public RADix kernel API entry point.
@@ -1560,6 +1578,8 @@ int32_t rad_fd_ioctl(int32_t fd, uint32_t request, void *argument); ///< Public 
 intptr_t rad_fd_getdents(int32_t fd, rad_dirent_user_t *entries, size_t capacity); ///< Public RADix kernel API entry point.
 int32_t rad_fd_stat(const char *path, rad_vfs_stat_t *stat); ///< Public RADix kernel API entry point.
 int32_t rad_fd_fstat(int32_t fd, rad_vfs_stat_t *stat); ///< Public RADix kernel API entry point.
+int32_t rad_fd_fchdir(int32_t fd); ///< Public RADix kernel API entry point.
+int32_t rad_fd_ftruncate(int32_t fd, uint64_t size); ///< Public RADix kernel API entry point.
 int32_t rad_fd_dup(int32_t fd); ///< Public RADix kernel API entry point.
 int32_t rad_fd_dup2(int32_t old_fd, int32_t new_fd); ///< Public RADix kernel API entry point.
 int32_t rad_fd_fcntl(int32_t fd, uint32_t command, uintptr_t argument); ///< Public RADix kernel API entry point.

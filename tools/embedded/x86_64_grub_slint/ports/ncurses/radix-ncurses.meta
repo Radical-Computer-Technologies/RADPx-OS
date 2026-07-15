@@ -1,6 +1,13 @@
 name=radix-ncurses
+version=0.1.0-experimental
+kind=userspace-library
+architecture=radix-x86_64
 upstream=ncurses
-upstream_version=6.6-20251231
+upstream_version=6.6-20251230
 upstream_sha256=9796dfb0e790bac2a994a86df83adddc1a96021cbc02c44c4f2ea886069bd91d
 terminfo=radix
-note=RADix terminfo/sysroot ncurses compatibility package target.
+libraries=/usr/lib/libradixc.rso,/usr/lib/libtinfo.rso,/usr/lib/libncurses.rso,/usr/lib/libncursesw.rso
+headers=/usr/include/curses.h,/usr/include/ncurses.h,/usr/include/term.h,/usr/include/termcap.h,/usr/include/unctrl.h,/usr/include/panel.h,/usr/include/menu.h,/usr/include/form.h,/usr/include/eti.h,/usr/include/ncurses_dll.h
+provides=libncurses,libncursesw,libtinfo,libradixc,radix-terminal-ui-dev
+requires=radix-core
+note=RADix ncurses/tinfo shared runtime, static archives, and terminal UI development headers.

@@ -4,10 +4,16 @@
 enum {
     SYS_WRITE = 1,
     SYS_EXIT = 10,
+    SYS_NANOSLEEP = 9,
     SYS_FORK = 11,
     SYS_EXECVE = 12,
     SYS_WAITPID = 13,
+    WAIT_NOHANG = 1,
 };
+
+#define WEXITSTATUS(status) (((status) >> 8) & 0xff)
+#define WTERMSIG(status) ((status) & 0x7f)
+#define WIFEXITED(status) (WTERMSIG(status) == 0)
 
 static long sc(long n, long a, long b, long c, long d, long e, long f) {
     register long rax asm("rax") = n;
@@ -68,8 +74,13 @@ static int run_one(const char *path, const char *ok, const char *fail) {
         return 1;
     }
     int status = 0;
-    long waited = sc(SYS_WAITPID, child, (long)&status, 0, 0, 0, 0);
-    if (waited == child && status == 0) {
+    long waited = 0;
+    for (int tries = 0; tries < 200000; ++tries) {
+        waited = sc(SYS_WAITPID, child, (long)&status, WAIT_NOHANG, 0, 0, 0);
+        if (waited == child || waited < 0) break;
+        sc(SYS_NANOSLEEP, 0, 0, 0, 0, 0, 0);
+    }
+    if (waited == child && WIFEXITED(status) && WEXITSTATUS(status) == 0) {
         line(ok);
         return 0;
     }
@@ -81,9 +92,12 @@ static int run_one(const char *path, const char *ok, const char *fail) {
 
 int main(void) {
     int failed = 0;
+    failed |= run_one("/usr/bin/libc-rso-stress", "RADIX_LIBRADIXC_RSO_BOOT_OK", "RADIX_LIBRADIXC_RSO_BOOT_FAIL");
+    failed |= run_one("/usr/bin/tinfo-rso-stress", "RADIX_LIBTINFO_RSO_BOOT_OK", "RADIX_LIBTINFO_RSO_BOOT_FAIL");
     failed |= run_one("/usr/bin/tui-stress-dyn", "RADIX_TUI_STRESS_DYN_BOOT_OK", "RADIX_TUI_STRESS_DYN_BOOT_FAIL");
     failed |= run_one("/usr/bin/sleep-stress", "RADIX_SLEEP_STRESS_BOOT_OK", "RADIX_SLEEP_STRESS_BOOT_FAIL");
     failed |= run_one("/usr/bin/signal-stress", "RADIX_SIGNAL_STRESS_BOOT_OK", "RADIX_SIGNAL_STRESS_BOOT_FAIL");
+    failed |= run_one("/usr/bin/posix-stress", "RADIX_POSIX_STRESS_BOOT_OK", "RADIX_POSIX_STRESS_BOOT_FAIL");
     failed |= run_one("/usr/bin/tty-stress", "RADIX_TTY_STRESS_BOOT_OK", "RADIX_TTY_STRESS_BOOT_FAIL");
     failed |= run_one("/usr/bin/tui-stress", "RADIX_TUI_STRESS_BOOT_OK", "RADIX_TUI_STRESS_BOOT_FAIL");
     line(failed ? "RADIX_STRESS_AUTOTEST_FAIL" : "RADIX_STRESS_AUTOTEST_OK");

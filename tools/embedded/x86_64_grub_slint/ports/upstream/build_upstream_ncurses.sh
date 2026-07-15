@@ -13,6 +13,12 @@ base_sysroot="$4"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cc="${RADIX_CC:-x86_64-linux-gnu-gcc}"
 host_cc="${RADIX_BUILD_CC:-gcc}"
+pic_compile_flags="-ffreestanding -fno-stack-protector -fPIC -fcf-protection=none -mno-red-zone -nostdinc -U__linux__ -Ulinux -U__gnu_linux__"
+static_compile_flags="-ffreestanding -fno-stack-protector -fno-pic -fno-pie -mno-red-zone -nostdinc -U__linux__ -Ulinux -U__gnu_linux__"
+compile_flags="${static_compile_flags}"
+if [[ "${RADIX_NCURSES_PIC:-0}" == "1" ]]; then
+    compile_flags="${pic_compile_flags}"
+fi
 
 mkdir -p "$(dirname "${source_dir}")" "${build_dir}" "${install_dir}"
 
@@ -48,11 +54,11 @@ for arg in "\$@"; do
 done
 if [[ "\${compile_only}" == "1" ]]; then
     if [[ "\${preprocess_only}" == "1" ]]; then
-        exec "${cc}" -ffreestanding -fno-stack-protector -fno-pic -fno-pie -mno-red-zone -nostdinc -U__linux__ -Ulinux -U__gnu_linux__ "\$@" -I"${base_sysroot}/include"
+        exec "${cc}" ${compile_flags} "\$@" -I"${base_sysroot}/include"
     fi
-    exec "${cc}" -ffreestanding -fno-stack-protector -fno-pic -fno-pie -mno-red-zone -nostdinc -U__linux__ -Ulinux -U__gnu_linux__ "\$@" -I"${base_sysroot}/include"
+    exec "${cc}" ${compile_flags} "\$@" -I"${base_sysroot}/include"
 fi
-exec "${cc}" -ffreestanding -fno-stack-protector -fno-pic -fno-pie -mno-red-zone -nostdinc -U__linux__ -Ulinux -U__gnu_linux__ "\$@" -I"${base_sysroot}/include" -nostdlib -static -no-pie -Wl,-Ttext=0x40000000 -Wl,--build-id=none "${build_dir}/radix_crt0.o" -L"${build_dir}" -lradixc
+exec "${cc}" ${compile_flags} "\$@" -I"${base_sysroot}/include" -nostdlib -static -no-pie -Wl,-Ttext=0x40000000 -Wl,--build-id=none "${build_dir}/radix_crt0.o" -L"${build_dir}" -lradixc
 EOF
 chmod +x "${build_dir}/radix-cc"
 
@@ -73,7 +79,7 @@ _start:
     jmp 1b
 EOF
 
-"${cc}" -ffreestanding -fno-stack-protector -fno-pic -fno-pie -mno-red-zone -c "${build_dir}/radix_crt0.S" -o "${build_dir}/radix_crt0.o"
+"${cc}" ${compile_flags} -c "${build_dir}/radix_crt0.S" -o "${build_dir}/radix_crt0.o"
 cp "${RADIX_LIBC_ARCHIVE}" "${build_dir}/libradixc.a"
 
 cd "${build_dir}"

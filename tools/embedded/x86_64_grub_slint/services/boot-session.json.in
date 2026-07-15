@@ -6,9 +6,9 @@
   "type": "simple",
   "terminal": "/dev/pts/boot-terminal",
   "autostart": true,
-  "order": 70,
+  "order": @RADIX_BOOT_SESSION_ORDER@,
   "requires": ["base-terminal"],
-  "after": ["terminal-stress"],
+  "after": [@RADIX_BOOT_SESSION_AFTER@],
   "restart": "no",
   "stdout": "/var/log/radix/boot-session.log",
   "stderr": "/var/log/radix/boot-session.log"

@@ -446,6 +446,7 @@ struct FdRecord {
     rad_file_t file;
     rad_dir_t dir;
     rad_device_t device;
+    char path[96];
     size_t pipe_index;
     size_t shm_index;
     size_t socket_index;
@@ -471,6 +472,8 @@ struct ShmRecord {
 struct ProcessRecord {
     int32_t pid;
     int32_t parent_pid;
+    int32_t process_group_id;
+    int32_t session_id;
     rad_process_state_t state;
     int32_t exit_code;
     rad_credentials_t credentials;
@@ -885,6 +888,18 @@ ProcessRecord *find_process_record(int32_t pid) {
         if (g_state.processes[i].used && g_state.processes[i].pid == pid) return &g_state.processes[i];
     }
     return nullptr;
+}
+
+int32_t posix_wait_exit_status(int32_t code) {
+    return (code & 0xff) << 8;
+}
+
+int32_t posix_wait_signal_status(int32_t signal_number) {
+    return signal_number & 0x7f;
+}
+
+int32_t normalize_process_query_pid(int32_t pid) {
+    return pid == 0 ? current_process_pid() : pid;
 }
 
 rad_credentials_t current_credentials() {
@@ -4894,6 +4909,8 @@ int32_t rad_process_create(const char *path, int32_t parent_pid) {
             process.used = 1;
             process.pid = 1;
             process.parent_pid = 0;
+            process.process_group_id = 1;
+            process.session_id = 1;
             process.state = RAD_PROCESS_RUNNING;
             process.exit_code = 0;
             process.credentials = rad_credentials_t{0, 0, 0, 0};
@@ -4909,7 +4926,13 @@ int32_t rad_process_create(const char *path, int32_t parent_pid) {
     while (find_process_record(g_state.next_pid)) ++g_state.next_pid;
     if (g_state.next_pid == 1) ++g_state.next_pid;
     rad_credentials_t credentials = rad_credentials_t{0, 0, 0, 0};
-    if (ProcessRecord *parent = find_process_record(parent_pid)) credentials = parent->credentials;
+    int32_t inherited_pgid = parent_pid > 0 ? parent_pid : 1;
+    int32_t inherited_sid = parent_pid > 0 ? parent_pid : 1;
+    if (ProcessRecord *parent = find_process_record(parent_pid)) {
+        credentials = parent->credentials;
+        inherited_pgid = parent->process_group_id ? parent->process_group_id : parent->pid;
+        inherited_sid = parent->session_id ? parent->session_id : parent->pid;
+    }
     for (size_t i = 0; i < RADIX_KERNEL_MAX_PROCESSES; ++i) {
         if (g_state.processes[i].used) continue;
         ProcessRecord& process = g_state.processes[i];
@@ -4917,6 +4940,8 @@ int32_t rad_process_create(const char *path, int32_t parent_pid) {
         process.used = 1;
         process.pid = g_state.next_pid++;
         process.parent_pid = parent_pid;
+        process.process_group_id = inherited_pgid;
+        process.session_id = inherited_sid;
         process.state = RAD_PROCESS_RUNNING;
         process.exit_code = 0;
         process.credentials = credentials;
@@ -5020,26 +5045,95 @@ void rad_process_exit(int32_t status) {
     for (size_t i = 0; i < RADIX_KERNEL_MAX_PROCESSES; ++i) {
         if (!g_state.processes[i].used || g_state.processes[i].pid != current) continue;
         g_state.processes[i].state = RAD_PROCESS_ZOMBIE;
-        g_state.processes[i].exit_code = status;
+        g_state.processes[i].exit_code = posix_wait_exit_status(status);
         return;
     }
 }
 
 int32_t rad_process_kill(int32_t pid, int32_t signal_number) {
-    if (pid <= 1) return RAD_STATUS_INVALID_ARGUMENT;
     if (signal_number <= 0 || signal_number >= 64) return RAD_STATUS_INVALID_ARGUMENT;
+    const int32_t current = current_process_pid();
+    int32_t target_pgid = 0;
+    if (pid == 0) {
+        ProcessRecord *current_process = find_process_record(current);
+        target_pgid = current_process ? current_process->process_group_id : 0;
+    } else if (pid < -1) {
+        target_pgid = -pid;
+    } else if (pid <= 1) {
+        return RAD_STATUS_INVALID_ARGUMENT;
+    }
+    int delivered = 0;
     for (size_t i = 0; i < RADIX_KERNEL_MAX_PROCESSES; ++i) {
         ProcessRecord& process = g_state.processes[i];
-        if (!process.used || process.pid != pid) continue;
-        if (process.state == RAD_PROCESS_ZOMBIE) return RAD_STATUS_OK;
+        if (!process.used) continue;
+        if (target_pgid) {
+            if (process.process_group_id != target_pgid || process.pid <= 1) continue;
+        } else if (process.pid != pid) {
+            continue;
+        }
+        if (process.state == RAD_PROCESS_ZOMBIE) {
+            if (target_pgid) continue;
+            return RAD_STATUS_OK;
+        }
         process.state = RAD_PROCESS_ZOMBIE;
-        process.exit_code = 128 + signal_number;
+        process.exit_code = posix_wait_signal_status(signal_number);
         if (process.task) {
             process.task->finished = 1;
             process.task->state = RAD_TASK_FINISHED;
             process.task->current_core = RAD_TASK_CORE_ANY;
         }
-        return RAD_STATUS_OK;
+        delivered = 1;
+        if (!target_pgid) return RAD_STATUS_OK;
+    }
+    return delivered ? RAD_STATUS_OK : RAD_STATUS_NOT_FOUND;
+}
+
+int32_t rad_process_getpgid(int32_t pid) {
+    ProcessRecord *process = find_process_record(normalize_process_query_pid(pid));
+    return process ? (process->process_group_id ? process->process_group_id : process->pid) : RAD_STATUS_NOT_FOUND;
+}
+
+int32_t rad_process_setpgid(int32_t pid, int32_t pgid) {
+    ProcessRecord *process = find_process_record(normalize_process_query_pid(pid));
+    if (!process) return RAD_STATUS_NOT_FOUND;
+    if (pgid == 0) pgid = process->pid;
+    if (pgid <= 0) return RAD_STATUS_INVALID_ARGUMENT;
+    process->process_group_id = pgid;
+    if (!process->session_id) process->session_id = process->parent_pid > 0 ? process->parent_pid : process->pid;
+    return RAD_STATUS_OK;
+}
+
+int32_t rad_process_getsid(int32_t pid) {
+    ProcessRecord *process = find_process_record(normalize_process_query_pid(pid));
+    return process ? (process->session_id ? process->session_id : process->pid) : RAD_STATUS_NOT_FOUND;
+}
+
+int32_t rad_process_setsid(void) {
+    ProcessRecord *process = find_process_record(current_process_pid());
+    if (!process) return RAD_STATUS_NOT_FOUND;
+    for (size_t i = 0; i < RADIX_KERNEL_MAX_PROCESSES; ++i) {
+        if (g_state.processes[i].used && g_state.processes[i].process_group_id == process->pid && g_state.processes[i].pid != process->pid) {
+            return RAD_STATUS_INVALID_ARGUMENT;
+        }
+    }
+    process->session_id = process->pid;
+    process->process_group_id = process->pid;
+    return process->session_id;
+}
+
+int32_t rad_process_tcgetpgrp(int32_t fd) {
+    rad_vfs_stat_t stat{};
+    if (rad_fd_fstat(fd, &stat) != RAD_STATUS_OK || ((stat.mode & 0170000u) != 0020000u)) return RAD_STATUS_INVALID_ARGUMENT;
+    ProcessRecord *process = find_process_record(current_process_pid());
+    return process ? (process->process_group_id ? process->process_group_id : process->pid) : RAD_STATUS_NOT_FOUND;
+}
+
+int32_t rad_process_tcsetpgrp(int32_t fd, int32_t pgid) {
+    rad_vfs_stat_t stat{};
+    if (pgid <= 0) return RAD_STATUS_INVALID_ARGUMENT;
+    if (rad_fd_fstat(fd, &stat) != RAD_STATUS_OK || ((stat.mode & 0170000u) != 0020000u)) return RAD_STATUS_INVALID_ARGUMENT;
+    for (size_t i = 0; i < RADIX_KERNEL_MAX_PROCESSES; ++i) {
+        if (g_state.processes[i].used && g_state.processes[i].process_group_id == pgid) return RAD_STATUS_OK;
     }
     return RAD_STATUS_NOT_FOUND;
 }
@@ -5052,6 +5146,8 @@ size_t rad_process_list(rad_process_info_t *processes, size_t capacity) {
         if (processes && count < capacity) {
             processes[count].pid = process.pid;
             processes[count].parent_pid = process.parent_pid;
+            processes[count].process_group_id = process.process_group_id;
+            processes[count].session_id = process.session_id;
             processes[count].exited = process.state == RAD_PROCESS_ZOMBIE;
             processes[count].exit_code = process.exit_code;
             processes[count].state = process.state;
@@ -5288,6 +5384,7 @@ int32_t rad_fd_open(const char *path, uint32_t flags) {
     record.owner_fd = -1;
     record.owner_pid = current_process_pid();
     record.local_fd = -1;
+    normalize_path(record.path, sizeof(record.path), path);
     if (strncmp(path, "/dev/", 5) == 0) {
         rad_status_t status = rad_device_open(path, &record.device);
         if (status != RAD_STATUS_OK) return status;
@@ -5419,6 +5516,21 @@ int32_t rad_fd_fstat(int32_t fd, rad_vfs_stat_t *stat) {
         return RAD_STATUS_OK;
     }
     return RAD_STATUS_NOT_SUPPORTED;
+}
+
+int32_t rad_fd_fchdir(int32_t fd) {
+    FdRecord *record = lookup_fd_record(fd);
+    if (!record || !record->used) return RAD_STATUS_NOT_FOUND;
+    if (record->kind != FD_DIR || !record->path[0]) return RAD_STATUS_INVALID_ARGUMENT;
+    return rad_vfs_chdir(record->path);
+}
+
+int32_t rad_fd_ftruncate(int32_t fd, uint64_t size) {
+    FdRecord *record = lookup_fd_record(fd);
+    if (!record || !record->used) return RAD_STATUS_NOT_FOUND;
+    if (record->kind != FD_FILE || !record->path[0]) return RAD_STATUS_INVALID_ARGUMENT;
+    if (!(record->flags & RAD_VFS_WRITE)) return RAD_STATUS_INVALID_ARGUMENT;
+    return rad_vfs_truncate(record->path, size);
 }
 
 int32_t rad_pipe_create(int32_t pipefd[2]) {
@@ -5959,6 +6071,12 @@ intptr_t rad_syscall_dispatch(uintptr_t number, uintptr_t arg0, uintptr_t arg1, 
     case RAD_SYSCALL_EXECVE: return rad_process_execve(reinterpret_cast<const char*>(arg0), reinterpret_cast<const char *const*>(arg1));
     case RAD_SYSCALL_WAITPID: return rad_process_waitpid(static_cast<int32_t>(arg0), reinterpret_cast<int32_t*>(arg1), static_cast<uint32_t>(arg2));
     case RAD_SYSCALL_KILL: return rad_process_kill(static_cast<int32_t>(arg0), static_cast<int32_t>(arg1));
+    case RAD_SYSCALL_GETPGID: return rad_process_getpgid(static_cast<int32_t>(arg0));
+    case RAD_SYSCALL_SETPGID: return rad_process_setpgid(static_cast<int32_t>(arg0), static_cast<int32_t>(arg1));
+    case RAD_SYSCALL_GETSID: return rad_process_getsid(static_cast<int32_t>(arg0));
+    case RAD_SYSCALL_SETSID: return rad_process_setsid();
+    case RAD_SYSCALL_TCGETPGRP: return rad_process_tcgetpgrp(static_cast<int32_t>(arg0));
+    case RAD_SYSCALL_TCSETPGRP: return rad_process_tcsetpgrp(static_cast<int32_t>(arg0), static_cast<int32_t>(arg1));
     case RAD_SYSCALL_GETPID: return rad_process_current_pid();
     case RAD_SYSCALL_GETPPID: return rad_process_parent_pid();
     case RAD_SYSCALL_DUP: return rad_fd_dup(static_cast<int32_t>(arg0));
@@ -5967,6 +6085,20 @@ intptr_t rad_syscall_dispatch(uintptr_t number, uintptr_t arg0, uintptr_t arg1, 
     case RAD_SYSCALL_GETCWD: return rad_vfs_getcwd(reinterpret_cast<char*>(arg0), static_cast<size_t>(arg1));
     case RAD_SYSCALL_BRK: return 0;
     case RAD_SYSCALL_PIPE: return rad_pipe_create(reinterpret_cast<int32_t*>(arg0));
+    case RAD_SYSCALL_PIPE2: {
+        int32_t *pipefd = reinterpret_cast<int32_t*>(arg0);
+        const int32_t status = rad_pipe_create(pipefd);
+        if (status != RAD_STATUS_OK) return status;
+        if (arg1 & RAD_FD_CLOEXEC) {
+            rad_fd_fcntl(pipefd[0], RAD_FCNTL_SETFD, RAD_FD_CLOEXEC);
+            rad_fd_fcntl(pipefd[1], RAD_FCNTL_SETFD, RAD_FD_CLOEXEC);
+        }
+        if (arg1 & RAD_FD_NONBLOCK) {
+            rad_fd_fcntl(pipefd[0], RAD_FCNTL_SETFL, RAD_FD_NONBLOCK);
+            rad_fd_fcntl(pipefd[1], RAD_FCNTL_SETFL, RAD_FD_NONBLOCK);
+        }
+        return RAD_STATUS_OK;
+    }
     case RAD_SYSCALL_FCNTL: return rad_fd_fcntl(static_cast<int32_t>(arg0), static_cast<uint32_t>(arg1), arg2);
     case RAD_SYSCALL_GETDENTS: return rad_fd_getdents(static_cast<int32_t>(arg0), reinterpret_cast<rad_dirent_user_t*>(arg1), static_cast<size_t>(arg2));
     case RAD_SYSCALL_REMOVE: return rad_vfs_remove(reinterpret_cast<const char*>(arg0));
@@ -5974,6 +6106,12 @@ intptr_t rad_syscall_dispatch(uintptr_t number, uintptr_t arg0, uintptr_t arg1, 
     case RAD_SYSCALL_RMDIR: return rad_vfs_rmdir(reinterpret_cast<const char*>(arg0));
     case RAD_SYSCALL_RENAME: return rad_vfs_rename(reinterpret_cast<const char*>(arg0), reinterpret_cast<const char*>(arg1));
     case RAD_SYSCALL_TRUNCATE: return rad_vfs_truncate(reinterpret_cast<const char*>(arg0), static_cast<uint64_t>(arg1));
+    case RAD_SYSCALL_FCHDIR: return rad_fd_fchdir(static_cast<int32_t>(arg0));
+    case RAD_SYSCALL_FTRUNCATE: return rad_fd_ftruncate(static_cast<int32_t>(arg0), static_cast<uint64_t>(arg1));
+    case RAD_SYSCALL_UTIME: {
+        rad_vfs_stat_t stat{};
+        return rad_vfs_stat(reinterpret_cast<const char*>(arg0), &stat);
+    }
     case RAD_SYSCALL_LOG_READ: return static_cast<intptr_t>(rad_log_read(reinterpret_cast<rad_log_entry_t*>(arg0), static_cast<size_t>(arg1), static_cast<uint64_t>(arg2)));
     case RAD_SYSCALL_LOG_FLUSH: return rad_log_flush_to_path(reinterpret_cast<const char*>(arg0));
     case RAD_SYSCALL_ACCESS: {

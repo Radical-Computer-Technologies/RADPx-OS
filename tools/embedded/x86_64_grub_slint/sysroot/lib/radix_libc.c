@@ -144,8 +144,14 @@ int open(const char *pathname, int flags, ...) {
 
 int openat(int dirfd, const char *pathname, int flags, ...) {
     if (dirfd == AT_FDCWD || (pathname && pathname[0] == '/')) return open(pathname, flags);
-    errno = ENOSYS;
-    return -1;
+    char oldcwd[256];
+    if (!getcwd(oldcwd, sizeof(oldcwd))) return -1;
+    if (fchdir(dirfd) != 0) return -1;
+    int fd = open(pathname, flags);
+    int saved_errno = errno;
+    (void)chdir(oldcwd);
+    errno = saved_errno;
+    return fd;
 }
 
 int close(int fd) {
@@ -199,8 +205,14 @@ int fstatat(int dirfd, const char *pathname, struct stat *statbuf, int flags) {
     if (dirfd == AT_FDCWD || (pathname && pathname[0] == '/')) {
         return (flags & AT_SYMLINK_NOFOLLOW) ? lstat(pathname, statbuf) : stat(pathname, statbuf);
     }
-    errno = ENOSYS;
-    return -1;
+    char oldcwd[256];
+    if (!getcwd(oldcwd, sizeof(oldcwd))) return -1;
+    if (fchdir(dirfd) != 0) return -1;
+    int result = (flags & AT_SYMLINK_NOFOLLOW) ? lstat(pathname, statbuf) : stat(pathname, statbuf);
+    int saved_errno = errno;
+    (void)chdir(oldcwd);
+    errno = saved_errno;
+    return result;
 }
 
 int lstat(const char *pathname, struct stat *statbuf) {
@@ -714,7 +726,7 @@ int cfsetispeed(struct termios *termios_p, speed_t speed) { if (!termios_p) { er
 int cfsetospeed(struct termios *termios_p, speed_t speed) { if (!termios_p) { errno = EINVAL; return -1; } termios_p->c_ospeed = speed; return 0; }
 
 int chdir(const char *path) { return (int)ok_or_errno(radix_syscall6(RADIX_SYS_CHDIR, (long)path, 0, 0, 0, 0, 0)); }
-int fchdir(int fd) { (void)fd; errno = ENOSYS; return -1; }
+int fchdir(int fd) { return (int)ok_or_errno(radix_syscall6(RADIX_SYS_FCHDIR, fd, 0, 0, 0, 0, 0)); }
 char *getcwd(char *buf, size_t size) { return radix_syscall6(RADIX_SYS_GETCWD, (long)buf, size, 0, 0, 0, 0) < 0 ? 0 : buf; }
 char *getlogin(void) { return "root"; }
 int getlogin_r(char *buf, size_t buflen) {
@@ -726,6 +738,7 @@ int getlogin_r(char *buf, size_t buflen) {
 }
 int isatty(int fd) { return (int)ok_or_errno(radix_syscall6(RADIX_SYS_ISATTY, fd, 0, 0, 0, 0, 0)); }
 int pipe(int pipefd[2]) { return (int)ok_or_errno(radix_syscall6(RADIX_SYS_PIPE, (long)pipefd, 0, 0, 0, 0, 0)); }
+int pipe2(int pipefd[2], int flags) { return (int)ok_or_errno(radix_syscall6(RADIX_SYS_PIPE2, (long)pipefd, flags, 0, 0, 0, 0)); }
 int dup(int oldfd) { return (int)ok_or_errno(radix_syscall6(RADIX_SYS_DUP, oldfd, 0, 0, 0, 0, 0)); }
 int dup2(int oldfd, int newfd) { return (int)ok_or_errno(radix_syscall6(RADIX_SYS_DUP2, oldfd, newfd, 0, 0, 0, 0)); }
 int getdtablesize(void) { return 256; }
@@ -777,6 +790,13 @@ pid_t waitpid(pid_t pid, int *wstatus, int options) { return (pid_t)ok_or_errno(
 pid_t wait(int *wstatus) { return waitpid(-1, wstatus, 0); }
 pid_t getpid(void) { return (pid_t)radix_syscall6(RADIX_SYS_GETPID, 0, 0, 0, 0, 0, 0); }
 pid_t getppid(void) { return (pid_t)radix_syscall6(RADIX_SYS_GETPPID, 0, 0, 0, 0, 0, 0); }
+pid_t getpgrp(void) { return (pid_t)radix_syscall6(RADIX_SYS_GETPGID, 0, 0, 0, 0, 0, 0); }
+pid_t getpgid(pid_t pid) { return (pid_t)ok_or_errno(radix_syscall6(RADIX_SYS_GETPGID, pid, 0, 0, 0, 0, 0)); }
+int setpgid(pid_t pid, pid_t pgid) { return (int)ok_or_errno(radix_syscall6(RADIX_SYS_SETPGID, pid, pgid, 0, 0, 0, 0)); }
+pid_t getsid(pid_t pid) { return (pid_t)ok_or_errno(radix_syscall6(RADIX_SYS_GETSID, pid, 0, 0, 0, 0, 0)); }
+pid_t setsid(void) { return (pid_t)ok_or_errno(radix_syscall6(RADIX_SYS_SETSID, 0, 0, 0, 0, 0, 0)); }
+pid_t tcgetpgrp(int fd) { return (pid_t)ok_or_errno(radix_syscall6(RADIX_SYS_TCGETPGRP, fd, 0, 0, 0, 0, 0)); }
+int tcsetpgrp(int fd, pid_t pgrp) { return (int)ok_or_errno(radix_syscall6(RADIX_SYS_TCSETPGRP, fd, pgrp, 0, 0, 0, 0)); }
 uid_t getuid(void) { return (uid_t)radix_syscall6(RADIX_SYS_GETUID, 0, 0, 0, 0, 0, 0); }
 uid_t geteuid(void) { return (uid_t)radix_syscall6(RADIX_SYS_GETEUID, 0, 0, 0, 0, 0, 0); }
 gid_t getgid(void) { return (gid_t)radix_syscall6(RADIX_SYS_GETGID, 0, 0, 0, 0, 0, 0); }
@@ -829,7 +849,7 @@ mode_t umask(mode_t mask) {
 int symlink(const char *target, const char *linkpath) { return (int)ok_or_errno(radix_syscall6(RADIX_SYS_SYMLINK, (long)target, (long)linkpath, 0, 0, 0, 0)); }
 int link(const char *oldpath, const char *newpath) { return (int)ok_or_errno(radix_syscall6(RADIX_SYS_LINK, (long)oldpath, (long)newpath, 0, 0, 0, 0)); }
 ssize_t readlink(const char *pathname, char *buf, size_t bufsiz) { return ok_or_errno(radix_syscall6(RADIX_SYS_READLINK, (long)pathname, (long)buf, bufsiz, 0, 0, 0)); }
-int utime(const char *filename, const struct utimbuf *times) { (void)filename; (void)times; errno = ENOSYS; return -1; }
+int utime(const char *filename, const struct utimbuf *times) { return (int)ok_or_errno(radix_syscall6(RADIX_SYS_UTIME, (long)filename, (long)times, 0, 0, 0, 0)); }
 int fsync(int fd) { return (int)ok_or_errno(radix_syscall6(RADIX_SYS_FSYNC, fd, 0, 0, 0, 0, 0)); }
 int nanosleep(const struct timespec *req, struct timespec *rem) { (void)rem; if (!req || req->tv_sec < 0 || req->tv_nsec < 0 || req->tv_nsec >= 1000000000L) { errno = EINVAL; return -1; } return (int)ok_or_errno(radix_syscall6(RADIX_SYS_NANOSLEEP, req->tv_sec * 1000000000L + req->tv_nsec, 0, 0, 0, 0, 0)); }
 unsigned int sleep(unsigned int seconds) { struct timespec ts = {(long)seconds, 0}; return nanosleep(&ts, 0) == 0 ? 0 : seconds; }
@@ -878,7 +898,7 @@ sighandler_t signal(int signum, sighandler_t handler) {
 }
 
 int kill(int pid, int sig) {
-    if (pid <= 0 || sig <= 0 || sig >= NSIG) { errno = EINVAL; return -1; }
+    if (sig <= 0 || sig >= NSIG) { errno = EINVAL; return -1; }
     return (int)ok_or_errno(radix_syscall6(RADIX_SYS_KILL, pid, sig, 0, 0, 0, 0));
 }
 int raise(int sig) {
@@ -1507,8 +1527,23 @@ int mkstemp(char *template) {
     return -1;
 }
 int mkstemps(char *template, int suffixlen) {
-    if (suffixlen != 0) { errno = ENOSYS; return -1; }
-    return mkstemp(template);
+    if (!template || suffixlen < 0) { errno = EINVAL; return -1; }
+    size_t len = strlen(template);
+    if (len < (size_t)suffixlen + 6u) { errno = EINVAL; return -1; }
+    size_t xoff = len - (size_t)suffixlen - 6u;
+    if (strncmp(template + xoff, "XXXXXX", 6) != 0) { errno = EINVAL; return -1; }
+    for (int attempt = 0; attempt < 1000; ++attempt) {
+        unsigned value = (unsigned)(getpid() * 53 + attempt);
+        static const char alphabet[] = "abcdefghijklmnopqrstuvwxyz0123456789";
+        for (int i = 0; i < 6; ++i) {
+            template[xoff + (size_t)i] = alphabet[(value + (unsigned)i * 11u) % (sizeof(alphabet) - 1u)];
+            value /= (unsigned)(sizeof(alphabet) - 1u);
+        }
+        int fd = open(template, O_RDWR | O_CREAT | O_EXCL, 0600);
+        if (fd >= 0) return fd;
+    }
+    errno = EEXIST;
+    return -1;
 }
 void _exit(int status) { radix_syscall6(RADIX_SYS_EXIT, status, 0, 0, 0, 0, 0); for (;;) {} }
 void exit(int status) { _exit(status); }
@@ -1802,10 +1837,7 @@ int truncate(const char *path, off_t length) {
 }
 
 int ftruncate(int fd, off_t length) {
-    (void)fd;
-    (void)length;
-    errno = ENOSYS;
-    return -1;
+    return (int)ok_or_errno(radix_syscall6(RADIX_SYS_FTRUNCATE, fd, length, 0, 0, 0, 0));
 }
 
 char *setlocale(int category, const char *locale) {

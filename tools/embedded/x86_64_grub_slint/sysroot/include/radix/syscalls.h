@@ -59,6 +59,16 @@
 #define RADIX_SYS_READLINK 1017
 #define RADIX_SYS_FSYNC 1018
 #define RADIX_SYS_KILL 1019
+#define RADIX_SYS_FCHDIR 1020
+#define RADIX_SYS_FTRUNCATE 1021
+#define RADIX_SYS_UTIME 1022
+#define RADIX_SYS_GETPGID 1023
+#define RADIX_SYS_SETPGID 1024
+#define RADIX_SYS_GETSID 1025
+#define RADIX_SYS_SETSID 1026
+#define RADIX_SYS_TCGETPGRP 1027
+#define RADIX_SYS_TCSETPGRP 1028
+#define RADIX_SYS_PIPE2 1029
 
 static inline long radix_syscall6(long n, long a, long b, long c, long d, long e, long f) {
     register long rax asm("rax") = n;

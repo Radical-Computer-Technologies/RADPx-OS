@@ -49,6 +49,10 @@ enum {
     SYS_KILL = 1019,
 };
 
+#define WEXITSTATUS(status) (((status) >> 8) & 0xff)
+#define WTERMSIG(status) ((status) & 0x7f)
+#define WIFEXITED(status) (WTERMSIG(status) == 0)
+
 #define RAD_IOCTL_NONE 0u
 #define RAD_IOCTL_WRITE 1u
 #define RAD_IOCTL_READ 2u
@@ -1518,7 +1522,11 @@ static int run_command(int argc, char **argv, int outfd, int infd) {
         sc(SYS_EXECVE, (long)path, (long)argv, 0, 0, 0, 0);
         sc(SYS_EXIT, 127, 0, 0, 0, 0, 0);
     }
-    if (child > 0) { int status = 0; sc(SYS_WAITPID, child, (long)&status, 0, 0, 0, 0); return status; }
+    if (child > 0) {
+        int status = 0;
+        sc(SYS_WAITPID, child, (long)&status, 0, 0, 0, 0);
+        return WIFEXITED(status) ? WEXITSTATUS(status) : 128 + WTERMSIG(status);
+    }
     return (int)child;
 }
 

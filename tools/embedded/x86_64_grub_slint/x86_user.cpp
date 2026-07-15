@@ -36,8 +36,8 @@ constexpr size_t MaxUserProcesses = RADIX_X86_MAX_USER_PROCESSES;
 constexpr size_t MaxUserCores = 8u;
 constexpr size_t MaxUserArgs = 8u;
 constexpr size_t MaxUserEnvs = 4u;
-constexpr size_t MaxRsoModules = 6u;
-constexpr size_t MaxRsoCacheEntries = 4u;
+constexpr size_t MaxRsoModules = 12u;
+constexpr size_t MaxRsoCacheEntries = 12u;
 constexpr size_t MaxRsoPages = 256u;
 
 [[maybe_unused]] void rkdbg(const char *text) {
@@ -67,7 +67,10 @@ constexpr int64_t ElfDtSyment = 11;
 constexpr int64_t ElfDtPltrelsz = 2;
 constexpr int64_t ElfDtPltrel = 20;
 constexpr int64_t ElfDtJmprel = 23;
+constexpr uint32_t R_X86_64_NONE = 0u;
 constexpr uint32_t R_X86_64_64 = 1u;
+constexpr uint32_t R_X86_64_32 = 10u;
+constexpr uint32_t R_X86_64_32S = 11u;
 constexpr uint32_t R_X86_64_GLOB_DAT = 6u;
 constexpr uint32_t R_X86_64_JUMP_SLOT = 7u;
 constexpr uint32_t R_X86_64_RELATIVE = 8u;
@@ -554,11 +557,15 @@ uint64_t find_rso_symbol(RsoModule *modules, size_t module_count, const char *na
         if (!module.symtab || !module.strtab || !module.sym_count) continue;
         for (size_t i = 1; i < module.sym_count; ++i) {
             const Elf64Symbol& sym = module.symtab[i];
-            if (!sym.name || !sym.shndx || !sym.value) continue;
+            if (!sym.name || !sym.shndx) continue;
             if (strcmp(symbol_name(&module, sym.name), name) == 0) return module.base + sym.value;
         }
     }
     return 0;
+}
+
+uint64_t add_signed_u64(uint64_t base, int64_t addend) {
+    return addend >= 0 ? base + static_cast<uint64_t>(addend) : base - static_cast<uint64_t>(-addend);
 }
 
 int apply_rso_rela(RsoModule *modules, size_t module_count, RsoModule *module, const Elf64Rela *rela, size_t count) {
@@ -568,8 +575,10 @@ int apply_rso_rela(RsoModule *modules, size_t module_count, RsoModule *module, c
         const uint32_t sym_index = static_cast<uint32_t>(rela[i].info >> 32u);
         auto *where = reinterpret_cast<uint64_t*>(static_cast<uintptr_t>(module->base + rela[i].offset));
         switch (type) {
+        case R_X86_64_NONE:
+            break;
         case R_X86_64_RELATIVE:
-            *where = module->base + static_cast<uint64_t>(rela[i].addend);
+            *where = add_signed_u64(module->base, rela[i].addend);
             break;
         case R_X86_64_64:
         case R_X86_64_GLOB_DAT:
@@ -584,7 +593,23 @@ int apply_rso_rela(RsoModule *modules, size_t module_count, RsoModule *module, c
                 rad_debug_marker("RADIX_RSO_SYMBOL_FAIL");
                 return 0;
             }
-            *where = value + static_cast<uint64_t>(rela[i].addend);
+            *where = add_signed_u64(value, rela[i].addend);
+            break;
+        }
+        case R_X86_64_32:
+        case R_X86_64_32S: {
+            if (!module->symtab || sym_index >= module->sym_count) {
+                rad_debug_marker("RADIX_RSO_UNSUPPORTED_RELOC");
+                return 0;
+            }
+            const char *name = symbol_name(module, module->symtab[sym_index].name);
+            const uint64_t value = find_rso_symbol(modules, module_count, name);
+            if (!value) {
+                rad_debug_marker("RADIX_RSO_SYMBOL_FAIL");
+                return 0;
+            }
+            auto *where32 = reinterpret_cast<uint32_t*>(static_cast<uintptr_t>(module->base + rela[i].offset));
+            *where32 = static_cast<uint32_t>(add_signed_u64(value, rela[i].addend));
             break;
         }
         default:
@@ -604,8 +629,31 @@ int apply_rso_relocations(RsoModule *modules, size_t module_count) {
     return 1;
 }
 
+int rso_name_matches_path(const char *path, const char *name) {
+    if (!path || !name) return 0;
+    if (strcmp(path, name) == 0) return 1;
+    char full[128];
+    if (name[0] == '/') {
+        copy_string(full, sizeof(full), name);
+    } else {
+        copy_string(full, sizeof(full), "/usr/lib/");
+        size_t at = strlen(full);
+        copy_string(full + at, sizeof(full) - at, name);
+    }
+    return strcmp(path, full) == 0;
+}
+
+int rso_module_loaded(RsoModule *modules, size_t module_count, const char *name) {
+    if (!modules || !name) return 0;
+    for (size_t i = 0; i < module_count; ++i) {
+        if (rso_name_matches_path(modules[i].path, name)) return 1;
+    }
+    return 0;
+}
+
 int load_rso_library(x86_address_space_t *space, const char *name, RsoModule *modules, size_t *module_count) {
     if (!space || !name || !modules || !module_count || *module_count >= MaxRsoModules) return 0;
+    if (rso_module_loaded(modules, *module_count, name)) return 1;
     char path[128];
     if (name[0] == '/') copy_string(path, sizeof(path), name);
     else {
@@ -639,16 +687,18 @@ int load_rso_library(x86_address_space_t *space, const char *name, RsoModule *mo
 }
 
 int load_dynamic_dependencies(x86_address_space_t *space, RsoModule *modules, size_t *module_count) {
-    RsoModule *main = &modules[0];
-    if (!main->header || !main->strtab) return 1;
-    for (uint16_t i = 0; i < main->header->phnum; ++i) {
-        const auto *ph = reinterpret_cast<const Elf64ProgramHeader*>(main->image + main->header->phoff + i * main->header->phentsize);
-        if (ph->type != ElfPtDynamic) continue;
-        const auto *dynamic = reinterpret_cast<const Elf64Dynamic*>(main->image + ph->offset);
-        const size_t count = static_cast<size_t>(ph->filesz / sizeof(Elf64Dynamic));
-        for (size_t d = 0; d < count && dynamic[d].tag != ElfDtNull; ++d) {
-            if (dynamic[d].tag != ElfDtNeeded || dynamic[d].value >= main->strsz) continue;
-            if (!load_rso_library(space, main->strtab + dynamic[d].value, modules, module_count)) return 0;
+    for (size_t module_index = 0; module_index < *module_count; ++module_index) {
+        RsoModule *module = &modules[module_index];
+        if (!module->header || !module->strtab) continue;
+        for (uint16_t i = 0; i < module->header->phnum; ++i) {
+            const auto *ph = reinterpret_cast<const Elf64ProgramHeader*>(module->image + module->header->phoff + i * module->header->phentsize);
+            if (ph->type != ElfPtDynamic) continue;
+            const auto *dynamic = reinterpret_cast<const Elf64Dynamic*>(module->image + ph->offset);
+            const size_t count = static_cast<size_t>(ph->filesz / sizeof(Elf64Dynamic));
+            for (size_t d = 0; d < count && dynamic[d].tag != ElfDtNull; ++d) {
+                if (dynamic[d].tag != ElfDtNeeded || dynamic[d].value >= module->strsz) continue;
+                if (!load_rso_library(space, module->strtab + dynamic[d].value, modules, module_count)) return 0;
+            }
         }
     }
     return 1;
@@ -1417,6 +1467,18 @@ extern "C" long x86_syscall_dispatch(unsigned long number, unsigned long arg0, u
     }
     case RAD_SYSCALL_KILL:
         return rad_process_kill(static_cast<int32_t>(arg0), static_cast<int32_t>(arg1));
+    case RAD_SYSCALL_GETPGID:
+        return rad_process_getpgid(static_cast<int32_t>(arg0));
+    case RAD_SYSCALL_SETPGID:
+        return rad_process_setpgid(static_cast<int32_t>(arg0), static_cast<int32_t>(arg1));
+    case RAD_SYSCALL_GETSID:
+        return rad_process_getsid(static_cast<int32_t>(arg0));
+    case RAD_SYSCALL_SETSID:
+        return rad_process_setsid();
+    case RAD_SYSCALL_TCGETPGRP:
+        return rad_process_tcgetpgrp(static_cast<int32_t>(arg0));
+    case RAD_SYSCALL_TCSETPGRP:
+        return rad_process_tcsetpgrp(static_cast<int32_t>(arg0), static_cast<int32_t>(arg1));
     case LinuxSysWait4: {
         int32_t status = 0;
         X86UserProcess *caller = find_user_process(rad_process_current_pid());
@@ -1505,6 +1567,20 @@ extern "C" long x86_syscall_dispatch(unsigned long number, unsigned long arg0, u
         if (status != RAD_STATUS_OK) return status;
         return x86_copy_to_user(arg0, pipefd, sizeof(pipefd));
     }
+    case RAD_SYSCALL_PIPE2: {
+        int32_t pipefd[2]{};
+        const int32_t status = rad_pipe_create(pipefd);
+        if (status != RAD_STATUS_OK) return status;
+        if (arg1 & RAD_FD_CLOEXEC) {
+            rad_fd_fcntl(pipefd[0], RAD_FCNTL_SETFD, RAD_FD_CLOEXEC);
+            rad_fd_fcntl(pipefd[1], RAD_FCNTL_SETFD, RAD_FD_CLOEXEC);
+        }
+        if (arg1 & RAD_FD_NONBLOCK) {
+            rad_fd_fcntl(pipefd[0], RAD_FCNTL_SETFL, RAD_FD_NONBLOCK);
+            rad_fd_fcntl(pipefd[1], RAD_FCNTL_SETFL, RAD_FD_NONBLOCK);
+        }
+        return x86_copy_to_user(arg0, pipefd, sizeof(pipefd));
+    }
     case RAD_SYSCALL_FCNTL:
     case LinuxSysFcntl:
         return rad_fd_fcntl(static_cast<int32_t>(arg0), static_cast<uint32_t>(arg1), arg2);
@@ -1543,6 +1619,17 @@ extern "C" long x86_syscall_dispatch(unsigned long number, unsigned long arg0, u
         char path[256];
         const rad_status_t copied = x86_copy_string_from_user(path, sizeof(path), arg0);
         return copied == RAD_STATUS_OK ? rad_vfs_truncate(path, arg1) : copied;
+    }
+    case RAD_SYSCALL_FCHDIR:
+        return rad_fd_fchdir(static_cast<int32_t>(arg0));
+    case RAD_SYSCALL_FTRUNCATE:
+        return rad_fd_ftruncate(static_cast<int32_t>(arg0), arg1);
+    case RAD_SYSCALL_UTIME: {
+        char path[256];
+        const rad_status_t copied = x86_copy_string_from_user(path, sizeof(path), arg0);
+        if (copied != RAD_STATUS_OK) return copied;
+        rad_vfs_stat_t stat{};
+        return rad_vfs_stat(path, &stat);
     }
     case RAD_SYSCALL_CHMOD: {
         char path[256];
