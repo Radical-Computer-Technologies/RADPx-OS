@@ -148,6 +148,8 @@ set(RADIX_RKCONFIG_TIMEZONE "$ENV{RADIX_RKCONFIG_TIMEZONE}" CACHE STRING "RADix 
 if(NOT RADIX_RKCONFIG_TIMEZONE)
     set(RADIX_RKCONFIG_TIMEZONE "America/Los_Angeles")
 endif()
+set(RADIX_RADPM_ROOTFS_DIR "$ENV{RADIX_RADPM_ROOTFS_DIR}" CACHE PATH "Optional staged RADix .radpm rootfs payload directory")
+set(RADIX_RADPM_ROOTFS_STAMP "$ENV{RADIX_RADPM_ROOTFS_STAMP}" CACHE FILEPATH "Optional staged RADix .radpm payload stamp")
 set(RADIX_RKCONFIG_DNS_SEARCH "$ENV{RADIX_RKCONFIG_DNS_SEARCH}" CACHE STRING "RADix DNS search domain")
 if(NOT RADIX_RKCONFIG_DNS_SEARCH)
     set(RADIX_RKCONFIG_DNS_SEARCH "local")
@@ -406,6 +408,10 @@ set(RADIX_EXT2_ROOTFS_IMAGE "${CMAKE_BINARY_DIR}/radix-rootfs.ext2")
 set(RADIX_ROOTFS_IMAGE "${CMAKE_BINARY_DIR}/radix-rootfs.ext4")
 set(RADIX_EXT4_WRITE_SEED "${CMAKE_BINARY_DIR}/radix-ext4-write-seed.txt")
 set(RADIX_FAT_IMAGE "${CMAKE_BINARY_DIR}/radix-fat32.img")
+set(RADIX_RADPM_ROOTFS_DEPENDS "")
+if(RADIX_RADPM_ROOTFS_STAMP)
+    list(APPEND RADIX_RADPM_ROOTFS_DEPENDS "${RADIX_RADPM_ROOTFS_STAMP}")
+endif()
 
 add_custom_command(
     OUTPUT "${RADIX_RKCONFIG_STAMP}" "${RADIX_RKCONFIG_DIR}/rkconfig.h" "${RADIX_RKCONFIG_DIR}/issue" "${RADIX_RKCONFIG_DIR}/hostname" "${RADIX_RKCONFIG_DIR}/hosts" "${RADIX_RKCONFIG_DIR}/resolv.conf" "${RADIX_RKCONFIG_DIR}/network/netinterfaces.json" "${RADIX_RKCONFIG_DIR}/network/dns-resolver.json" "${RADIX_RKCONFIG_DIR}/time/time-sync.json" "${RADIX_RKCONFIG_DIR}/time/timezone" "${RADIX_RKCONFIG_DIR}/time/localtime" "${RADIX_RKCONFIG_DIR}/zoneinfo/${RADIX_RKCONFIG_TIMEZONE}" "${RADIX_RKCONFIG_DIR}/terminal.theme" "${RADIX_RKCONFIG_DIR}/radpm-index.json" "${RADIX_RKCONFIG_DIR}/passwd" "${RADIX_RKCONFIG_DIR}/passwords" "${RADIX_RKCONFIG_DIR}/rko-note.txt" "${RADIX_RKCONFIG_DIR}/rso-note.txt"
@@ -1224,12 +1230,13 @@ add_custom_command(
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_GENERATED_SERVICES_DIR}/boot-session.json /etc/radix/services/boot-session.json" "${RADIX_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${CMAKE_CURRENT_LIST_DIR}/services/network-smoke.json /etc/radix/services/network-smoke.json" "${RADIX_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${CMAKE_CURRENT_LIST_DIR}/services/fatfs.json /etc/radix/services/fatfs.json" "${RADIX_ROOTFS_IMAGE}"
+    COMMAND "${PYTHON3_EXECUTABLE}" "${CMAKE_CURRENT_LIST_DIR}/install_rootfs_tree.py" "${RADIX_ROOTFS_IMAGE}" "${RADIX_RADPM_ROOTFS_DIR}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RADIX_EXT4_WRITE_SEED} /tmp/radwrite.txt" "${RADIX_ROOTFS_IMAGE}"
     DEPENDS "${RADIX_RADINIT_ELF}" "${RADIX_INIT_ELF}" "${RADIX_RADSH_ELF}" "${RADIX_LOGIN_ELF}" "${RADIX_NETWORK_SERVICE_ELF}" "${RADIX_DNS_RESOLVER_ELF}" "${RADIX_TIME_SYNC_ELF}" "${RADIX_SH_ELF}" "${RADIX_RADGFX_ELF}" "${RADIX_TTY_STRESS_ELF}" "${RADIX_SLEEP_STRESS_ELF}" "${RADIX_SIGNAL_STRESS_ELF}" "${RADIX_POSIX_STRESS_ELF}" "${RADIX_TUI_STRESS_ELF}" "${RADIX_TUI_STRESS_DYN_ELF}" "${RADIX_LIBC_RSO_STRESS_ELF}" "${RADIX_TINFO_RSO_STRESS_ELF}" "${RADIX_TERMINAL_STRESS_ELF}" ${RADIX_NANO_DEPENDS} ${RADIX_VIM_DEPENDS} "${RADIX_LIBC_ARCHIVE}" "${RADIX_LIBC_RSO}" "${RADIX_NCURSESW_ARCHIVE}" "${RADIX_TINFO_ARCHIVE}" "${RADIX_TINFO_RSO}" "${RADIX_LIBNCURSES_RSO}" "${RADIX_LIBNCURSESW_RSO}" "${RADIX_RKCONFIG_STAMP}" "${RADIX_TERMINFO_STAMP}" "${RADIX_SYSROOT_STAMP}" "${CMAKE_CURRENT_LIST_DIR}/test_script.sh"
             "${CMAKE_CURRENT_LIST_DIR}/services/storage-root.json" "${RADIX_GENERATED_SERVICES_DIR}/userspace-shell.json"
             "${CMAKE_CURRENT_LIST_DIR}/services/network.json" "${CMAKE_CURRENT_LIST_DIR}/services/dns-resolver.json" "${CMAKE_CURRENT_LIST_DIR}/services/time-sync.json"
             "${CMAKE_CURRENT_LIST_DIR}/services/base-terminal.json" "${RADIX_GENERATED_SERVICES_DIR}/terminal-stress.json" "${RADIX_GENERATED_SERVICES_DIR}/boot-session.json" "${CMAKE_CURRENT_LIST_DIR}/services/network-smoke.json"
-            "${CMAKE_CURRENT_LIST_DIR}/services/fatfs.json"
+            "${CMAKE_CURRENT_LIST_DIR}/services/fatfs.json" "${CMAKE_CURRENT_LIST_DIR}/install_rootfs_tree.py" ${RADIX_RADPM_ROOTFS_DEPENDS}
     VERBATIM
 )
 

@@ -56,6 +56,11 @@
             "radix-vim-tiny"
           ]
         },
+        "sdk": {
+          "enabled": true,
+          "name": "radix-sdk-x86_64-grub-terminal.tar.gz",
+          "root_name": "radix-sdk-x86_64-grub-terminal"
+        },
         "build_dir": "build/embedded/x86_64_grub_terminal",
         "smoke_script": "tools/embedded/x86_64_grub_slint_smoke.sh",
         "artifact_dir": "artifacts/radix/x86_64-grub-terminal",
@@ -126,6 +131,11 @@
             "radlib-ui",
             "radix-vim-tiny"
           ]
+        },
+        "sdk": {
+          "enabled": true,
+          "name": "radix-sdk-x86_64-grub-wm.tar.gz",
+          "root_name": "radix-sdk-x86_64-grub-wm"
         },
         "build_dir": "build/embedded/x86_64_grub_wm",
         "smoke_script": "tools/embedded/x86_64_grub_slint_smoke.sh",

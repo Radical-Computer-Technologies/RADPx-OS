@@ -35,6 +35,13 @@ case "${ui_profile}" in
         ;;
 esac
 kernel_name="radixkernel-x86-64-grub-${ui_profile}"
+radpm_cmake_args=()
+if [[ -n "${RADIX_RADPM_ROOTFS_DIR:-}" ]]; then
+    radpm_cmake_args+=("-DRADIX_RADPM_ROOTFS_DIR=${RADIX_RADPM_ROOTFS_DIR}")
+fi
+if [[ -n "${RADIX_RADPM_ROOTFS_STAMP:-}" ]]; then
+    radpm_cmake_args+=("-DRADIX_RADPM_ROOTFS_STAMP=${RADIX_RADPM_ROOTFS_STAMP}")
+fi
 
 mkdir -p "${log_dir}"
 
@@ -74,6 +81,7 @@ fi
 if [[ "${RADLIB_X86_SKIP_REBUILD:-0}" != "1" ]]; then
     cmake -S "${repo_root}/tools/embedded/x86_64_grub_slint" -B "${x86_build}" \
         -DRADIX_X86_UI_PROFILE="${ui_profile}" \
+        "${radpm_cmake_args[@]}" \
         "${rust_cmake_args[@]}"
     rm -f "${x86_build}/radix-rootfs.ext4" "${x86_build}/radix-fat32.img"
     cmake --build "${x86_build}" --target radixkernel_x86_64_grub_slint_iso -j"${RADLIB_BUILD_JOBS:-2}"
