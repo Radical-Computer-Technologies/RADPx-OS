@@ -10,9 +10,9 @@ can build both profiles together.
 Run from the RADix-OS repository root:
 
 ```bash
-../RadBuild/radbuild/.tools/radbuild.py build os --settings settings.json --json-events
-../RadBuild/radbuild/.tools/radbuild.py build os --settings settings.terminal.json --json-events
-../RadBuild/radbuild/.tools/radbuild.py build os --settings settings.wm.json --json-events
+radbuild build os --settings settings.json --json-events
+radbuild build os --settings settings.terminal.json --json-events
+radbuild build os --settings settings.wm.json --json-events
 ```
 
 The provider executes `tools/embedded/x86_64_grub_slint_smoke.sh` with the
@@ -82,8 +82,23 @@ RadBuild writes the machine-readable manifest at:
 `artifacts/` and `.radmeta/` are local build outputs and are intentionally not
 tracked in the RADix-OS source repository.
 
-## Publication
+## Publication and Packagegroups
 
-RADix-OS source and API documentation are published through RadicalPackages as
-experimental Crimson documentation. Generated VM images remain local development
-artifacts until a separate binary image release channel is defined.
+RADix-OS source documentation, generated API docs, VM image bundles, and
+`.radpm` packages are published through RadicalPackages experimental releases.
+RadBuild can consume packagegroups from that repository during image creation:
+
+```json
+{
+  "radpm": {
+    "repository": "https://github.com/Radical-Computer-Technologies/RadicalPackages/releases/download/radix-os-0.2.0-beta.1",
+    "suite": "experimental",
+    "packagegroups": ["radix-terminal-base", "radix-networking"],
+    "packages": [],
+    "verify_signatures": true
+  }
+}
+```
+
+The packagegroup model keeps rootfs contents explicit while allowing RadBuild
+to explain missing dependencies and available providers.

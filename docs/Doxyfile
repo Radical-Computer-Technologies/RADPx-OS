@@ -1,5 +1,5 @@
 PROJECT_NAME           = "RADix-OS Kernel"
-PROJECT_NUMBER         = "Crimson 0.1.0"
+PROJECT_NUMBER         = "Crimson 0.2.0"
 PROJECT_BRIEF          = "POSIX-inspired kernel API with embedded and desktop VM targets"
 OUTPUT_DIRECTORY       = $(RADIX_DOCS_OUTPUT)
 INPUT                  = $(RADIX_SOURCE_DIR)/RADixKernel/headers \
@@ -42,6 +42,6 @@ ENABLE_PREPROCESSING   = YES
 MACRO_EXPANSION        = YES
 EXPAND_ONLY_PREDEF     = YES
 PREDEFINED             = RADIX_KERNEL_VERSION_MAJOR=0 \
-                         RADIX_KERNEL_VERSION_MINOR=1 \
+                         RADIX_KERNEL_VERSION_MINOR=2 \
                          RADIX_KERNEL_VERSION_PATCH=0 \
                          RADLIB_EMBEDDED_NO_CPP_WRAPPERS=1

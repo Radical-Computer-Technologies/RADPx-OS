@@ -6,20 +6,33 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/** Summary of the x86_64 early virtual-memory allocator and address-space state. */
 typedef struct x86_vm_summary {
+    /** Usable physical memory discovered from the boot memory map. */
     uint64_t usable_bytes;
+    /** Number of page frames tracked by the allocator. */
     uint64_t tracked_pages;
+    /** Number of currently free page frames. */
     uint64_t free_pages;
+    /** Number of reserved page frames. */
     uint64_t reserved_pages;
+    /** Physical start address of the loaded kernel image. */
     uint64_t kernel_start;
+    /** Physical end address of the loaded kernel image. */
     uint64_t kernel_end;
+    /** Non-zero once the page allocator is initialized. */
     int page_allocator_ready;
+    /** Non-zero once per-process address-space support is initialized. */
     int user_address_space_ready;
 } x86_vm_summary_t;
 
+/** x86_64 process address space descriptor owned by the RADix process layer. */
 typedef struct x86_address_space {
+    /** Physical address of the top-level PML4 table. */
     uint64_t pml4;
+    /** Physical pages owned by this address space and released at teardown. */
     uint64_t owned_pages[16384];
+    /** Number of valid entries in owned_pages. */
     size_t owned_page_count;
 } x86_address_space_t;
 

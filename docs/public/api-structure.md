@@ -44,7 +44,7 @@ errors, or a negative POSIX-style result for file descriptor/syscall wrappers.
 
 ## Crimson Stability
 
-Crimson 0.1.3 documents the intended public shape for beta work. APIs marked as
+Crimson 0.2.0 documents the intended public shape for beta work. APIs marked as
 experimental may change before the stable release; APIs marked stable-beta
 should keep source compatibility inside the Crimson branch unless a documented
 release note says otherwise.

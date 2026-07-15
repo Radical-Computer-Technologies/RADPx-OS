@@ -103,6 +103,6 @@ overlay format for now.
 
 ## Current Limits
 
-Crimson 0.1.3 overlays are a compact runtime binding format, not a full Linux
+Crimson 0.2.0 overlays are a compact runtime binding format, not a full Linux
 DTB replacement. They intentionally cover the current RADix buses, IRQ domains,
 boot metadata, framebuffer selection, and boot-service seeds first.
