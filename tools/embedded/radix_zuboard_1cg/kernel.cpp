@@ -226,6 +226,10 @@ extern "C" void radix_zuboard_entry(rad_boot_handoff_t *incoming_handoff) {
         if (x86_ext4_self_test()) marker("RADIX_ZUBOARD_ROOTFS_OK");
         int32_t pid = 0;
         rad_task_t task = nullptr;
+        // The user session owns /dev/tty0 from here: stop the kernel debug REPL
+        // from draining typed input so login/rash can read it. The embedded
+        // fallback path below keeps the REPL for debug access.
+        rad_terminal_repl_set(0);
         const rad_status_t init_status = rad_a53_user_spawn_process_with_stdio("/bin/init", 0, "/dev/tty0", &pid, &task);
         if (init_status == RAD_STATUS_OK) {
             marker("RADIX_AARCH64_USERLAND_OK");
@@ -233,6 +237,7 @@ extern "C" void radix_zuboard_entry(rad_boot_handoff_t *incoming_handoff) {
             marker("RADIX_ZUBOARD_SERIAL_LOGIN_READY");
             rootfs_boot = 1;
         } else {
+            rad_terminal_repl_set(1);
             marker("RADIX_ZUBOARD_INIT_SPAWN_FAIL");
         }
     } else {

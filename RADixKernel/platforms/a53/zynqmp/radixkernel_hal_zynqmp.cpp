@@ -481,8 +481,13 @@ extern "C" rad_status_t rad_hal_register_default_devices(void) {
         rad_debug_marker("RADIX_ZUBOARD_SD_FAIL");
     }
 
-    rad_terminal_attach_device("/dev/console");
-    rad_terminal_attach_tty("/dev/console", "/dev/tty0");
+    // The core runtime already registered "/dev/console" as a TTY device, so
+    // the serial alias above silently lost that name (ALREADY_EXISTS) and the
+    // is-serial check in the attach calls would fail against it. Attach through
+    // "/dev/serial0", which this HAL actually owns, so tty0 output reaches the
+    // Cadence UART and the poll loop pumps typed input back into tty0.
+    rad_terminal_attach_device("/dev/serial0");
+    rad_terminal_attach_tty("/dev/serial0", "/dev/tty0");
     rad_debug_marker("RADIX_ZYNQMP_HAL_OK");
     rad_debug_marker("RADIX_ZUBOARD_UART_OK");
     return RAD_STATUS_OK;

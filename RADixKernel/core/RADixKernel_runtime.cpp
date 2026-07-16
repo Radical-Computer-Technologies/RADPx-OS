@@ -611,6 +611,7 @@ struct KernelState {
     char attached_terminal_tty[64];
     char terminal_line[256];
     size_t terminal_line_size;
+    int terminal_repl_detached;
     int32_t current_pid;
     int32_t next_pid;
     rad_process_arch_ops_t process_arch_ops;
@@ -6895,11 +6896,17 @@ rad_status_t rad_terminal_poll_attached(void) {
     while (rad_device_read(device, &ch, 1, &done) == RAD_STATUS_OK && done == 1) {
         size_t consumed = 0;
         rad_tty_push_input(tty, &ch, 1, &consumed);
-        rad_terminal_poll_tty(tty);
+        // While a user session owns the tty, keep pumping input into it but do
+        // not let the kernel debug REPL drain and execute the typed lines.
+        if (!g_state.terminal_repl_detached) rad_terminal_poll_tty(tty);
     }
     rad_tty_close(tty);
     rad_device_close(device);
     return RAD_STATUS_OK;
+}
+
+void rad_terminal_repl_set(int enabled) {
+    g_state.terminal_repl_detached = enabled ? 0 : 1;
 }
 
 size_t rad_terminal_command_count(void) {

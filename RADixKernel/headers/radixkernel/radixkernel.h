@@ -1751,6 +1751,7 @@ rad_status_t rad_terminal_poll_tty(rad_tty_t tty); ///< Public RADix kernel API 
 rad_status_t rad_terminal_attach_device(const char *device_name); ///< Public RADix kernel API entry point.
 rad_status_t rad_terminal_attach_tty(const char *serial_device_name, const char *tty_name); ///< Public RADix kernel API entry point.
 rad_status_t rad_terminal_poll_attached(void); ///< Public RADix kernel API entry point.
+void rad_terminal_repl_set(int enabled); ///< Enable/disable the kernel debug REPL on the attached tty; disable while a user session owns it. Input pumping continues either way.
 size_t rad_terminal_command_count(void); ///< Public RADix kernel API entry point.
 
 #if defined(__cplusplus)
