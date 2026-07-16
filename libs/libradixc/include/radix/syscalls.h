@@ -71,6 +71,17 @@
 #define RADIX_SYS_PIPE2 1029
 
 static inline long radix_syscall6(long n, long a, long b, long c, long d, long e, long f) {
+#if defined(__aarch64__)
+    register long x0 asm("x0") = a;
+    register long x1 asm("x1") = b;
+    register long x2 asm("x2") = c;
+    register long x3 asm("x3") = d;
+    register long x4 asm("x4") = e;
+    register long x5 asm("x5") = f;
+    register long x8 asm("x8") = n;
+    asm volatile("svc #0" : "+r"(x0) : "r"(x1), "r"(x2), "r"(x3), "r"(x4), "r"(x5), "r"(x8) : "memory");
+    return x0;
+#else
     register long rax asm("rax") = n;
     register long rdi asm("rdi") = a;
     register long rsi asm("rsi") = b;
@@ -80,6 +91,7 @@ static inline long radix_syscall6(long n, long a, long b, long c, long d, long e
     register long r9 asm("r9") = f;
     asm volatile("int $0x80" : "+a"(rax) : "D"(rdi), "S"(rsi), "d"(rdx), "r"(r10), "r"(r8), "r"(r9) : "memory");
     return rax;
+#endif
 }
 
 #endif

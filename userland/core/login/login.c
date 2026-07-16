@@ -3,6 +3,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <radix/syscalls.h>
+
 enum {
     SYS_READ = 0,
     SYS_WRITE = 1,
@@ -32,15 +34,7 @@ enum {
 #define RAD_TTY_MODE_CRLF (1u << 2)
 
 static long sc(long n, long a, long b, long c, long d, long e, long f) {
-    register long rax asm("rax") = n;
-    register long rdi asm("rdi") = a;
-    register long rsi asm("rsi") = b;
-    register long rdx asm("rdx") = c;
-    register long r10 asm("r10") = d;
-    register long r8 asm("r8") = e;
-    register long r9 asm("r9") = f;
-    asm volatile("int $0x80" : "+a"(rax) : "D"(rdi), "S"(rsi), "d"(rdx), "r"(r10), "r"(r8), "r"(r9) : "memory");
-    return rax;
+    return radix_syscall6(n, a, b, c, d, e, f);
 }
 
 static size_t s_len(const char *s) {

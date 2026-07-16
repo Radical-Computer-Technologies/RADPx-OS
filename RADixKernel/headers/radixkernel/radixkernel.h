@@ -1749,6 +1749,7 @@ rad_status_t rad_terminal_register_command(const char *name, const char *descrip
 rad_status_t rad_terminal_execute(const char *line, rad_terminal_write_t write, void *write_context); ///< Public RADix kernel API entry point.
 rad_status_t rad_terminal_poll_tty(rad_tty_t tty); ///< Public RADix kernel API entry point.
 rad_status_t rad_terminal_attach_device(const char *device_name); ///< Public RADix kernel API entry point.
+rad_status_t rad_terminal_attach_tty(const char *serial_device_name, const char *tty_name); ///< Public RADix kernel API entry point.
 rad_status_t rad_terminal_poll_attached(void); ///< Public RADix kernel API entry point.
 size_t rad_terminal_command_count(void); ///< Public RADix kernel API entry point.
 

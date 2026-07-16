@@ -256,6 +256,7 @@ struct KernelState {
     uint64_t next_program_id = 1;
     std::string cwd = "/";
     std::string attached_terminal_device;
+    std::string attached_terminal_tty;
     std::string terminal_line_buffer;
     int32_t current_pid = 1;
     int32_t next_pid = 2;
@@ -2462,6 +2463,7 @@ intptr_t rad_fd_read(int32_t fd, void *buffer, size_t size) {
             if (status != RAD_STATUS_OK) return static_cast<intptr_t>(status);
             if (done > 0 || size == 0 || !tty) return static_cast<intptr_t>(done);
             if (object->flags & RAD_FD_NONBLOCK) return RAD_STATUS_TIMEOUT;
+            rad_terminal_poll_attached();
             rad_task_yield();
         }
     }
@@ -3666,6 +3668,7 @@ rad_status_t rad_terminal_attach_device(const char *device_name) {
     if (!is_serial) return RAD_STATUS_INVALID_ARGUMENT;
     std::lock_guard<std::mutex> lock(state().mutex);
     state().attached_terminal_device = device_name;
+    state().attached_terminal_tty = device_name;
     state().terminal_line_buffer.clear();
     TtyRecord *tty = ensure_tty_locked(device_name);
     if (tty) {
@@ -3676,18 +3679,41 @@ rad_status_t rad_terminal_attach_device(const char *device_name) {
     return RAD_STATUS_OK;
 }
 
+rad_status_t rad_terminal_attach_tty(const char *serial_device_name, const char *tty_name) {
+    if (!serial_device_name || !tty_name) return RAD_STATUS_INVALID_ARGUMENT;
+    rad_device_t device = nullptr;
+    const rad_status_t status = rad_device_open(serial_device_name, &device);
+    if (status != RAD_STATUS_OK) return status;
+    const bool is_serial = device->record.type == RAD_DEVICE_SERIAL;
+    rad_device_close(device);
+    if (!is_serial) return RAD_STATUS_INVALID_ARGUMENT;
+    register_tty_device(tty_name);
+    std::lock_guard<std::mutex> lock(state().mutex);
+    TtyRecord *tty = ensure_tty_locked(tty_name);
+    if (!tty) return RAD_STATUS_NO_MEMORY;
+    tty->attached_device_name = serial_device_name;
+    tty->output = serial_tty_output;
+    tty->output_context = const_cast<char*>(tty->attached_device_name.c_str());
+    state().attached_terminal_device = serial_device_name;
+    state().attached_terminal_tty = tty_name;
+    state().terminal_line_buffer.clear();
+    return RAD_STATUS_OK;
+}
+
 rad_status_t rad_terminal_poll_attached(void) {
     std::string device_name;
+    std::string tty_name;
     {
         std::lock_guard<std::mutex> lock(state().mutex);
         device_name = state().attached_terminal_device;
+        tty_name = state().attached_terminal_tty.empty() ? state().attached_terminal_device : state().attached_terminal_tty;
     }
     if (device_name.empty()) return RAD_STATUS_OK;
     rad_device_t device = nullptr;
     rad_status_t status = rad_device_open(device_name.c_str(), &device);
     if (status != RAD_STATUS_OK) return status;
     rad_tty_t tty = nullptr;
-    status = rad_tty_open(device_name.c_str(), &tty);
+    status = rad_tty_open(tty_name.c_str(), &tty);
     if (status != RAD_STATUS_OK) {
         rad_device_close(device);
         return status;

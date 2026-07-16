@@ -608,6 +608,7 @@ struct KernelState {
     uint64_t scheduler_ticks;
     char cwd[96];
     char attached_terminal_device[64];
+    char attached_terminal_tty[64];
     char terminal_line[256];
     size_t terminal_line_size;
     int32_t current_pid;
@@ -5423,6 +5424,7 @@ intptr_t rad_fd_read(int32_t fd, void *buffer, size_t size) {
             if (status != RAD_STATUS_OK) return static_cast<intptr_t>(status);
             if (done > 0 || size == 0 || !tty) return static_cast<intptr_t>(done);
             if (record->flags & RAD_FD_NONBLOCK) return RAD_STATUS_TIMEOUT;
+            rad_terminal_poll_attached();
             rad_task_yield();
         }
     }
@@ -6844,6 +6846,7 @@ rad_status_t rad_terminal_attach_device(const char *device_name) {
     rad_device_close(device);
     if (!is_serial) return RAD_STATUS_INVALID_ARGUMENT;
     copy_string(g_state.attached_terminal_device, sizeof(g_state.attached_terminal_device), device_name);
+    copy_string(g_state.attached_terminal_tty, sizeof(g_state.attached_terminal_tty), device_name);
     g_state.terminal_line_size = 0;
     g_state.terminal_line[0] = '\0';
     TtyRecord *tty = ensure_tty(device_name, nullptr);
@@ -6855,12 +6858,35 @@ rad_status_t rad_terminal_attach_device(const char *device_name) {
     return RAD_STATUS_OK;
 }
 
+rad_status_t rad_terminal_attach_tty(const char *serial_device_name, const char *tty_name) {
+    if (!serial_device_name || !tty_name) return RAD_STATUS_INVALID_ARGUMENT;
+    rad_device_t device = nullptr;
+    rad_status_t status = rad_device_open(serial_device_name, &device);
+    if (status != RAD_STATUS_OK) return status;
+    const bool is_serial = device->record.type == RAD_DEVICE_SERIAL;
+    rad_device_close(device);
+    if (!is_serial) return RAD_STATUS_INVALID_ARGUMENT;
+
+    TtyRecord *tty = ensure_tty(tty_name, nullptr);
+    if (!tty) return RAD_STATUS_NO_MEMORY;
+    copy_string(tty->attached_device_name, sizeof(tty->attached_device_name), serial_device_name);
+    tty->output = serial_tty_output;
+    tty->output_context = tty->attached_device_name;
+    register_tty_device(tty_name);
+    copy_string(g_state.attached_terminal_device, sizeof(g_state.attached_terminal_device), serial_device_name);
+    copy_string(g_state.attached_terminal_tty, sizeof(g_state.attached_terminal_tty), tty_name);
+    g_state.terminal_line_size = 0;
+    g_state.terminal_line[0] = '\0';
+    return RAD_STATUS_OK;
+}
+
 rad_status_t rad_terminal_poll_attached(void) {
     if (!g_state.attached_terminal_device[0]) return RAD_STATUS_OK;
     rad_device_t device = nullptr;
     if (rad_device_open(g_state.attached_terminal_device, &device) != RAD_STATUS_OK) return RAD_STATUS_NOT_FOUND;
     rad_tty_t tty = nullptr;
-    if (rad_tty_open(g_state.attached_terminal_device, &tty) != RAD_STATUS_OK) {
+    const char *tty_name = g_state.attached_terminal_tty[0] ? g_state.attached_terminal_tty : g_state.attached_terminal_device;
+    if (rad_tty_open(tty_name, &tty) != RAD_STATUS_OK) {
         rad_device_close(device);
         return RAD_STATUS_NOT_FOUND;
     }

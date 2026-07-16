@@ -664,6 +664,7 @@ add_custom_command(
     OUTPUT "${RADIX_RADSH_ELF}"
     COMMAND "${X86_64_LINUX_GNU_GCC_EXECUTABLE}" -nostdlib -static -no-pie
             -ffreestanding -fno-stack-protector -fno-pic -fno-pie -fomit-frame-pointer -mno-red-zone
+            -I "${RADIX_LIBRADIXC_INCLUDE_DIR}"
             -I "${RADIX_USERLAND_LOGIN_SOURCE_DIR}"
             -I "${RADIX_RKCONFIG_DIR}"
             -Wl,-Ttext=0x40000000
@@ -680,6 +681,7 @@ add_custom_command(
     OUTPUT "${RADIX_LOGIN_ELF}"
     COMMAND "${X86_64_LINUX_GNU_GCC_EXECUTABLE}" -nostdlib -static -no-pie
             -ffreestanding -fno-stack-protector -fno-pic -fno-pie -fomit-frame-pointer -mno-red-zone
+            -I "${RADIX_LIBRADIXC_INCLUDE_DIR}"
             -I "${RADIX_USERLAND_LOGIN_SOURCE_DIR}"
             -Wl,-Ttext=0x40000000
             -Wl,--build-id=none
@@ -740,6 +742,7 @@ add_custom_command(
     OUTPUT "${RADIX_RADINIT_ELF}"
     COMMAND "${X86_64_LINUX_GNU_GCC_EXECUTABLE}" -nostdlib -static -no-pie
             -ffreestanding -fno-stack-protector -fno-pic -fno-pie -fomit-frame-pointer -mno-red-zone
+            -I "${RADIX_LIBRADIXC_INCLUDE_DIR}"
             -Wl,-Ttext=0x40000000
             -Wl,--build-id=none
             -o "${RADIX_RADINIT_ELF}"

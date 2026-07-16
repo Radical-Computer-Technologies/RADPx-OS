@@ -70,6 +70,42 @@ engine, DWC OTG USB host enumeration, hardware HID input, AArch64 page-table
 implementation, and Slint rendering on Pi hardware are the next Pi-specific
 driver work.
 
+## Build the standalone RADix ZUBoard 1CG serial payload
+
+The ZuBoard path targets the Avnet/Tria ZUBoard 1CG Zynq UltraScale+ MPSoC
+board. The first payload is intentionally serial-only and expects FSBL, PMU
+firmware, and U-Boot to initialize clocks, DDR, and MIO before U-Boot enters
+RADix with `bootelf`.
+
+```bash
+make -C tools/embedded/radix_zuboard_1cg
+```
+
+The target emits:
+
+- `tools/embedded/radix_zuboard_1cg/radix-zuboard.elf`
+- `tools/embedded/radix_zuboard_1cg/radix-zuboard.img`
+
+RadBuild template `radix-os-zuboard-serial` stages those files with a boot
+script, the reference XSA from `../ZUBoard-1CG_RT` when available, generated
+XSCT firmware scripts, a Bootgen BIF, a FAT boot partition image, an ext4 rootfs
+image, and a combined SD image. The current kernel backend is
+`zynqmp_zuboard_1cg` and registers the PS UART console, ZynqMP SDHCI block
+device, MBR partitions, and an ext4 rootfs login path.
+
+For QEMU smoke testing, build the QEMU profile and run the helper script:
+
+```bash
+radbuild build os --system radix-zuboard-1cg-qemu
+RADIX_QEMU_BUILD=0 RADIX_QEMU_TIMEOUT=45 \
+  tools/embedded/radix_zuboard_1cg/run-qemu.sh
+```
+
+The script uses QEMU's `xlnx-zcu102` machine model, passes the QEMU SDHCI base
+to the build, pads the SD card image to 512 MiB, and starts only core 0. The
+boot assembly parks nonzero A53 cores with `wfe`; secondary-core startup should
+stay disabled until the ZynqMP GIC and per-core scheduler path are implemented.
+
 ## Build the Slint source cache
 
 Embedded Slint builds should reuse one persistent source checkout instead of

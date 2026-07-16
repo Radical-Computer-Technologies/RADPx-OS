@@ -153,6 +153,141 @@
         "qemu_smp": [2],
         "jobs": 2
       }
+    },
+    {
+      "id": "radix-zuboard-1cg-serial",
+      "type": "os.radix",
+      "name": "RADix ZUBoard 1CG ext4 rootfs serial image",
+      "provider": "radix-os",
+      "depends_on": [],
+      "toolchain": {
+        "architecture": "aarch64",
+        "boot": "zynqmp-u-boot-bootelf",
+        "ui": "serial"
+      },
+      "config": {
+        "target": "zuboard-1cg-rootfs-serial",
+        "source": {
+          "type": "local",
+          "path": "."
+        },
+        "hardware_source": "auto",
+        "board": {
+          "vendor": "avnet",
+          "name": "zuboard-1cg",
+          "part_number": "xczu1cg-sbva484-1-e"
+        },
+        "board_files": {
+          "repository": "https://github.com/Avnet/bdf.git",
+          "cache_dir": ".radmeta/xilinx/board_files/avnet-bdf"
+        },
+        "reference": {
+          "xsa": "../ZUBoard-1CG_RT/Vivado/AES_Core/aes128_zynq_interface_wrapper.xsa",
+          "psu_init": "../ZUBoard-1CG_RT/Vitis/aes128_zynq_interface_wrapper/hw/psu_init.tcl"
+        },
+        "uboot": {
+          "repository": "https://source.denx.de/u-boot/u-boot.git",
+          "source_dir": ".radmeta/sources/u-boot",
+          "defconfig": "xilinx_zynqmp_virt_defconfig"
+        },
+        "boot_chain": {
+          "fsbl": "fsbl.elf",
+          "pmufw": "pmufw.elf",
+          "bl31": "bl31.elf",
+          "uboot": "u-boot.elf"
+        },
+        "run_vivado": false,
+        "run_firmware_tools": false,
+        "run_uboot_build": false,
+        "toolchain_prefix": "../RADLib/.radbuild/toolchains/arm-gnu-toolchain-15.2.rel1-x86_64-aarch64-none-elf/bin/aarch64-none-elf-",
+        "uboot_load_address": "0x200000",
+        "feature_chunks": [
+          "kernel.core",
+          "kernel.a53",
+          "platform.zynqmp",
+          "drivers.serial.ps-uart",
+          "drivers.block.zynqmp-sdhci",
+          "fs.ext4",
+          "services.radinit",
+          "userspace.rash",
+          "terminal.posix-compat"
+        ],
+        "rootfs_size_mb": 256,
+        "sd_image_boot_mb": 64,
+        "build_dir": "tools/embedded/radix_zuboard_1cg",
+        "artifact_dir": "artifacts/radix/zuboard-1cg-serial",
+        "log_dir": ".radmeta/radix-os/zuboard/logs",
+        "jobs": 2
+      }
+    },
+    {
+      "id": "radix-zuboard-1cg-qemu",
+      "type": "os.radix",
+      "name": "RADix ZUBoard 1CG QEMU serial image",
+      "provider": "radix-os",
+      "depends_on": [],
+      "toolchain": {
+        "architecture": "aarch64",
+        "boot": "qemu-loader",
+        "ui": "serial"
+      },
+      "config": {
+        "target": "zuboard-1cg-qemu",
+        "source": {
+          "type": "local",
+          "path": "."
+        },
+        "hardware_source": "auto",
+        "qemu": true,
+        "qemu_sdhci_base": "0xff160000u",
+        "qemu_image_size_mb": 512,
+        "board": {
+          "vendor": "avnet",
+          "name": "zuboard-1cg",
+          "part_number": "xczu1cg-sbva484-1-e"
+        },
+        "board_files": {
+          "repository": "https://github.com/Avnet/bdf.git",
+          "cache_dir": ".radmeta/xilinx/board_files/avnet-bdf"
+        },
+        "reference": {
+          "xsa": "../ZUBoard-1CG_RT/Vivado/AES_Core/aes128_zynq_interface_wrapper.xsa",
+          "psu_init": "../ZUBoard-1CG_RT/Vitis/aes128_zynq_interface_wrapper/hw/psu_init.tcl"
+        },
+        "uboot": {
+          "repository": "https://source.denx.de/u-boot/u-boot.git",
+          "source_dir": ".radmeta/sources/u-boot",
+          "defconfig": "xilinx_zynqmp_virt_defconfig"
+        },
+        "boot_chain": {
+          "fsbl": "fsbl.elf",
+          "pmufw": "pmufw.elf",
+          "bl31": "bl31.elf",
+          "uboot": "u-boot.elf"
+        },
+        "run_vivado": false,
+        "run_firmware_tools": false,
+        "run_uboot_build": false,
+        "toolchain_prefix": "../RADLib/.radbuild/toolchains/arm-gnu-toolchain-15.2.rel1-x86_64-aarch64-none-elf/bin/aarch64-none-elf-",
+        "uboot_load_address": "0x200000",
+        "feature_chunks": [
+          "kernel.core",
+          "kernel.a53",
+          "platform.zynqmp",
+          "drivers.serial.ps-uart",
+          "drivers.block.zynqmp-sdhci",
+          "fs.ext4",
+          "services.radinit",
+          "userspace.rash",
+          "terminal.posix-compat"
+        ],
+        "rootfs_size_mb": 256,
+        "sd_image_boot_mb": 64,
+        "build_dir": "tools/embedded/radix_zuboard_1cg",
+        "artifact_dir": "artifacts/radix/zuboard-1cg-qemu",
+        "log_dir": ".radmeta/radix-os/zuboard-qemu/logs",
+        "jobs": 2
+      }
     }
   ],
   "connections": [],

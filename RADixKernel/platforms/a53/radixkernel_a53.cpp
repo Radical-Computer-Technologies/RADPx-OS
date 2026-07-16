@@ -12,9 +12,21 @@ constexpr uint32_t PageSize = 4096u;
 constexpr uint64_t PageMask = PageSize - 1u;
 constexpr size_t UserStackSize = 0x800000u;
 constexpr size_t EntriesPerTable = 512u;
-constexpr size_t MaxTrackedPages = 4096u;
+#ifndef RADIX_A53_MAX_TRACKED_PAGES
+#if defined(__aarch64__)
+#define RADIX_A53_MAX_TRACKED_PAGES 65536u
+#else
+#define RADIX_A53_MAX_TRACKED_PAGES 8192u
+#endif
+#endif
+
+#ifndef RADIX_A53_MAX_USER_PROCESSES
+#define RADIX_A53_MAX_USER_PROCESSES 128u
+#endif
+
+constexpr size_t MaxTrackedPages = RADIX_A53_MAX_TRACKED_PAGES;
 constexpr size_t MaxInitImage = 131072u;
-constexpr size_t MaxUserProcesses = 8u;
+constexpr size_t MaxUserProcesses = RADIX_A53_MAX_USER_PROCESSES;
 constexpr size_t MaxUserArgs = 8u;
 constexpr size_t MaxUserEnvs = 4u;
 constexpr size_t MaxUserArgBytes = 128u;
@@ -126,6 +138,8 @@ struct A53UserProcess {
 alignas(PageSize) uint64_t g_kernel_l1[EntriesPerTable];
 alignas(PageSize) uint64_t g_kernel_l2_0[EntriesPerTable];
 alignas(PageSize) uint64_t g_kernel_l2_1[EntriesPerTable];
+alignas(PageSize) uint64_t g_kernel_l2_2[EntriesPerTable];
+alignas(PageSize) uint64_t g_kernel_l2_3[EntriesPerTable];
 uint8_t g_page_state[MaxTrackedPages];
 uint16_t g_page_refs[MaxTrackedPages];
 
@@ -170,6 +184,19 @@ uint64_t block_descriptor(uintptr_t physical_address, int device) {
         | attr
         | PteInnerShareable
         | PteAccessFlag;
+}
+
+int kernel_identity_device_region(uintptr_t physical_address) {
+    return (physical_address >= 0x3f000000ull && physical_address < 0x41000000ull)
+        || (physical_address >= 0xe0000000ull && physical_address < 0x100000000ull);
+}
+
+void install_kernel_identity_tables(uint64_t *root) {
+    if (!root) return;
+    uint64_t *tables[] = {g_kernel_l2_0, g_kernel_l2_1, g_kernel_l2_2, g_kernel_l2_3};
+    for (size_t table = 0; table < sizeof(tables) / sizeof(tables[0]); ++table) {
+        root[table] = table_descriptor(reinterpret_cast<uintptr_t>(tables[table]));
+    }
 }
 
 uint64_t user_page_descriptor(uintptr_t physical_address, int writable) {
@@ -368,6 +395,15 @@ void activate_ttbr0(uintptr_t table) {
 #endif
 }
 
+void sync_instruction_cache(void) {
+#if defined(__aarch64__)
+    asm volatile("dsb ish\n"
+                 "ic iallu\n"
+                 "dsb ish\n"
+                 "isb\n" ::: "memory");
+#endif
+}
+
 int enable_mmu_if_needed(uintptr_t table) {
 #if defined(__aarch64__)
     uint64_t sctlr = 0;
@@ -392,6 +428,7 @@ int enable_mmu_if_needed(uintptr_t table) {
                  "tlbi vmalle1\n"
                  "dsb sy\n"
                  "isb\n" :: "r"(mair), "r"(tcr), "r"(table) : "memory");
+    sctlr &= ~(1ull << 19u);
     sctlr |= 1ull | (1ull << 2u) | (1ull << 12u);
     asm volatile("msr sctlr_el1, %0\n"
                  "isb\n" :: "r"(sctlr) : "memory");
@@ -408,15 +445,15 @@ void build_kernel_tables() {
     memset(g_kernel_l1, 0, sizeof(g_kernel_l1));
     memset(g_kernel_l2_0, 0, sizeof(g_kernel_l2_0));
     memset(g_kernel_l2_1, 0, sizeof(g_kernel_l2_1));
-    g_kernel_l1[0] = table_descriptor(reinterpret_cast<uintptr_t>(g_kernel_l2_0));
-    g_kernel_l1[1] = table_descriptor(reinterpret_cast<uintptr_t>(g_kernel_l2_1));
-    for (size_t i = 0; i < EntriesPerTable; ++i) {
-        const uintptr_t physical0 = i * L2Span;
-        const uintptr_t physical1 = L1Span + i * L2Span;
-        const int device0 = physical0 >= 0x3f000000ull && physical0 < 0x41000000ull;
-        const int device1 = physical1 >= 0x3f000000ull && physical1 < 0x41000000ull;
-        g_kernel_l2_0[i] = block_descriptor(physical0, device0);
-        g_kernel_l2_1[i] = block_descriptor(physical1, device1);
+    memset(g_kernel_l2_2, 0, sizeof(g_kernel_l2_2));
+    memset(g_kernel_l2_3, 0, sizeof(g_kernel_l2_3));
+    install_kernel_identity_tables(g_kernel_l1);
+    uint64_t *tables[] = {g_kernel_l2_0, g_kernel_l2_1, g_kernel_l2_2, g_kernel_l2_3};
+    for (size_t table = 0; table < sizeof(tables) / sizeof(tables[0]); ++table) {
+        for (size_t i = 0; i < EntriesPerTable; ++i) {
+            const uintptr_t physical = table * L1Span + i * L2Span;
+            tables[table][i] = block_descriptor(physical, kernel_identity_device_region(physical));
+        }
     }
     g_a53.summary.kernel_table = reinterpret_cast<uintptr_t>(g_kernel_l1);
     g_a53.summary.active_table = reinterpret_cast<uintptr_t>(g_kernel_l1);
@@ -525,7 +562,14 @@ int setup_initial_user_stack(A53UserProcess *process) {
         argv_ptrs[i] = push_user_cstr(&process->address_space, &sp, process->argv[i]);
         if (!argv_ptrs[i]) return 0;
     }
-    sp &= ~0xfull;
+    const size_t stack_words = 1u
+        + static_cast<size_t>(process->argc) + 1u
+        + static_cast<size_t>(process->envc) + 1u;
+    uintptr_t aligned_sp = sp & ~0xfull;
+    if (stack_words & 1u) {
+        aligned_sp = (aligned_sp + 8u <= sp) ? aligned_sp + 8u : aligned_sp - 8u;
+    }
+    sp = aligned_sp;
     const uintptr_t zero = 0;
     if (!push_user_bytes(&process->address_space, &sp, &zero, sizeof(zero))) return 0;
     for (int i = process->envc - 1; i >= 0; --i) {
@@ -782,7 +826,7 @@ void user_process_task(void *context) {
             memset(&process->context, 0, sizeof(process->context));
             process->context.frame.elr_el1 = process->entry;
             process->context.frame.sp_el0 = process->initial_sp;
-            process->context.frame.spsr_el1 = 0;
+            process->context.frame.spsr_el1 = 0x3c0u;
         }
         process->resume_context = 0;
         process->exec_pending = 0;
@@ -797,6 +841,7 @@ void user_process_task(void *context) {
                 rad_debug_marker("RADIX_AARCH64_USER_COPY_OK");
             }
         }
+        sync_instruction_cache();
         rad_debug_marker("RADIX_AARCH64_USERMODE_ENTER_OK");
         g_active_user_context = &process->context;
 #if defined(__aarch64__)
@@ -1007,8 +1052,7 @@ extern "C" rad_status_t rad_a53_create_address_space(rad_a53_address_space_t *sp
     const uintptr_t l1 = alloc_owned_page(space);
     if (!l1) return RAD_STATUS_NO_MEMORY;
     uint64_t *root = table_ptr(l1);
-    root[0] = table_descriptor(reinterpret_cast<uintptr_t>(g_kernel_l2_0));
-    root[1] = table_descriptor(reinterpret_cast<uintptr_t>(g_kernel_l2_1));
+    install_kernel_identity_tables(root);
     space->ttbr0 = l1;
     space->next_mmap = UserMmapBase;
     return RAD_STATUS_OK;
@@ -1319,11 +1363,26 @@ extern "C" uintptr_t rad_a53_exception_dispatch(rad_a53_trap_frame_t *frame) {
     const uint64_t ec = (frame->esr_el1 >> EcShift) & EcMask;
     if (ec == EcSvc64) return static_cast<uintptr_t>(rad_a53_syscall_dispatch_frame(frame));
     if (ec == EcDataAbortLowerEl && rad_a53_handle_data_abort(frame->far_el1, frame->esr_el1)) return 0;
+    if (!g_active_user_context) {
+        rad_kprintk(RKERN_ERR,
+            "RADIX_AARCH64_KERNEL_EXCEPTION el=%u esr=0x%llx far=0x%llx elr=0x%llx\n",
+            current_exception_level(),
+            static_cast<unsigned long long>(frame->esr_el1),
+            static_cast<unsigned long long>(frame->far_el1),
+            static_cast<unsigned long long>(frame->elr_el1));
+        return UserExitMagic;
+    }
     auto *process = find_user_process(rad_process_current_pid());
     if (process) {
         process->exit_code = RAD_STATUS_INVALID_ARGUMENT;
         process->exiting = 1;
     }
+    rad_kprintk(RKERN_ERR,
+        "RADIX_AARCH64_USER_EXCEPTION el=%u esr=0x%llx far=0x%llx elr=0x%llx\n",
+        current_exception_level(),
+        static_cast<unsigned long long>(frame->esr_el1),
+        static_cast<unsigned long long>(frame->far_el1),
+        static_cast<unsigned long long>(frame->elr_el1));
     rad_debug_marker("RADIX_AARCH64_USER_EXCEPTION_EXIT_OK");
     return UserExitMagic;
 }
