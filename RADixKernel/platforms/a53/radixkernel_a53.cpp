@@ -18,6 +18,9 @@ constexpr uint32_t PageSize = 4096u;
 constexpr uint64_t PageMask = PageSize - 1u;
 constexpr size_t UserStackSize = 0x200000u;
 static_assert(UserStackTop - UserStackSize >= UserImageLimit, "user stack window overlaps ELF image window");
+constexpr bool l1_span_shared_with_user() {
+    return (UserBase >> 30u) == ((UserLimit - 1u) >> 30u);
+}
 constexpr size_t EntriesPerTable = 512u;
 #ifndef RADIX_A53_MAX_TRACKED_PAGES
 #if defined(__aarch64__)
@@ -721,6 +724,7 @@ void user_process_task(void *context);
 rad_status_t start_user_process_task(A53UserProcess *process) {
     if (!process || !process->used) return RAD_STATUS_INVALID_ARGUMENT;
     if (process->task) return RAD_STATUS_OK;
+    process->context.pid = process->pid;
     rad_task_config_t config{};
     config.size = sizeof(config);
     config.name = process->path;
@@ -991,6 +995,18 @@ extern "C" rad_status_t rad_a53_create_address_space(rad_a53_address_space_t *sp
     if (!l1) return RAD_STATUS_NO_MEMORY;
     uint64_t *root = table_ptr(l1);
     install_kernel_identity_tables(root);
+    // The user window shares an L1 slot with the kernel identity map; without a
+    // private L2 here, ensure_user_l3 would splice user tables into the shared
+    // g_kernel_l2_* and every address space would alias the same mappings.
+    // Nothing physical lives in this GB on supported boards, so an empty L2 is
+    // safe; the kernel reaches user pages through the GB0 identity map instead.
+    const uintptr_t user_l2 = alloc_owned_page(space);
+    if (!user_l2) {
+        rad_a53_destroy_address_space(space);
+        return RAD_STATUS_NO_MEMORY;
+    }
+    root[l1_index(UserBase)] = table_descriptor(user_l2);
+    static_assert(l1_span_shared_with_user(), "user window must fit one L1 slot");
     space->ttbr0 = l1;
     space->next_mmap = UserMmapBase;
     return RAD_STATUS_OK;
@@ -1261,12 +1277,10 @@ extern "C" intptr_t rad_a53_syscall_dispatch(uintptr_t number, uintptr_t arg0, u
         return static_cast<intptr_t>(UserExitMagic);
     }
     case RAD_SYSCALL_WAITPID: {
-        const int32_t previous = rad_process_current_pid();
-        rad_a53_activate_kernel_address_space();
+        // rad_process_waitpid sleeps via the scheduler; rad_arch_task_context_resumed
+        // restores this task's address space and pid on every switch back.
         int32_t status_value = 0;
         const int32_t waited = rad_process_waitpid(static_cast<int32_t>(a0), &status_value, static_cast<uint32_t>(a2));
-        if (process) rad_a53_activate_address_space(&process->address_space);
-        rad_process_set_current_pid(previous);
         if (waited > 0) {
             if (a1 && rad_a53_copy_to_user(a1, &status_value, sizeof(status_value)) != RAD_STATUS_OK) return RAD_STATUS_INVALID_ARGUMENT;
             rad_debug_marker("RADIX_AARCH64_USER_WAIT_WAKE_OK");
@@ -1507,6 +1521,65 @@ extern "C" uintptr_t rad_a53_exception_dispatch(rad_a53_trap_frame_t *frame) {
     rad_debug_marker("RADIX_AARCH64_USER_EXCEPTION_EXIT_OK");
     return exit_to_kernel;
 }
+
+#if defined(__aarch64__)
+// Cooperative task context switch for the shared-runtime scheduler
+// (rad_arch_task_context_* weak hooks). Context layout, 16 uintptr_t words
+// (RADIX_KERNEL_ARCH_CONTEXT_WORDS=16): [0..11] x19..x30, [12] sp.
+asm(R"(
+.global rad_a53_task_context_switch
+.type rad_a53_task_context_switch, %function
+rad_a53_task_context_switch:
+    mov x9, sp
+    stp x19, x20, [x0, #0]
+    stp x21, x22, [x0, #16]
+    stp x23, x24, [x0, #32]
+    stp x25, x26, [x0, #48]
+    stp x27, x28, [x0, #64]
+    stp x29, x30, [x0, #80]
+    str x9,       [x0, #96]
+    ldp x19, x20, [x1, #0]
+    ldp x21, x22, [x1, #16]
+    ldp x23, x24, [x1, #32]
+    ldp x25, x26, [x1, #48]
+    ldp x27, x28, [x1, #64]
+    ldp x29, x30, [x1, #80]
+    ldr x9,       [x1, #96]
+    mov sp, x9
+    ret
+)");
+
+extern "C" void rad_a53_task_context_switch(uintptr_t *old_context, uintptr_t *new_context);
+
+extern "C" int rad_arch_task_context_supported(void) {
+    return 1;
+}
+
+extern "C" void rad_arch_task_context_init(uintptr_t *context, void *stack_top, void (*entry)(void)) {
+    if (!context) return;
+    for (size_t i = 0; i < 16u; ++i) context[i] = 0;
+    context[11] = reinterpret_cast<uintptr_t>(entry);
+    context[12] = align_down(reinterpret_cast<uintptr_t>(stack_top), 16u);
+}
+
+extern "C" void rad_arch_task_context_switch(uintptr_t *old_context, uintptr_t *new_context) {
+    rad_a53_task_context_switch(old_context, new_context);
+}
+
+// Called by the scheduler on every dispatch: re-establish the resumed task's
+// user context, address space, and pid (or the kernel space for kernel tasks).
+extern "C" void rad_arch_task_context_resumed(void *user_context) {
+    auto *context = static_cast<A53UserContext *>(user_context);
+    g_active_user_context = context;
+    if (!context) {
+        rad_a53_activate_kernel_address_space();
+        return;
+    }
+    auto *process = find_user_process(context->pid);
+    if (process) rad_a53_activate_address_space(&process->address_space);
+    rad_process_set_current_pid(context->pid);
+}
+#endif
 
 extern "C" rad_status_t rad_a53_platform_init(void) {
     init_default_caps();

@@ -16,8 +16,8 @@ RADIX_AARCH64_USER_PROCESS_SPAWN_OK
 RADIX_LOGIN_SPAWN_OK
 RADIX_ZUBOARD_SERIAL_LOGIN_READY
 RADIX_ZUBOARD_SERIAL_READY
-# Stage A (2026-07-16): real EL0 entry, radinit as PID1 through service scan,
-# plus the boot-session fork (child scheduling lands with the Stage B context switch).
+# Stage A (2026-07-16): real EL0 entry, radinit as PID1 through service scan.
+RADIX_CONTEXT_DISPATCH_OK
 RADIX_AARCH64_USERMODE_ENTER_OK
 RADIX_RADINIT_BOOT_OK
 RADIX_PID1_PPID0_OK
@@ -27,3 +27,10 @@ RADIX_RADINIT_SERVICE_ORDER_OK
 RADIX_RADINIT_BOOT_SESSION_STARTING
 RADIX_AARCH64_FORK_OK
 RADIX_RADINIT_BOOT_SESSION_FORK_OK
+# Stage B (2026-07-16): aarch64 context switch + private page tables --
+# the forked boot-session child schedules, execs login, and is reaped.
+RADIX_RADINIT_BOOT_SESSION_CHILD
+RADIX_AARCH64_USER_EXECVE_OK
+RADIX_USER_PROCESS_WAIT_OK
+RADIX_USER_WAIT_WAKE_OK
+RADIX_USER_ZOMBIE_REAP_OK
