@@ -1146,7 +1146,7 @@ const char *rad_kernel_backend_name(void) {
 }
 
 const char *rad_kernel_version_string(void) {
-    return "0.1.3";
+    return "0.1.4";
 }
 
 rad_log_level_t kernel_print_to_log_level(rad_kernel_print_level_t level) {

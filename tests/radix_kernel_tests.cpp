@@ -400,7 +400,7 @@ bool testKernelLifecycle() {
     return expect(rad_kernel_init(&config) == RAD_STATUS_OK, "kernel should initialize")
         && expect(rad_kernel_is_initialized() == 1, "kernel should report initialized")
         && expect(std::string(rad_kernel_backend_name()) == "linux_sim", "backend should be linux_sim")
-        && expect(std::string(rad_kernel_version_string()) == "0.1.2", "version should be 0.1.2")
+        && expect(std::string(rad_kernel_version_string()) == "0.1.4", "version should be 0.1.4")
         && expect(rad_terminal_command_count() >= 10, "built-in terminal commands should register")
         && expect(rad_kernel_is_shutdown_requested() == 0, "kernel should not start in shutdown state");
 }
