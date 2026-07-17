@@ -27,7 +27,12 @@ jobs:
         run: ctest --test-dir build-host --output-on-failure
 
   x86-64-terminal-smoke:
-    runs-on: ubuntu-latest
+    # Pin to ubuntu-22.04 = QEMU 6.2, the version the OS is developed and tested
+    # against. ubuntu-latest (24.04) ships QEMU 8.2, whose PS/2 keyboard model
+    # exposes a latent guest-side #GP on the keyboard-IRQ path that 6.2 does not
+    # (the keyboard code is unchanged; the OS boots+takes keyboard input fine on
+    # 6.2). The 8.2 behavior is tracked separately.
+    runs-on: ubuntu-22.04
     timeout-minutes: 60
     # RadBuild is private: the checkout token is absent on fork PRs.
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
@@ -61,7 +66,10 @@ jobs:
           if-no-files-found: ignore
 
   zuboard-qemu-smoke:
-    runs-on: ubuntu-latest
+    # Pin to ubuntu-22.04 = QEMU 6.2 (same as x86 above), matching the local dev
+    # QEMU. Also disambiguates whether the post-service-ordering boot stall is
+    # QEMU-8.2-specific vs. a genuine guest hang (task #17).
+    runs-on: ubuntu-22.04
     timeout-minutes: 40
     # RadBuild is private: the checkout token is absent on fork PRs.
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
