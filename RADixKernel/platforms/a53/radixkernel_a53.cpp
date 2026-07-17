@@ -133,8 +133,11 @@ struct A53UserContext {
 static_assert(offsetof(A53UserContext, kernel_sp) == 0, "boot.S offset");
 static_assert(offsetof(A53UserContext, exit_reason) == 8, "boot.S offset");
 static_assert(offsetof(A53UserContext, frame) == 16, "boot.S offset");
-static_assert(sizeof(rad_a53_trap_frame_t) == 288, "boot.S frame size");
-static_assert(offsetof(A53UserContext, ksave) == 304, "boot.S offset");
+static_assert(offsetof(rad_a53_trap_frame_t, q) == 288, "boot.S FP block offset");
+static_assert(offsetof(rad_a53_trap_frame_t, fpsr) == 800, "boot.S fpsr offset");
+static_assert(offsetof(rad_a53_trap_frame_t, fpcr) == 808, "boot.S fpcr offset");
+static_assert(sizeof(rad_a53_trap_frame_t) == 816, "boot.S frame size");
+static_assert(offsetof(A53UserContext, ksave) == 832, "boot.S offset");
 
 struct A53UserProcess {
     int used;

@@ -52,7 +52,13 @@ typedef struct rad_a53_address_space {
     uintptr_t next_mmap; ///< Next user virtual address candidate for mmap-style allocations.
 } rad_a53_address_space_t;
 
-/** @brief Minimal AArch64 lower-EL trap frame used for syscall/fork handoff. */
+/** @brief AArch64 lower-EL trap frame used for syscall/fork handoff.
+ *
+ * The FP/SIMD block is appended after the general-purpose fields so their
+ * offsets (hardcoded in boot.S) stay stable: q[] at +288, fpsr +800, fpcr +808,
+ * total 816 bytes. User processes may use FP/NEON (ports such as ncurses do);
+ * kernel code is -mgeneral-regs-only, so the exception paths in boot.S are the
+ * only place this state is saved and restored. */
 typedef struct rad_a53_trap_frame {
     uint64_t x[31]; ///< General-purpose registers x0-x30 captured at exception entry.
     uintptr_t sp_el0; ///< Lower-exception-level stack pointer.
@@ -60,6 +66,9 @@ typedef struct rad_a53_trap_frame {
     uint64_t spsr_el1; ///< Saved processor state for the interrupted EL0 context.
     uint64_t esr_el1; ///< Exception syndrome register value.
     uintptr_t far_el1; ///< Fault address register value for abort handling.
+    uint64_t q[64]; ///< FP/SIMD registers q0-q31 (two 64-bit halves each).
+    uint64_t fpsr; ///< Floating-point status register.
+    uint64_t fpcr; ///< Floating-point control register.
 } rad_a53_trap_frame_t;
 
 /** @brief Record normalized boot state discovered by A53 assembly entry. */

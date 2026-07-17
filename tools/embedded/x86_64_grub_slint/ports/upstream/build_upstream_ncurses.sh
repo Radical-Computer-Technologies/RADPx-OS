@@ -13,8 +13,19 @@ base_sysroot="$4"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cc="${RADIX_CC:-x86_64-linux-gnu-gcc}"
 host_cc="${RADIX_BUILD_CC:-gcc}"
-pic_compile_flags="-ffreestanding -fno-stack-protector -fPIC -fcf-protection=none -mno-red-zone -nostdinc -U__linux__ -Ulinux -U__gnu_linux__"
-static_compile_flags="-ffreestanding -fno-stack-protector -fno-pic -fno-pie -mno-red-zone -nostdinc -U__linux__ -Ulinux -U__gnu_linux__"
+# Architecture knobs (defaults preserve the original x86_64 behavior; the
+# ZuBoard aarch64 build overrides all four -- see radix_zuboard_1cg/Makefile):
+#   RADIX_PORT_STATIC_ARCH_FLAGS / RADIX_PORT_PIC_ARCH_FLAGS: arch codegen flags
+#   RADIX_PORT_TTEXT: userland text base (matches the target's ELF loader)
+#   RADIX_PORT_HOST_TRIPLET: autoconf --host
+#   RADIX_PORT_CRT0_SOURCE: crt0 .S path; empty selects the inlined x86 stub
+static_arch_flags="${RADIX_PORT_STATIC_ARCH_FLAGS:--mno-red-zone}"
+pic_arch_flags="${RADIX_PORT_PIC_ARCH_FLAGS:--fcf-protection=none -mno-red-zone}"
+text_base="${RADIX_PORT_TTEXT:-0x40000000}"
+host_triplet="${RADIX_PORT_HOST_TRIPLET:-x86_64-none}"
+crt0_source="${RADIX_PORT_CRT0_SOURCE:-}"
+pic_compile_flags="-ffreestanding -fno-stack-protector -fPIC ${pic_arch_flags} -nostdinc -U__linux__ -Ulinux -U__gnu_linux__"
+static_compile_flags="-ffreestanding -fno-stack-protector -fno-pic -fno-pie ${static_arch_flags} -nostdinc -U__linux__ -Ulinux -U__gnu_linux__"
 compile_flags="${static_compile_flags}"
 if [[ "${RADIX_NCURSES_PIC:-0}" == "1" ]]; then
     compile_flags="${pic_compile_flags}"
@@ -58,11 +69,14 @@ if [[ "\${compile_only}" == "1" ]]; then
     fi
     exec "${cc}" ${compile_flags} "\$@" -I"${base_sysroot}/include"
 fi
-exec "${cc}" ${compile_flags} "\$@" -I"${base_sysroot}/include" -nostdlib -static -no-pie -Wl,-Ttext=0x40000000 -Wl,--build-id=none "${build_dir}/radix_crt0.o" -L"${build_dir}" -lradixc
+exec "${cc}" ${compile_flags} "\$@" -I"${base_sysroot}/include" -nostdlib -static -no-pie -Wl,-Ttext=${text_base} -Wl,--build-id=none "${build_dir}/radix_crt0.o" -L"${build_dir}" -lradixc
 EOF
 chmod +x "${build_dir}/radix-cc"
 
-cat >"${build_dir}/radix_crt0.S" <<'EOF'
+if [[ -n "${crt0_source}" ]]; then
+    cp "${crt0_source}" "${build_dir}/radix_crt0.S"
+else
+    cat >"${build_dir}/radix_crt0.S" <<'EOF'
 .section .text
 .code64
 .global _start
@@ -78,6 +92,7 @@ _start:
 1:
     jmp 1b
 EOF
+fi
 
 "${cc}" ${compile_flags} -c "${build_dir}/radix_crt0.S" -o "${build_dir}/radix_crt0.o"
 cp "${RADIX_LIBC_ARCHIVE}" "${build_dir}/libradixc.a"
@@ -92,7 +107,7 @@ CPPFLAGS="-I${base_sysroot}/include" \
 LDFLAGS="" \
 PKG_CONFIG=false \
 "${source_dir}/configure" \
-    --host=x86_64-none \
+    --host="${host_triplet}" \
     --build=x86_64-pc-linux-gnu \
     --prefix=/usr \
     --without-shared \

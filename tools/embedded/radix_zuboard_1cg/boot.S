@@ -95,13 +95,14 @@ radix_a53_install_exception_vectors:
     ret
 
 // A53UserContext layout (static_asserts in radixkernel_a53.cpp):
-//   +0 kernel_sp, +8 exit_reason, +16 trap frame (288 bytes), +304 ksave[12]
+//   +0 kernel_sp, +8 exit_reason, +16 trap frame (816 bytes: GPR block 0-287,
+//   q0-q31 at 288, fpsr 800, fpcr 808), +832 ksave[12]
 .global rad_a53_enter_user_context
 .type rad_a53_enter_user_context, %function
 rad_a53_enter_user_context:
     mov x10, sp
     str x10, [x0, #0]
-    add x9, x0, #304
+    add x9, x0, #832
     stp x19, x20, [x9, #0]
     stp x21, x22, [x9, #16]
     stp x23, x24, [x9, #32]
@@ -134,6 +135,28 @@ rad_a53_enter_user_context_el1:
     msr elr_el1, x10
     ldr x10, [x30, #264]
     msr spsr_el1, x10
+    // Restore the user FP/SIMD state (q block at +288, fpsr +800, fpcr +808).
+    add x10, x30, #288
+    ldp q0, q1, [x10, #0]
+    ldp q2, q3, [x10, #32]
+    ldp q4, q5, [x10, #64]
+    ldp q6, q7, [x10, #96]
+    ldp q8, q9, [x10, #128]
+    ldp q10, q11, [x10, #160]
+    ldp q12, q13, [x10, #192]
+    ldp q14, q15, [x10, #224]
+    ldp q16, q17, [x10, #256]
+    ldp q18, q19, [x10, #288]
+    ldp q20, q21, [x10, #320]
+    ldp q22, q23, [x10, #352]
+    ldp q24, q25, [x10, #384]
+    ldp q26, q27, [x10, #416]
+    ldp q28, q29, [x10, #448]
+    ldp q30, q31, [x10, #480]
+    ldr x11, [x10, #512]
+    msr fpsr, x11
+    ldr x11, [x10, #520]
+    msr fpcr, x11
     ldp x0, x1, [x30, #0]
     ldp x2, x3, [x30, #16]
     ldp x4, x5, [x30, #32]
@@ -170,6 +193,28 @@ radix_a53_restore_user:
     ldr x16, [sp, #264]
     msr spsr_el1, x16
 31:
+    // Restore user FP/SIMD state saved by the entry paths at frame +288.
+    add x16, sp, #288
+    ldp q0, q1, [x16, #0]
+    ldp q2, q3, [x16, #32]
+    ldp q4, q5, [x16, #64]
+    ldp q6, q7, [x16, #96]
+    ldp q8, q9, [x16, #128]
+    ldp q10, q11, [x16, #160]
+    ldp q12, q13, [x16, #192]
+    ldp q14, q15, [x16, #224]
+    ldp q16, q17, [x16, #256]
+    ldp q18, q19, [x16, #288]
+    ldp q20, q21, [x16, #320]
+    ldp q22, q23, [x16, #352]
+    ldp q24, q25, [x16, #384]
+    ldp q26, q27, [x16, #416]
+    ldp q28, q29, [x16, #448]
+    ldp q30, q31, [x16, #480]
+    ldr x17, [x16, #512]
+    msr fpsr, x17
+    ldr x17, [x16, #520]
+    msr fpcr, x17
     ldp x0, x1, [sp, #0]
     ldp x2, x3, [sp, #16]
     ldp x4, x5, [sp, #32]
@@ -186,11 +231,11 @@ radix_a53_restore_user:
     ldp x26, x27, [sp, #208]
     ldp x28, x29, [sp, #224]
     ldr x30, [sp, #240]
-    add sp, sp, #288
+    add sp, sp, #816
     eret
 
 radix_a53_sync_common:
-    sub sp, sp, #288
+    sub sp, sp, #816
     stp x0, x1, [sp, #0]
     stp x2, x3, [sp, #16]
     stp x4, x5, [sp, #32]
@@ -232,6 +277,29 @@ radix_a53_sync_common:
     mrs x0, far_el1
     str x0, [sp, #280]
 41:
+    // Save the interrupted context's FP/SIMD state (frame +288). Kernel code
+    // is -mgeneral-regs-only, so this is the only save/restore site.
+    add x0, sp, #288
+    stp q0, q1, [x0, #0]
+    stp q2, q3, [x0, #32]
+    stp q4, q5, [x0, #64]
+    stp q6, q7, [x0, #96]
+    stp q8, q9, [x0, #128]
+    stp q10, q11, [x0, #160]
+    stp q12, q13, [x0, #192]
+    stp q14, q15, [x0, #224]
+    stp q16, q17, [x0, #256]
+    stp q18, q19, [x0, #288]
+    stp q20, q21, [x0, #320]
+    stp q22, q23, [x0, #352]
+    stp q24, q25, [x0, #384]
+    stp q26, q27, [x0, #416]
+    stp q28, q29, [x0, #448]
+    stp q30, q31, [x0, #480]
+    mrs x1, fpsr
+    str x1, [x0, #512]
+    mrs x1, fpcr
+    str x1, [x0, #520]
     mov x0, sp
     bl rad_a53_exception_dispatch
     // Contract: 0 = resume the interrupted user context from this stack frame,
@@ -239,7 +307,7 @@ radix_a53_sync_common:
     // rad_a53_enter_user_context (restore its callee-saved regs and stack).
     cbz x0, radix_a53_restore_user
     ldr x9, [x0, #0]
-    add x10, x0, #304
+    add x10, x0, #832
     ldp x19, x20, [x10, #0]
     ldp x21, x22, [x10, #16]
     ldp x23, x24, [x10, #32]
@@ -255,7 +323,7 @@ radix_a53_sync_common:
 // dispatcher via rad_task_yield -- this frame stays parked on the interrupted
 // task's stack and unwinds when the task is re-dispatched (x86 pattern).
 radix_a53_irq_common:
-    sub sp, sp, #288
+    sub sp, sp, #816
     stp x0, x1, [sp, #0]
     stp x2, x3, [sp, #16]
     stp x4, x5, [sp, #32]
@@ -280,6 +348,30 @@ radix_a53_irq_common:
     str x0, [sp, #264]
     str xzr, [sp, #272]
     str xzr, [sp, #280]
+    // FP/SIMD state of the interrupted context (frame +288): the IRQ may have
+    // landed mid-FP-computation at EL0, and the preemption path can run other
+    // user code before this frame resumes.
+    add x0, sp, #288
+    stp q0, q1, [x0, #0]
+    stp q2, q3, [x0, #32]
+    stp q4, q5, [x0, #64]
+    stp q6, q7, [x0, #96]
+    stp q8, q9, [x0, #128]
+    stp q10, q11, [x0, #160]
+    stp q12, q13, [x0, #192]
+    stp q14, q15, [x0, #224]
+    stp q16, q17, [x0, #256]
+    stp q18, q19, [x0, #288]
+    stp q20, q21, [x0, #320]
+    stp q22, q23, [x0, #352]
+    stp q24, q25, [x0, #384]
+    stp q26, q27, [x0, #416]
+    stp q28, q29, [x0, #448]
+    stp q30, q31, [x0, #480]
+    mrs x1, fpsr
+    str x1, [x0, #512]
+    mrs x1, fpcr
+    str x1, [x0, #520]
     mov x0, sp
     bl rad_zynqmp_irq_dispatch_frame
     b radix_a53_restore_user

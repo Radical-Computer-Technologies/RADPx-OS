@@ -13,7 +13,10 @@ OBJCOPY := $(TOOLCHAIN_PREFIX)objcopy
 AR := $(TOOLCHAIN_PREFIX)ar
 
 RADIX_ZUBOARD_DEFINES := -DRADLIB_EMBEDDED_NO_CPP_WRAPPERS=1 -DRADIX_KERNEL_BACKEND_zynqmp_zuboard_1cg=1 -DRADIX_ZYNQMP_SDHCI_BASE=$(RADIX_ZYNQMP_SDHCI_BASE) -DRADIX_KERNEL_MAX_PROCESSES=128u -DRADIX_KERNEL_MAX_TASKS=128u -DRADIX_KERNEL_TASK_STACK_BYTES=524288u -DRADIX_A53_MAX_USER_PROCESSES=128u -DRADIX_A53_MAX_TRACKED_PAGES=65536u -DRADIX_A53_USABLE_FLOOR=0x08000000u -DRADIX_KERNEL_ARCH_CONTEXT_WORDS=16u
-A53_USER_ARCH_FLAGS := -mcpu=cortex-a53 -mbranch-protection=none -mgeneral-regs-only
+# Userland may use FP/NEON: the exception paths in boot.S save/restore the full
+# FP/SIMD state in the 816-byte trap frame. The KERNEL stays -mgeneral-regs-only
+# so it never holds live FP state of its own.
+A53_USER_ARCH_FLAGS := -mcpu=cortex-a53 -mbranch-protection=none
 A53_KERNEL_ARCH_FLAGS := $(A53_USER_ARCH_FLAGS) -mgeneral-regs-only
 CXXFLAGS := -std=c++20 -Os $(A53_KERNEL_ARCH_FLAGS) -ffreestanding -fno-pic -fno-pie -fno-rtti -fno-exceptions -fno-stack-protector -Wall -Wextra $(RADIX_ZUBOARD_DEFINES)
 CFLAGS := -Os $(A53_KERNEL_ARCH_FLAGS) -ffreestanding -fno-pic -fno-pie -fno-stack-protector -Wall -Wextra $(RADIX_ZUBOARD_DEFINES)
@@ -22,7 +25,7 @@ USER_LDFLAGS := -nostdlib -static -fno-pic -fno-pie -Wl,-Ttext=0x80000000 -Wl,--
 INCLUDES := -I$(RADIX_OS_ROOT)/RADixKernel/headers -I$(RADIX_OS_ROOT)/RADixKernel/boot -I$(RADIX_OS_ROOT)/RADixKernel/platforms/a53
 USER_BUILD_DIR := userland-a53
 USER_INCLUDES := -I$(RADIX_OS_ROOT)/libs/libradixc/include -I$(RADIX_OS_ROOT)/userland/core/login -I$(USER_BUILD_DIR)
-USER_CFLAGS := -Os $(A53_USER_ARCH_FLAGS) -ffreestanding -fno-builtin -fno-pic -fno-pie -fno-stack-protector -fomit-frame-pointer -Wall -Wextra -DRADIX_LIBC_NO_FLOAT=1 $(USER_INCLUDES)
+USER_CFLAGS := -Os $(A53_USER_ARCH_FLAGS) -ffreestanding -fno-builtin -fno-pic -fno-pie -fno-stack-protector -fomit-frame-pointer -Wall -Wextra $(USER_INCLUDES)
 USER_ASFLAGS := $(ASFLAGS) $(USER_INCLUDES)
 LDFLAGS := -nostdlib -static -Wl,-T,$(CURDIR)/linker.ld -Wl,--build-id=none
 
