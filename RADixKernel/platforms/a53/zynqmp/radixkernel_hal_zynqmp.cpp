@@ -278,6 +278,7 @@ rad_status_t zynqmp_mmc_ioctl(void*, uint32_t request, void *argument) {
     if (request == RAD_DEVICE_IOCTL_BLOCK_READ || request == RAD_DEVICE_IOCTL_BLOCK_WRITE) {
         if (!argument) return RAD_STATUS_INVALID_ARGUMENT;
         auto *block = static_cast<rad_block_request_t*>(argument);
+        if (block->size < sizeof(*block)) return RAD_STATUS_INVALID_ARGUMENT;
         if (!block->buffer || block->sector_count == 0u) return RAD_STATUS_INVALID_ARGUMENT;
         return sdhci_transfer(block->sector, block->sector_count, block->buffer, request == RAD_DEVICE_IOCTL_BLOCK_WRITE);
     }
@@ -300,6 +301,7 @@ rad_status_t zynqmp_partition_ioctl(void *context, uint32_t request, void *argum
     if (request == RAD_DEVICE_IOCTL_BLOCK_READ || request == RAD_DEVICE_IOCTL_BLOCK_WRITE) {
         if (!argument) return RAD_STATUS_INVALID_ARGUMENT;
         auto *block = static_cast<rad_block_request_t*>(argument);
+        if (block->size < sizeof(*block)) return RAD_STATUS_INVALID_ARGUMENT;
         if (!block->buffer || block->sector_count == 0u) return RAD_STATUS_INVALID_ARGUMENT;
         if (block->sector >= partition->sector_count || block->sector_count > partition->sector_count - block->sector) return RAD_STATUS_INVALID_ARGUMENT;
         return sdhci_transfer(partition->start_sector + block->sector, block->sector_count, block->buffer, request == RAD_DEVICE_IOCTL_BLOCK_WRITE);
