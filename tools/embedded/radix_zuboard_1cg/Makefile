@@ -42,6 +42,7 @@ OBJS := \
 	radixkernel_overlay.o \
 	radixkernel_ext4.o \
 	radixkernel_hal_zynqmp.o \
+	zynqmp_gem.o \
 	radixkernel_runtime_newlib.o
 
 USERLAND_ELFS := \
@@ -149,6 +150,9 @@ radixkernel_ext4.o: $(RADIX_OS_ROOT)/RADixKernel/platforms/x86_64/x86_ext4.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -I$(RADIX_OS_ROOT)/RADixKernel/platforms/x86_64 -c -o $@ $<
 
 radixkernel_hal_zynqmp.o: $(RADIX_OS_ROOT)/RADixKernel/platforms/a53/zynqmp/radixkernel_hal_zynqmp.cpp
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c -o $@ $<
+
+zynqmp_gem.o: $(RADIX_OS_ROOT)/RADixKernel/platforms/a53/zynqmp/zynqmp_gem.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c -o $@ $<
 
 radixkernel_runtime_newlib.o: $(RADIX_OS_ROOT)/RADixKernel/hal/circle/radixkernel_runtime_newlib.cpp

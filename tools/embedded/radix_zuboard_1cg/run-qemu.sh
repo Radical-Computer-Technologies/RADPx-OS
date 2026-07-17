@@ -34,6 +34,12 @@ cmd=(
     -serial stdio
     -drive "if=sd,format=raw,file=$QEMU_IMAGE"
     -device "loader,file=$SCRIPT_DIR/radix-zuboard.elf,cpu-num=0"
+    # Cadence GEM0 (0xff0b0000) network backend. SLIRP user-net brings the link
+    # up (guest 10.0.2.15, gateway 10.0.2.2) and consumes nd_table[0], which the
+    # xlnx-zynqmp SoC assigns to GEM0. The GEM driver's boot self-test uses the
+    # MAC's local-loopback, so it validates the DMA rings independent of this.
+    -netdev "user,id=net0"
+    -net "nic,netdev=net0"
     # Tell the kernel the real -smp count. QEMU's xlnx-zynqmp always instantiates
     # the CPU objects regardless of -smp, so the guest cannot distinguish -smp 1
     # from -smp 2 via PSCI; issuing CPU_ON for an absent core under -smp 1 hangs.

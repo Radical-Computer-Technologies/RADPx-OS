@@ -6,6 +6,7 @@
 #include <string.h>
 
 extern "C" void rad_hal_sleep_us(uint32_t microseconds);
+extern "C" rad_status_t rad_zynqmp_gem_init(void);
 
 namespace {
 constexpr uintptr_t DefaultUartBase = 0xff000000u;
@@ -728,6 +729,10 @@ extern "C" rad_status_t rad_hal_register_default_devices(void) {
     } else {
         rad_debug_marker("RADIX_ZUBOARD_SD_FAIL");
     }
+
+    // Cadence GEM (Ethernet) -> "/dev/net0" for the portable net stack. Best
+    // effort: a probe failure must not block console/storage bring-up.
+    rad_zynqmp_gem_init();
 
     // The core runtime already registered "/dev/console" as a TTY device, so
     // the serial alias above silently lost that name (ALREADY_EXISTS) and the
