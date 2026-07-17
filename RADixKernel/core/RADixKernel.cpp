@@ -1879,6 +1879,101 @@ void rad_vfs_close(rad_file_t file) {
     delete file;
 }
 
+// ---------------------------------------------------------------------------
+// Kernel log ring + directory enumeration for the linux_sim backend. The
+// embedded backends provide these in RADixKernel_runtime.cpp; the simulator
+// core needs its own definitions so the shared syscall-dispatch paths (which
+// call rad_log_* and rad_fd_getdents) link. Kept self-contained with
+// file-static state to avoid coupling to the sim's internal g_state layout.
+// ---------------------------------------------------------------------------
+static constexpr size_t kSimLogCapacity = 256;
+static std::mutex g_sim_log_mutex;
+static rad_log_entry_t g_sim_log[kSimLogCapacity];
+static bool g_sim_log_used[kSimLogCapacity];
+static uint64_t g_sim_log_next_sequence = 0;
+
+static uint64_t sim_log_now_millis() {
+    using namespace std::chrono;
+    return static_cast<uint64_t>(
+        duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count());
+}
+
+static const char *sim_log_level_name(rad_log_level_t level) {
+    switch (level) {
+        case RAD_LOG_TRACE: return "TRACE";
+        case RAD_LOG_DEBUG: return "DEBUG";
+        case RAD_LOG_INFO: return "INFO";
+        case RAD_LOG_WARNING: return "WARN";
+        case RAD_LOG_ERROR: return "ERROR";
+        default: return "INFO";
+    }
+}
+
+rad_status_t rad_log_write(rad_log_level_t level, const char *category, const char *message) {
+    if (!message) return RAD_STATUS_INVALID_ARGUMENT;
+    std::lock_guard<std::mutex> lock(g_sim_log_mutex);
+    const uint64_t sequence = ++g_sim_log_next_sequence;
+    const size_t slot = static_cast<size_t>(sequence % kSimLogCapacity);
+    rad_log_entry_t &entry = g_sim_log[slot];
+    std::memset(&entry, 0, sizeof(entry));
+    entry.sequence = sequence;
+    entry.time_millis = sim_log_now_millis();
+    entry.level = level;
+    std::snprintf(entry.category, sizeof(entry.category), "%s", (category && *category) ? category : "kernel");
+    std::snprintf(entry.message, sizeof(entry.message), "%s", message);
+    g_sim_log_used[slot] = true;
+    return RAD_STATUS_OK;
+}
+
+size_t rad_log_read(rad_log_entry_t *entries, size_t capacity, uint64_t after_sequence) {
+    std::lock_guard<std::mutex> lock(g_sim_log_mutex);
+    size_t count = 0;
+    const uint64_t next = g_sim_log_next_sequence;
+    const uint64_t first = next > kSimLogCapacity ? next - kSimLogCapacity + 1u : 1u;
+    for (uint64_t sequence = first; sequence <= next; ++sequence) {
+        const size_t slot = static_cast<size_t>(sequence % kSimLogCapacity);
+        if (!g_sim_log_used[slot] || g_sim_log[slot].sequence != sequence || sequence <= after_sequence) continue;
+        if (entries && count < capacity) entries[count] = g_sim_log[slot];
+        ++count;
+    }
+    return count;
+}
+
+rad_status_t rad_log_flush_to_path(const char *path) {
+    if (!path || !*path) return RAD_STATUS_INVALID_ARGUMENT;
+    rad_file_t file = nullptr;
+    rad_status_t status = rad_vfs_open(path, RAD_VFS_WRITE | RAD_VFS_CREATE | RAD_VFS_TRUNCATE, &file);
+    if (status != RAD_STATUS_OK) return status;
+    rad_log_entry_t entries[16]{};
+    uint64_t after = 0;
+    for (;;) {
+        const size_t count = rad_log_read(entries, 16, after);
+        if (count == 0) break;
+        for (size_t i = 0; i < count && i < 16; ++i) {
+            after = entries[i].sequence;
+            char line[320];
+            const int written = std::snprintf(line, sizeof(line), "%llums [%s] [%s] %s\n",
+                static_cast<unsigned long long>(entries[i].time_millis),
+                sim_log_level_name(entries[i].level), entries[i].category, entries[i].message);
+            if (written > 0) {
+                size_t done = 0;
+                rad_vfs_write(file, line, static_cast<size_t>(written), &done);
+            }
+        }
+    }
+    rad_vfs_close(file);
+    return RAD_STATUS_OK;
+}
+
+intptr_t rad_fd_getdents(int32_t fd, rad_dirent_user_t *entries, size_t capacity) {
+    (void)fd;
+    (void)capacity;
+    if (!entries) return RAD_STATUS_INVALID_ARGUMENT;
+    // The simulator's descriptor model has no directory-fd kind, so -- like the
+    // runtime's non-directory path -- there are no dents to enumerate.
+    return RAD_STATUS_NOT_SUPPORTED;
+}
+
 rad_status_t rad_vfs_fsync(rad_file_t file) {
     if (!file) return RAD_STATUS_INVALID_ARGUMENT;
     file->stream.flush();
