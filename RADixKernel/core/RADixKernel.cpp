@@ -723,6 +723,18 @@ void reset_posix_state_locked() {
     kernel.path = "[kernel]";
     kernel.credentials = {0, 0, 0, 0};
     state().processes[kernel.pid] = kernel;
+    // Match the x86 process model: pid 0 is the kernel and pid 1 is the service
+    // manager (radinit). A booted system runs userspace as the service manager,
+    // so seed it and make it the current process -- syscalls (getpid, fork,
+    // execve, waitpid) then run in a registered pid-1 context, not the kernel.
+    ProcessRecord service_manager;
+    service_manager.pid = 1;
+    service_manager.parent_pid = 0;
+    service_manager.state = RAD_PROCESS_RUNNING;
+    service_manager.path = "/sbin/radinit";
+    service_manager.credentials = {0, 0, 0, 0};
+    state().processes[1] = service_manager;
+    state().current_pid = 1;
 }
 
 int32_t install_fd(FdObject *object, int32_t requested = -1, int32_t owner_pid = -1, uint32_t fd_flags = 0) {
