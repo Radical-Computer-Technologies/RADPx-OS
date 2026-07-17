@@ -39,6 +39,7 @@ if [[ ! -f "${source_dir}/configure" ]]; then
         source_archive="$(cd "$(dirname "${source_dir}")/.." && pwd)/sources/ncurses-6.6.tar.gz"
     fi
     if [[ ! -f "${source_archive}" ]]; then
+        mkdir -p "$(dirname "${source_archive}")"
         curl -L --fail --show-error -o "${source_archive}" "https://ftp.gnu.org/gnu/ncurses/ncurses-6.6.tar.gz"
     fi
     rm -rf "${source_dir}"
