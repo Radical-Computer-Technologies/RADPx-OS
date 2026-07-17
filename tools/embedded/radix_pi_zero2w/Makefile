@@ -44,13 +44,13 @@ boot.o: boot.S
 kernel.o: kernel.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c -o $@ $<
 
-a53-init.elf: a53_user_init.S
+a53-init.elf: $(RADIX_OS_ROOT)/userland/embedded/a53/init.S
 	$(CC) $(CFLAGS) $(ASFLAGS) $(USER_LDFLAGS) -o $@ $<
 
-a53-radsh.elf: a53_user_radsh.S
+a53-radsh.elf: $(RADIX_OS_ROOT)/userland/embedded/a53/radsh.S
 	$(CC) $(CFLAGS) $(ASFLAGS) $(USER_LDFLAGS) -o $@ $<
 
-a53-sh.elf: a53_user_sh.S
+a53-sh.elf: $(RADIX_OS_ROOT)/userland/embedded/a53/sh.S
 	$(CC) $(CFLAGS) $(ASFLAGS) $(USER_LDFLAGS) -o $@ $<
 
 a53_init_image.o: a53-init.elf
