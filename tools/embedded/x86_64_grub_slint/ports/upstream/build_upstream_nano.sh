@@ -6,8 +6,26 @@ if [[ $# -lt 2 ]]; then
     exit 2
 fi
 
-source_dir="$(cd "$1" && pwd)"
+source_arg="$1"
 build_dir="$2"
+# Self-fetch the upstream GNU nano source if absent, so a clean checkout / fresh
+# CI runner can build without a pre-staged tree (mirrors the ncurses download).
+# Override with RADIX_NANO_VERSION / RADIX_NANO_URL.
+if [[ ! -f "${source_arg}/configure" ]]; then
+    nano_version="${RADIX_NANO_VERSION:-9.0}"
+    nano_parent="$(dirname "${source_arg}")"
+    nano_archive="${nano_parent}/nano-${nano_version}.tar.xz"
+    nano_url="${RADIX_NANO_URL:-https://www.nano-editor.org/dist/v${nano_version%%.*}/nano-${nano_version}.tar.xz}"
+    mkdir -p "${nano_parent}"
+    [[ -f "${nano_archive}" ]] || curl -L --fail --show-error -o "${nano_archive}" "${nano_url}"
+    rm -rf "${source_arg}"
+    tar -xf "${nano_archive}" -C "${nano_parent}"
+    if [[ ! -f "${source_arg}/configure" && -d "${nano_parent}/nano-${nano_version}" \
+          && "${source_arg}" != "${nano_parent}/nano-${nano_version}" ]]; then
+        mv "${nano_parent}/nano-${nano_version}" "${source_arg}"
+    fi
+fi
+source_dir="$(cd "${source_arg}" && pwd)"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 target_dir="$(cd "${script_dir}/../.." && pwd)"
 sysroot="${RADIX_SYSROOT_DIR:-${target_dir}/sysroot}"

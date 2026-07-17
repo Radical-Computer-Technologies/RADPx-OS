@@ -6,8 +6,18 @@ if [[ $# -lt 2 ]]; then
     exit 2
 fi
 
-source_dir="$(cd "$1" && pwd)"
+source_arg="$1"
 build_dir="$2"
+# Self-fetch the upstream Vim source if it is not already present, so a clean
+# checkout / fresh CI runner can build without a pre-staged tree (mirrors the
+# ncurses port's download). Pin a known-good tag; override with RADIX_VIM_TAG.
+if [[ ! -f "${source_arg}/src/configure" && ! -f "${source_arg}/configure" ]]; then
+    rm -rf "${source_arg}"
+    mkdir -p "$(dirname "${source_arg}")"
+    git clone --depth 1 --branch "${RADIX_VIM_TAG:-v9.2.0782}" \
+        https://github.com/vim/vim.git "${source_arg}"
+fi
+source_dir="$(cd "${source_arg}" && pwd)"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 target_dir="$(cd "${script_dir}/../.." && pwd)"
 sysroot="${RADIX_SYSROOT_DIR:-${target_dir}/sysroot}"

@@ -557,51 +557,40 @@ add_custom_target(radix_libncurses_rso DEPENDS "${RADIX_TINFO_RSO}" "${RADIX_LIB
 add_dependencies(radix_libncurses_rso radix_ncurses)
 add_custom_target(radix_userspace_libs DEPENDS "${RADIX_LIBC_ARCHIVE}" "${RADIX_LIBC_RSO}" radix_ncurses radix_libncurses_rso)
 
-if(EXISTS "${RADIX_UPSTREAM_NANO_SOURCE}/configure")
-    add_custom_target(radix_upstream_nano
-        COMMAND ${CMAKE_COMMAND} -E env
-            "RADIX_SYSROOT_DIR=${RADIX_SYSROOT_DIR}"
-            "RADIX_NCURSES_INCLUDE_DIR=${RADIX_NCURSES_INSTALL_DIR}/usr/include"
-            "RADIX_USERSPACE_LIB_DIR=${CMAKE_BINARY_DIR}/upstream-port-libs"
-            "RADIX_LIBC_ARCHIVE=${RADIX_LIBC_ARCHIVE}"
-            "RADIX_NCURSESW_ARCHIVE=${RADIX_NCURSESW_ARCHIVE}"
-            "RADIX_TINFO_ARCHIVE=${RADIX_TINFO_ARCHIVE}"
-            "${CMAKE_CURRENT_LIST_DIR}/ports/upstream/build_upstream_nano.sh"
-            "${RADIX_UPSTREAM_NANO_SOURCE}"
-            "${CMAKE_BINARY_DIR}/upstream-nano"
-        DEPENDS radix_userspace_libs radix_sysroot
-        VERBATIM
-    )
-else()
-    add_custom_target(radix_upstream_nano
-        COMMAND ${CMAKE_COMMAND} -E echo "RADix upstream nano source not found at ${RADIX_UPSTREAM_NANO_SOURCE}"
-        COMMAND ${CMAKE_COMMAND} -E false
-        VERBATIM
-    )
-endif()
+# The build script self-fetches the nano source (tarball) if it is not already
+# present, so this always builds -- no configure-time gate. (nano is descoped by
+# default; this only runs when terminal_nano is enabled.)
+add_custom_target(radix_upstream_nano
+    COMMAND ${CMAKE_COMMAND} -E env
+        "RADIX_SYSROOT_DIR=${RADIX_SYSROOT_DIR}"
+        "RADIX_NCURSES_INCLUDE_DIR=${RADIX_NCURSES_INSTALL_DIR}/usr/include"
+        "RADIX_USERSPACE_LIB_DIR=${CMAKE_BINARY_DIR}/upstream-port-libs"
+        "RADIX_LIBC_ARCHIVE=${RADIX_LIBC_ARCHIVE}"
+        "RADIX_NCURSESW_ARCHIVE=${RADIX_NCURSESW_ARCHIVE}"
+        "RADIX_TINFO_ARCHIVE=${RADIX_TINFO_ARCHIVE}"
+        "${CMAKE_CURRENT_LIST_DIR}/ports/upstream/build_upstream_nano.sh"
+        "${RADIX_UPSTREAM_NANO_SOURCE}"
+        "${CMAKE_BINARY_DIR}/upstream-nano"
+    DEPENDS radix_userspace_libs radix_sysroot
+    VERBATIM
+)
 
-if(EXISTS "${RADIX_UPSTREAM_VIM_SOURCE}/src/configure" OR EXISTS "${RADIX_UPSTREAM_VIM_SOURCE}/configure")
-    add_custom_target(radix_upstream_vim_tiny
-        COMMAND ${CMAKE_COMMAND} -E env
-            "RADIX_SYSROOT_DIR=${RADIX_SYSROOT_DIR}"
-            "RADIX_NCURSES_INCLUDE_DIR=${RADIX_NCURSES_INSTALL_DIR}/usr/include"
-            "RADIX_USERSPACE_LIB_DIR=${CMAKE_BINARY_DIR}/upstream-port-libs"
-            "RADIX_LIBC_ARCHIVE=${RADIX_LIBC_ARCHIVE}"
-            "RADIX_NCURSESW_ARCHIVE=${RADIX_NCURSESW_ARCHIVE}"
-            "RADIX_TINFO_ARCHIVE=${RADIX_TINFO_ARCHIVE}"
-            "${CMAKE_CURRENT_LIST_DIR}/ports/upstream/build_upstream_vim_tiny.sh"
-            "${RADIX_UPSTREAM_VIM_SOURCE}"
-            "${CMAKE_BINARY_DIR}/upstream-vim"
-        DEPENDS radix_userspace_libs radix_sysroot
-        VERBATIM
-    )
-else()
-    add_custom_target(radix_upstream_vim_tiny
-        COMMAND ${CMAKE_COMMAND} -E echo "RADix upstream Vim source not found at ${RADIX_UPSTREAM_VIM_SOURCE}"
-        COMMAND ${CMAKE_COMMAND} -E false
-        VERBATIM
-    )
-endif()
+# The build script self-fetches the Vim source (git clone at a pinned tag) if it
+# is not already present, so this always builds -- no configure-time gate.
+add_custom_target(radix_upstream_vim_tiny
+    COMMAND ${CMAKE_COMMAND} -E env
+        "RADIX_SYSROOT_DIR=${RADIX_SYSROOT_DIR}"
+        "RADIX_NCURSES_INCLUDE_DIR=${RADIX_NCURSES_INSTALL_DIR}/usr/include"
+        "RADIX_USERSPACE_LIB_DIR=${CMAKE_BINARY_DIR}/upstream-port-libs"
+        "RADIX_LIBC_ARCHIVE=${RADIX_LIBC_ARCHIVE}"
+        "RADIX_NCURSESW_ARCHIVE=${RADIX_NCURSESW_ARCHIVE}"
+        "RADIX_TINFO_ARCHIVE=${RADIX_TINFO_ARCHIVE}"
+        "${CMAKE_CURRENT_LIST_DIR}/ports/upstream/build_upstream_vim_tiny.sh"
+        "${RADIX_UPSTREAM_VIM_SOURCE}"
+        "${CMAKE_BINARY_DIR}/upstream-vim"
+    DEPENDS radix_userspace_libs radix_sysroot
+    VERBATIM
+)
 
 set(RADIX_NANO_DEPENDS)
 set(RADIX_NANO_EXT2_WRITE_COMMANDS)
