@@ -46,8 +46,8 @@
           "terminal_autocomplete": true,
           "terminal_posix_compat": true,
           "terminal_ncurses": true,
-          "terminal_nano": true,
-          "terminal_nano_variant": "both",
+          "terminal_nano": false,
+          "terminal_nano_variant": "none",
           "terminal_vim": true,
           "terminal_vim_variant": "tiny"
         },
@@ -66,7 +66,9 @@
           "serial_log": "x86-64-grub-terminal-smoke.log"
         },
         "qemu_timeout": "90s",
-        "qemu_smp": [2],
+        "qemu_smp": [
+          2
+        ],
         "jobs": 2
       }
     },
