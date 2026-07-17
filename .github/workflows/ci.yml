@@ -61,6 +61,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential cmake grub-pc-bin xorriso mtools \
             e2fsprogs dosfstools ncurses-bin socat qemu-system-x86
+      - name: Trust the RadicalPackages archive key
+        # radpm verifies package index signatures against the default gpg keyring;
+        # import the archive public key from the checkout so verification passes
+        # on the fresh runner.
+        run: gpg --import RadicalPackages/keys/radical-packages-archive-key.asc
       - name: Build and smoke via RadBuild
         run: |
           python3 RadBuild/radbuild/.tools/radbuild.py build os \
