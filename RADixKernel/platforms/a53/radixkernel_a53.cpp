@@ -1552,7 +1552,16 @@ extern "C" intptr_t rad_a53_syscall_dispatch(uintptr_t number, uintptr_t arg0, u
 
 extern "C" intptr_t rad_a53_syscall_dispatch_frame(rad_a53_trap_frame_t *frame) {
     if (!frame) return RAD_STATUS_INVALID_ARGUMENT;
-    rad_debug_marker("RADIX_AARCH64_SVC_DISPATCH_OK");
+    // Emit the syscall-path liveness marker exactly once. Smoke gates only need
+    // its presence (require_marker), and printing it on every syscall floods the
+    // serial console, interleaving with and shredding byte-oriented userland
+    // output (e.g. vim/TUIs write one byte per WRITE), which made functional
+    // programs look hung or garbled.
+    static bool svc_dispatch_marker_emitted = false;
+    if (!svc_dispatch_marker_emitted) {
+        svc_dispatch_marker_emitted = true;
+        rad_debug_marker("RADIX_AARCH64_SVC_DISPATCH_OK");
+    }
     if (A53UserContext *active = active_user_context()) active->frame = *frame;
     const intptr_t result = rad_a53_syscall_dispatch(static_cast<uintptr_t>(frame->x[8]),
         static_cast<uintptr_t>(frame->x[0]),
