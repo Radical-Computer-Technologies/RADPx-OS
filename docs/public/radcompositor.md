@@ -1,8 +1,8 @@
 # RADCompositor {#radcompositor}
 
 RADCompositor is an experimental Crimson 0.2.0 service for Slint-backed desktop
-composition. It is intentionally RADLib/RADix-owned: Slint renders each UI
-surface, but RADix owns the screen, window placement, z-order, input routing,
+composition. It is intentionally RADLib/RADPx-owned: Slint renders each UI
+surface, but RADPx owns the screen, window placement, z-order, input routing,
 and final framebuffer writes.
 
 ## Architecture
@@ -16,9 +16,9 @@ Surfaces may use opaque XRGB pixels or ARGB pixels with alpha blending.
 The x86 VM target currently starts two Slint surfaces:
 
 - `RadDesktopSurface` for the desktop background, status, and applications menu.
-- `RadTerminalSurface` for the first terminal window backed by a RADix PTY.
+- `RadTerminalSurface` for the first terminal window backed by a RADPx PTY.
 
-Input events enter through the RADix input queue. Pointer coordinates are tested
+Input events enter through the RADPx input queue. Pointer coordinates are tested
 against compositor surface bounds in global screen space, translated into local
 surface coordinates, and then dispatched to the matching Slint window adapter.
 

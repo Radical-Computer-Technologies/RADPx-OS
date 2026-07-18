@@ -1470,7 +1470,7 @@ static int run_command(int argc, char **argv, int outfd, int infd) {
     if (s_eq(argv[0], "id")) return cmd_id(outfd);
     if (s_eq(argv[0], "whoami")) { char user[32]; read_username(user, sizeof(user)); line_fd(outfd, user); return 0; }
     if (s_eq(argv[0], "hostname")) { char host[64]; read_hostname(host, sizeof(host)); line_fd(outfd, host); return 0; }
-    if (s_eq(argv[0], "uname")) { line_fd(outfd, "RADix"); return 0; }
+    if (s_eq(argv[0], "uname")) { line_fd(outfd, "RADPx"); return 0; }
     if (s_eq(argv[0], "date")) return cmd_date(outfd);
     if (s_eq(argv[0], "net")) return cmd_net(outfd);
     if (s_eq(argv[0], "ntpdate")) return cmd_ntpdate(argc, argv, outfd);
@@ -1931,7 +1931,7 @@ int radsh_main(long argc, char **argv, char **envp) {
         if (s_eq(base, "tui-smoke")) return cmd_tui_smoke();
     }
     if (argc > 1) return run_script_file(argv[1]);
-    line_fd(1, "RADix rash ready");
+    line_fd(1, "RADPx rash ready");
     line_fd(1, "RADIX_TERMINAL_ANSI_OK");
     marker_fd("RADIX_TERMINAL_THEME_OK");
     marker_fd("RADIX_TERMINAL_FONT_PSF_OK");

@@ -1,7 +1,7 @@
-# RADix Pi Zero 2 W Standalone Payload
+# RADPx Pi Zero 2 W Standalone Payload
 
-This target builds the RADix-owned Pi Zero 2 W kernel payload. Raspberry Pi
-firmware can boot it directly as `kernel8.img`; the optional RADix/Circle
+This target builds the RADPx-owned Pi Zero 2 W kernel payload. Raspberry Pi
+firmware can boot it directly as `kernel8.img`; the optional RADPx/Circle
 second-stage loader can also place it on the FAT boot partition as
 `RADIXKRN.IMG` and jump through `rad_boot_handoff_t`.
 
@@ -25,7 +25,7 @@ Current checkpoint:
   process-table checks, and COW page-fault gates
 - Slint/RADCompositor boot-shell, window-manager, terminal-window, and dirty
   present markers
-- RADix runtime boot markers and terminal commands
+- RADPx runtime boot markers and terminal commands
 
 The real BCM283x eMMC command engine, DWC OTG USB host enumeration, hardware
 HID input, full AArch64 EL0 ELF execution/fork/exec parity, and Slint shell

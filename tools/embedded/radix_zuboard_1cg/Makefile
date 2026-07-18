@@ -1,5 +1,5 @@
 #
-# Standalone RADix-OS serial payload for Avnet/Tria ZUBoard 1CG.
+# Standalone RADPx-OS serial payload for Avnet/Tria ZUBoard 1CG.
 #
 
 RADIX_OS_ROOT ?= ../../..

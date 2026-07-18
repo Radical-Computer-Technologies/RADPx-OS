@@ -1,6 +1,6 @@
 # ZuBoard 1CG Serial Bring-Up
 
-RADix-OS includes an experimental serial-only target for the Avnet/Tria ZuBoard
+RADPx-OS includes an experimental serial-only target for the Avnet/Tria ZuBoard
 1CG. This is the first Zynq UltraScale+ MPSoC platform target and is intended
 to prove A53 boot handoff before SD, USB, Ethernet, framebuffer, PL runtime, or
 R5 AMP scheduling work.
@@ -15,7 +15,7 @@ The first pass uses the standard ZynqMP boot chain:
 1. FSBL initializes the processing system and DDR from an XSA.
 2. PMU firmware and optional TF-A/BL31 establish the firmware handoff state.
 3. U-Boot loads `radix-zuboard.elf` from the ext4 root partition.
-4. U-Boot enters RADix with `bootelf`.
+4. U-Boot enters RADPx with `bootelf`.
 
 RadBuild owns the repeatable flow around this chain. It can stage the local
 `../ZUBoard-1CG_RT` reference XSA for quick bring-up, generate a PS-only XSA
@@ -62,7 +62,7 @@ radbuild project create \
 radbuild build os --settings /path/to/workspace/radix_zuboard/settings.json
 ```
 
-The generated artifact directory contains the RADix ELF/image, reference or
+The generated artifact directory contains the RADPx ELF/image, reference or
 generated XSA files, boot scripts, and staging files for the SD FAT partition.
 
 ## QEMU Smoke

@@ -25,9 +25,9 @@ void radboot_prepare_rp235x(rad_boot_info_t *boot, const char *board, const char
 void radboot_prepare_circle(rad_boot_info_t *boot, const char *board, const char *sd_mode);
 /// Fill boot defaults for the standalone RAD-owned BCM283x Raspberry Pi backend.
 void radboot_prepare_bcm283x(rad_boot_info_t *boot, const char *board, const char *sd_mode);
-/// Initialize a RADix boot handoff record with Pi Zero 2 W defaults.
+/// Initialize a RADPx boot handoff record with Pi Zero 2 W defaults.
 void radboot_prepare_pi_handoff(rad_boot_handoff_t *handoff, const char *payload_name, uintptr_t payload_base, uintptr_t payload_size, uintptr_t payload_entry);
-/// Validate a RADix boot handoff record before entering the standalone kernel.
+/// Validate a RADPx boot handoff record before entering the standalone kernel.
 rad_status_t radboot_validate_handoff(const rad_boot_handoff_t *handoff);
 
 #ifdef __cplusplus

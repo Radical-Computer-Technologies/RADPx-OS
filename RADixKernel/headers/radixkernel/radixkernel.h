@@ -3,7 +3,7 @@
 
 /**
  * @file radixkernel.h
- * @brief Portable RADix kernel service ABI for RADLib and RADix-OS targets.
+ * @brief Portable RADPx kernel service ABI for RADLib and RADPx-OS targets.
  *
  * RADixKernel exposes a small POSIX-like service contract for bare-metal
  * and simulator backends. The C ABI is the stable boundary; the C++ wrappers are
@@ -801,7 +801,7 @@ typedef struct rad_posix_timeval {
     int64_t tv_usec; ///< Public structure field.
 } rad_posix_timeval_t; ///< Public typedef alias.
 
-/** @brief POSIX-style poll descriptor used by RADix userland. */
+/** @brief POSIX-style poll descriptor used by RADPx userland. */
 typedef struct rad_pollfd {
     int32_t fd; ///< File descriptor.
     int16_t events; ///< Requested RAD_POLL* event mask.
@@ -841,7 +841,7 @@ typedef struct rad_dirent_user {
     char name[256]; ///< Public structure field.
 } rad_dirent_user_t; ///< Public typedef alias.
 
-/** @brief Public callback typedef used by the RADix API. */
+/** @brief Public callback typedef used by the RADPx API. */
 typedef int (*rad_vfs_list_callback_t)(const char *name, const rad_vfs_stat_t *stat, void *context);
 
 /** @brief Public data structure for rad_vfs_backend_ops. */
@@ -1330,17 +1330,17 @@ typedef struct rad_sd_config {
     uint8_t card_detect_gpio; ///< Public structure field.
 } rad_sd_config_t; ///< Public typedef alias.
 
-/** @brief Public callback typedef used by the RADix API. */
+/** @brief Public callback typedef used by the RADPx API. */
 typedef void (*rad_task_entry_t)(void *context);
-/** @brief Public callback typedef used by the RADix API. */
+/** @brief Public callback typedef used by the RADPx API. */
 typedef void (*rad_terminal_write_t)(const char *text, void *context);
-/** @brief Public callback typedef used by the RADix API. */
+/** @brief Public callback typedef used by the RADPx API. */
 typedef rad_status_t (*rad_terminal_handler_t)(int argc, const char **argv, rad_terminal_write_t write, void *write_context, void *command_context);
-/** @brief Public callback typedef used by the RADix API. */
+/** @brief Public callback typedef used by the RADPx API. */
 typedef void (*rad_tty_output_t)(const void *data, size_t size, void *context);
-/** @brief Public callback typedef used by the RADix API. */
+/** @brief Public callback typedef used by the RADPx API. */
 typedef void (*rad_irq_handler_t)(uint32_t irq, void *context);
-/** @brief Public callback typedef used by the RADix API. */
+/** @brief Public callback typedef used by the RADPx API. */
 typedef void (*rad_work_handler_t)(void *context);
 
 /** @brief Opaque handle type rad_task_t backed by rad_task_handle. */
@@ -1376,12 +1376,12 @@ typedef struct rad_tty_window_size {
 
 /** @brief Number of POSIX-shaped terminal control character slots. */
 #define RAD_TTY_NCCS 32u
-/** @brief Flush pending input bytes from a RADix TTY or PTY endpoint. */
+/** @brief Flush pending input bytes from a RADPx TTY or PTY endpoint. */
 #define RAD_TTY_FLUSH_INPUT 1u
-/** @brief Flush pending output bytes from a RADix TTY or PTY endpoint. */
+/** @brief Flush pending output bytes from a RADPx TTY or PTY endpoint. */
 #define RAD_TTY_FLUSH_OUTPUT 2u
 
-/** @brief POSIX-shaped terminal attributes stored by RADix TTY devices. */
+/** @brief POSIX-shaped terminal attributes stored by RADPx TTY devices. */
 typedef struct rad_tty_termios {
     uint32_t input_flags; ///< Public structure field.
     uint32_t output_flags; ///< Public structure field.
@@ -1401,358 +1401,358 @@ typedef struct rad_log_entry {
     char message[RAD_LOG_MESSAGE_MAX]; ///< Public structure field.
 } rad_log_entry_t; ///< Public typedef alias.
 
-rad_status_t rad_kernel_init(const rad_kernel_config_t *config); ///< Public RADix kernel API entry point.
-void rad_kernel_shutdown(void); ///< Public RADix kernel API entry point.
-int rad_kernel_is_initialized(void); ///< Public RADix kernel API entry point.
+rad_status_t rad_kernel_init(const rad_kernel_config_t *config); ///< Public RADPx kernel API entry point.
+void rad_kernel_shutdown(void); ///< Public RADPx kernel API entry point.
+int rad_kernel_is_initialized(void); ///< Public RADPx kernel API entry point.
 const char *rad_kernel_backend_name(void); ///< Return the active backend name string.
 const char *rad_kernel_version_string(void); ///< Return the kernel version string.
-rad_status_t rad_kernel_poll(void); ///< Public RADix kernel API entry point.
-rad_status_t rad_kernel_run(void); ///< Public RADix kernel API entry point.
-void rad_kernel_request_shutdown(void); ///< Public RADix kernel API entry point.
-int rad_kernel_is_shutdown_requested(void); ///< Public RADix kernel API entry point.
-int rad_vprintk(const char *format, va_list args); ///< Public RADix kernel API entry point.
-int rad_printk(const char *format, ...); ///< Public RADix kernel API entry point.
-int rad_vkprintk(rad_kernel_print_level_t level, const char *format, va_list args); ///< Public RADix kernel API entry point.
-int rad_kprintk(rad_kernel_print_level_t level, const char *format, ...); ///< Public RADix kernel API entry point.
-int rad_early_vprintk(const char *format, va_list args); ///< Public RADix kernel API entry point.
-int rad_early_printk(const char *format, ...); ///< Public RADix kernel API entry point.
-void rad_debug_marker(const char *marker); ///< Public RADix kernel API entry point.
-rad_status_t rad_log_write(rad_log_level_t level, const char *category, const char *message); ///< Public RADix kernel API entry point.
-size_t rad_log_read(rad_log_entry_t *entries, size_t capacity, uint64_t after_sequence); ///< Public RADix kernel API entry point.
-rad_status_t rad_log_flush_to_path(const char *path); ///< Public RADix kernel API entry point.
-rad_status_t rad_cpu_interrupts_enable(void); ///< Public RADix kernel API entry point.
-rad_status_t rad_cpu_interrupts_disable(void); ///< Public RADix kernel API entry point.
-int rad_cpu_interrupts_enabled(void); ///< Public RADix kernel API entry point.
-void rad_cpu_idle(void); ///< Public RADix kernel API entry point.
-void rad_cpu_halt_forever(void); ///< Public RADix kernel API entry point.
-rad_status_t rad_boot_info_set(const rad_boot_info_t *boot_info); ///< Public RADix kernel API entry point.
-rad_status_t rad_boot_info_get(rad_boot_info_t *boot_info); ///< Public RADix kernel API entry point.
+rad_status_t rad_kernel_poll(void); ///< Public RADPx kernel API entry point.
+rad_status_t rad_kernel_run(void); ///< Public RADPx kernel API entry point.
+void rad_kernel_request_shutdown(void); ///< Public RADPx kernel API entry point.
+int rad_kernel_is_shutdown_requested(void); ///< Public RADPx kernel API entry point.
+int rad_vprintk(const char *format, va_list args); ///< Public RADPx kernel API entry point.
+int rad_printk(const char *format, ...); ///< Public RADPx kernel API entry point.
+int rad_vkprintk(rad_kernel_print_level_t level, const char *format, va_list args); ///< Public RADPx kernel API entry point.
+int rad_kprintk(rad_kernel_print_level_t level, const char *format, ...); ///< Public RADPx kernel API entry point.
+int rad_early_vprintk(const char *format, va_list args); ///< Public RADPx kernel API entry point.
+int rad_early_printk(const char *format, ...); ///< Public RADPx kernel API entry point.
+void rad_debug_marker(const char *marker); ///< Public RADPx kernel API entry point.
+rad_status_t rad_log_write(rad_log_level_t level, const char *category, const char *message); ///< Public RADPx kernel API entry point.
+size_t rad_log_read(rad_log_entry_t *entries, size_t capacity, uint64_t after_sequence); ///< Public RADPx kernel API entry point.
+rad_status_t rad_log_flush_to_path(const char *path); ///< Public RADPx kernel API entry point.
+rad_status_t rad_cpu_interrupts_enable(void); ///< Public RADPx kernel API entry point.
+rad_status_t rad_cpu_interrupts_disable(void); ///< Public RADPx kernel API entry point.
+int rad_cpu_interrupts_enabled(void); ///< Public RADPx kernel API entry point.
+void rad_cpu_idle(void); ///< Public RADPx kernel API entry point.
+void rad_cpu_halt_forever(void); ///< Public RADPx kernel API entry point.
+rad_status_t rad_boot_info_set(const rad_boot_info_t *boot_info); ///< Public RADPx kernel API entry point.
+rad_status_t rad_boot_info_get(rad_boot_info_t *boot_info); ///< Public RADPx kernel API entry point.
 const char *rad_boot_arg_get(const char *key); ///< Return a boot argument value by key, or nullptr when absent.
 
-uint64_t rad_time_micros(void); ///< Public RADix kernel API entry point.
-uint64_t rad_time_millis(void); ///< Public RADix kernel API entry point.
-uint64_t rad_realtime_micros(void); ///< Public RADix kernel API entry point.
-rad_status_t rad_realtime_set_micros(uint64_t unix_micros); ///< Public RADix kernel API entry point.
-void rad_sleep_ms(uint32_t milliseconds); ///< Public RADix kernel API entry point.
-void rad_sleep_us(uint32_t microseconds); ///< Public RADix kernel API entry point.
-uint64_t rad_perf_now_cycles(void); ///< Public RADix kernel API entry point.
-void rad_perf_counter_add(const char *name, uint64_t delta); ///< Public RADix kernel API entry point.
-size_t rad_perf_counter_list(rad_perf_counter_info_t *counters, size_t capacity); ///< Public RADix kernel API entry point.
-rad_status_t rad_work_submit(const char *name, rad_work_handler_t handler, void *context); ///< Public RADix kernel API entry point.
-rad_status_t rad_work_poll(size_t budget, size_t *ran); ///< Public RADix kernel API entry point.
-rad_status_t rad_wait_queue_create(rad_wait_queue_t *queue); ///< Public RADix kernel API entry point.
-void rad_wait_queue_destroy(rad_wait_queue_t queue); ///< Public RADix kernel API entry point.
-rad_status_t rad_wait_queue_wait(rad_wait_queue_t queue, uint32_t timeout_ms); ///< Public RADix kernel API entry point.
-rad_status_t rad_wait_queue_wake_one(rad_wait_queue_t queue); ///< Public RADix kernel API entry point.
-rad_status_t rad_wait_queue_wake_all(rad_wait_queue_t queue); ///< Public RADix kernel API entry point.
-rad_status_t rad_timer_source_register(const rad_timer_source_config_t *config, const rad_timer_source_ops_t *ops); ///< Public RADix kernel API entry point.
-rad_status_t rad_timer_source_unregister(const char *name); ///< Public RADix kernel API entry point.
-void rad_timer_tick(uint64_t elapsed_micros); ///< Public RADix kernel API entry point.
-rad_status_t rad_timer_schedule_oneshot(uint64_t delay_micros); ///< Public RADix kernel API entry point.
-rad_status_t rad_timer_cancel_oneshot(void); ///< Public RADix kernel API entry point.
-size_t rad_timer_list(rad_timer_source_info_t *timers, size_t capacity); ///< Public RADix kernel API entry point.
+uint64_t rad_time_micros(void); ///< Public RADPx kernel API entry point.
+uint64_t rad_time_millis(void); ///< Public RADPx kernel API entry point.
+uint64_t rad_realtime_micros(void); ///< Public RADPx kernel API entry point.
+rad_status_t rad_realtime_set_micros(uint64_t unix_micros); ///< Public RADPx kernel API entry point.
+void rad_sleep_ms(uint32_t milliseconds); ///< Public RADPx kernel API entry point.
+void rad_sleep_us(uint32_t microseconds); ///< Public RADPx kernel API entry point.
+uint64_t rad_perf_now_cycles(void); ///< Public RADPx kernel API entry point.
+void rad_perf_counter_add(const char *name, uint64_t delta); ///< Public RADPx kernel API entry point.
+size_t rad_perf_counter_list(rad_perf_counter_info_t *counters, size_t capacity); ///< Public RADPx kernel API entry point.
+rad_status_t rad_work_submit(const char *name, rad_work_handler_t handler, void *context); ///< Public RADPx kernel API entry point.
+rad_status_t rad_work_poll(size_t budget, size_t *ran); ///< Public RADPx kernel API entry point.
+rad_status_t rad_wait_queue_create(rad_wait_queue_t *queue); ///< Public RADPx kernel API entry point.
+void rad_wait_queue_destroy(rad_wait_queue_t queue); ///< Public RADPx kernel API entry point.
+rad_status_t rad_wait_queue_wait(rad_wait_queue_t queue, uint32_t timeout_ms); ///< Public RADPx kernel API entry point.
+rad_status_t rad_wait_queue_wake_one(rad_wait_queue_t queue); ///< Public RADPx kernel API entry point.
+rad_status_t rad_wait_queue_wake_all(rad_wait_queue_t queue); ///< Public RADPx kernel API entry point.
+rad_status_t rad_timer_source_register(const rad_timer_source_config_t *config, const rad_timer_source_ops_t *ops); ///< Public RADPx kernel API entry point.
+rad_status_t rad_timer_source_unregister(const char *name); ///< Public RADPx kernel API entry point.
+void rad_timer_tick(uint64_t elapsed_micros); ///< Public RADPx kernel API entry point.
+rad_status_t rad_timer_schedule_oneshot(uint64_t delay_micros); ///< Public RADPx kernel API entry point.
+rad_status_t rad_timer_cancel_oneshot(void); ///< Public RADPx kernel API entry point.
+size_t rad_timer_list(rad_timer_source_info_t *timers, size_t capacity); ///< Public RADPx kernel API entry point.
 
-rad_status_t rad_task_create(rad_task_t *task, const char *name, rad_task_entry_t entry, void *context, size_t stack_size); ///< Public RADix kernel API entry point.
-rad_status_t rad_task_create_config(rad_task_t *task, const rad_task_config_t *config, rad_task_entry_t entry, void *context); ///< Public RADix kernel API entry point.
-rad_status_t rad_task_join(rad_task_t task); ///< Public RADix kernel API entry point.
-void rad_task_detach(rad_task_t task); ///< Public RADix kernel API entry point.
-uint64_t rad_task_current_id(void); ///< Public RADix kernel API entry point.
-int rad_task_current_core(void); ///< Public RADix kernel API entry point.
-void rad_task_yield(void); ///< Public RADix kernel API entry point.
-void rad_task_sleep_ms(uint32_t milliseconds); ///< Public RADix kernel API entry point.
-void rad_task_sleep_us(uint32_t microseconds); ///< Public RADix kernel API entry point.
-size_t rad_task_list(rad_task_info_t *tasks, size_t capacity); ///< Public RADix kernel API entry point.
-rad_status_t rad_core_info_get(rad_core_info_t *info); ///< Public RADix kernel API entry point.
-rad_status_t rad_scheduler_info_get(rad_scheduler_info_t *info); ///< Public RADix kernel API entry point.
-void rad_scheduler_yield_from_irq(void); ///< Public RADix kernel API entry point.
-void rad_scheduler_set_preemption_enabled(int enabled); ///< Public RADix kernel API entry point.
-uint32_t rad_scheduler_current_core(void); ///< Public RADix kernel API entry point.
-uint32_t rad_scheduler_online_core_mask(void); ///< Public RADix kernel API entry point.
+rad_status_t rad_task_create(rad_task_t *task, const char *name, rad_task_entry_t entry, void *context, size_t stack_size); ///< Public RADPx kernel API entry point.
+rad_status_t rad_task_create_config(rad_task_t *task, const rad_task_config_t *config, rad_task_entry_t entry, void *context); ///< Public RADPx kernel API entry point.
+rad_status_t rad_task_join(rad_task_t task); ///< Public RADPx kernel API entry point.
+void rad_task_detach(rad_task_t task); ///< Public RADPx kernel API entry point.
+uint64_t rad_task_current_id(void); ///< Public RADPx kernel API entry point.
+int rad_task_current_core(void); ///< Public RADPx kernel API entry point.
+void rad_task_yield(void); ///< Public RADPx kernel API entry point.
+void rad_task_sleep_ms(uint32_t milliseconds); ///< Public RADPx kernel API entry point.
+void rad_task_sleep_us(uint32_t microseconds); ///< Public RADPx kernel API entry point.
+size_t rad_task_list(rad_task_info_t *tasks, size_t capacity); ///< Public RADPx kernel API entry point.
+rad_status_t rad_core_info_get(rad_core_info_t *info); ///< Public RADPx kernel API entry point.
+rad_status_t rad_scheduler_info_get(rad_scheduler_info_t *info); ///< Public RADPx kernel API entry point.
+void rad_scheduler_yield_from_irq(void); ///< Public RADPx kernel API entry point.
+void rad_scheduler_set_preemption_enabled(int enabled); ///< Public RADPx kernel API entry point.
+uint32_t rad_scheduler_current_core(void); ///< Public RADPx kernel API entry point.
+uint32_t rad_scheduler_online_core_mask(void); ///< Public RADPx kernel API entry point.
 
-rad_status_t rad_mutex_create(rad_mutex_t *mutex); ///< Public RADix kernel API entry point.
-void rad_mutex_destroy(rad_mutex_t mutex); ///< Public RADix kernel API entry point.
-rad_status_t rad_mutex_lock(rad_mutex_t mutex); ///< Public RADix kernel API entry point.
-rad_status_t rad_mutex_unlock(rad_mutex_t mutex); ///< Public RADix kernel API entry point.
+rad_status_t rad_mutex_create(rad_mutex_t *mutex); ///< Public RADPx kernel API entry point.
+void rad_mutex_destroy(rad_mutex_t mutex); ///< Public RADPx kernel API entry point.
+rad_status_t rad_mutex_lock(rad_mutex_t mutex); ///< Public RADPx kernel API entry point.
+rad_status_t rad_mutex_unlock(rad_mutex_t mutex); ///< Public RADPx kernel API entry point.
 
-rad_status_t rad_event_create(rad_event_t *event, int initially_signaled); ///< Public RADix kernel API entry point.
-void rad_event_destroy(rad_event_t event); ///< Public RADix kernel API entry point.
-rad_status_t rad_event_wait(rad_event_t event, uint32_t timeout_ms); ///< Public RADix kernel API entry point.
-rad_status_t rad_event_signal(rad_event_t event); ///< Public RADix kernel API entry point.
-rad_status_t rad_event_reset(rad_event_t event); ///< Public RADix kernel API entry point.
+rad_status_t rad_event_create(rad_event_t *event, int initially_signaled); ///< Public RADPx kernel API entry point.
+void rad_event_destroy(rad_event_t event); ///< Public RADPx kernel API entry point.
+rad_status_t rad_event_wait(rad_event_t event, uint32_t timeout_ms); ///< Public RADPx kernel API entry point.
+rad_status_t rad_event_signal(rad_event_t event); ///< Public RADPx kernel API entry point.
+rad_status_t rad_event_reset(rad_event_t event); ///< Public RADPx kernel API entry point.
 
 void *rad_memory_alloc(size_t size); ///< Allocate kernel-managed memory.
-void rad_memory_free(void *pointer); ///< Public RADix kernel API entry point.
-void rad_memory_get_stats(rad_memory_stats_t *stats); ///< Public RADix kernel API entry point.
+void rad_memory_free(void *pointer); ///< Public RADPx kernel API entry point.
+void rad_memory_get_stats(rad_memory_stats_t *stats); ///< Public RADPx kernel API entry point.
 
-rad_status_t rad_vfs_mount_host(const char *mount_point, const char *host_path); ///< Public RADix kernel API entry point.
-rad_status_t rad_vfs_mount_sd(const rad_sd_config_t *config); ///< Public RADix kernel API entry point.
-rad_status_t rad_vfs_mount_provider(const char *mount_point, const rad_vfs_backend_ops_t *ops); ///< Public RADix kernel API entry point.
-rad_status_t rad_vfs_unmount(const char *mount_point); ///< Public RADix kernel API entry point.
-rad_status_t rad_vfs_open(const char *path, uint32_t flags, rad_file_t *file); ///< Public RADix kernel API entry point.
-rad_status_t rad_vfs_read(rad_file_t file, void *buffer, size_t size, size_t *bytes_read); ///< Public RADix kernel API entry point.
-rad_status_t rad_vfs_write(rad_file_t file, const void *buffer, size_t size, size_t *bytes_written); ///< Public RADix kernel API entry point.
-rad_status_t rad_vfs_seek(rad_file_t file, int64_t offset, rad_seek_origin_t origin); ///< Public RADix kernel API entry point.
-uint64_t rad_vfs_tell(rad_file_t file); ///< Public RADix kernel API entry point.
-void rad_vfs_close(rad_file_t file); ///< Public RADix kernel API entry point.
-rad_status_t rad_vfs_stat(const char *path, rad_vfs_stat_t *stat); ///< Public RADix kernel API entry point.
-rad_status_t rad_vfs_list(const char *path, rad_vfs_list_callback_t callback, void *context); ///< Public RADix kernel API entry point.
-rad_status_t rad_vfs_mkdir(const char *path); ///< Public RADix kernel API entry point.
-rad_status_t rad_vfs_remove(const char *path); ///< Public RADix kernel API entry point.
-rad_status_t rad_vfs_rename(const char *old_path, const char *new_path); ///< Public RADix kernel API entry point.
-rad_status_t rad_vfs_rmdir(const char *path); ///< Public RADix kernel API entry point.
-rad_status_t rad_vfs_fsync(rad_file_t file); ///< Public RADix kernel API entry point.
-rad_status_t rad_vfs_truncate(const char *path, uint64_t size); ///< Public RADix kernel API entry point.
-rad_status_t rad_vfs_readlink(const char *path, char *buffer, size_t size); ///< Public RADix kernel API entry point.
-rad_status_t rad_vfs_symlink(const char *target, const char *link_path); ///< Public RADix kernel API entry point.
-rad_status_t rad_vfs_link(const char *old_path, const char *new_path); ///< Public RADix kernel API entry point.
-rad_status_t rad_vfs_chmod(const char *path, uint32_t mode); ///< Public RADix kernel API entry point.
-rad_status_t rad_vfs_chdir(const char *path); ///< Public RADix kernel API entry point.
-rad_status_t rad_vfs_getcwd(char *buffer, size_t size); ///< Public RADix kernel API entry point.
-rad_status_t rad_vfs_opendir(const char *path, rad_dir_t *dir); ///< Public RADix kernel API entry point.
-rad_status_t rad_vfs_readdir(rad_dir_t dir, rad_vfs_dirent_t *entry); ///< Public RADix kernel API entry point.
-void rad_vfs_closedir(rad_dir_t dir); ///< Public RADix kernel API entry point.
+rad_status_t rad_vfs_mount_host(const char *mount_point, const char *host_path); ///< Public RADPx kernel API entry point.
+rad_status_t rad_vfs_mount_sd(const rad_sd_config_t *config); ///< Public RADPx kernel API entry point.
+rad_status_t rad_vfs_mount_provider(const char *mount_point, const rad_vfs_backend_ops_t *ops); ///< Public RADPx kernel API entry point.
+rad_status_t rad_vfs_unmount(const char *mount_point); ///< Public RADPx kernel API entry point.
+rad_status_t rad_vfs_open(const char *path, uint32_t flags, rad_file_t *file); ///< Public RADPx kernel API entry point.
+rad_status_t rad_vfs_read(rad_file_t file, void *buffer, size_t size, size_t *bytes_read); ///< Public RADPx kernel API entry point.
+rad_status_t rad_vfs_write(rad_file_t file, const void *buffer, size_t size, size_t *bytes_written); ///< Public RADPx kernel API entry point.
+rad_status_t rad_vfs_seek(rad_file_t file, int64_t offset, rad_seek_origin_t origin); ///< Public RADPx kernel API entry point.
+uint64_t rad_vfs_tell(rad_file_t file); ///< Public RADPx kernel API entry point.
+void rad_vfs_close(rad_file_t file); ///< Public RADPx kernel API entry point.
+rad_status_t rad_vfs_stat(const char *path, rad_vfs_stat_t *stat); ///< Public RADPx kernel API entry point.
+rad_status_t rad_vfs_list(const char *path, rad_vfs_list_callback_t callback, void *context); ///< Public RADPx kernel API entry point.
+rad_status_t rad_vfs_mkdir(const char *path); ///< Public RADPx kernel API entry point.
+rad_status_t rad_vfs_remove(const char *path); ///< Public RADPx kernel API entry point.
+rad_status_t rad_vfs_rename(const char *old_path, const char *new_path); ///< Public RADPx kernel API entry point.
+rad_status_t rad_vfs_rmdir(const char *path); ///< Public RADPx kernel API entry point.
+rad_status_t rad_vfs_fsync(rad_file_t file); ///< Public RADPx kernel API entry point.
+rad_status_t rad_vfs_truncate(const char *path, uint64_t size); ///< Public RADPx kernel API entry point.
+rad_status_t rad_vfs_readlink(const char *path, char *buffer, size_t size); ///< Public RADPx kernel API entry point.
+rad_status_t rad_vfs_symlink(const char *target, const char *link_path); ///< Public RADPx kernel API entry point.
+rad_status_t rad_vfs_link(const char *old_path, const char *new_path); ///< Public RADPx kernel API entry point.
+rad_status_t rad_vfs_chmod(const char *path, uint32_t mode); ///< Public RADPx kernel API entry point.
+rad_status_t rad_vfs_chdir(const char *path); ///< Public RADPx kernel API entry point.
+rad_status_t rad_vfs_getcwd(char *buffer, size_t size); ///< Public RADPx kernel API entry point.
+rad_status_t rad_vfs_opendir(const char *path, rad_dir_t *dir); ///< Public RADPx kernel API entry point.
+rad_status_t rad_vfs_readdir(rad_dir_t dir, rad_vfs_dirent_t *entry); ///< Public RADPx kernel API entry point.
+void rad_vfs_closedir(rad_dir_t dir); ///< Public RADPx kernel API entry point.
 
-int32_t rad_process_current_pid(void); ///< Public RADix kernel API entry point.
-int32_t rad_process_parent_pid(void); ///< Public RADix kernel API entry point.
-int32_t rad_process_fork(void); ///< Public RADix kernel API entry point.
-int32_t rad_process_execve(const char *path, const char *const argv[]); ///< Public RADix kernel API entry point.
-int32_t rad_process_waitpid(int32_t pid, int32_t *status, uint32_t options); ///< Public RADix kernel API entry point.
-void rad_process_exit(int32_t status); ///< Public RADix kernel API entry point.
-int32_t rad_process_kill(int32_t pid, int32_t signal_number); ///< Public RADix kernel API entry point.
-size_t rad_process_list(rad_process_info_t *processes, size_t capacity); ///< Public RADix kernel API entry point.
-int32_t rad_process_create(const char *path, int32_t parent_pid); ///< Public RADix kernel API entry point.
-rad_status_t rad_process_attach_task(int32_t pid, rad_task_t task); ///< Public RADix kernel API entry point.
-void rad_process_set_current_pid(int32_t pid); ///< Public RADix kernel API entry point.
-rad_status_t rad_process_mark_exec(int32_t pid, const char *path); ///< Public RADix kernel API entry point.
-rad_status_t rad_process_clone_fds(int32_t parent_pid, int32_t child_pid); ///< Public RADix kernel API entry point.
-rad_status_t rad_process_arch_register(const rad_process_arch_ops_t *ops); ///< Public RADix kernel API entry point.
-int32_t rad_process_fork_from_arch_frame(void *trap_frame); ///< Public RADix kernel API entry point.
-int32_t rad_process_reap(int32_t pid, int32_t *status); ///< Public RADix kernel API entry point.
-rad_status_t rad_process_get_credentials(int32_t pid, rad_credentials_t *credentials); ///< Public RADix kernel API entry point.
-rad_status_t rad_process_set_credentials(int32_t pid, const rad_credentials_t *credentials); ///< Public RADix kernel API entry point.
-rad_uid_t rad_process_getuid(void); ///< Public RADix kernel API entry point.
-rad_uid_t rad_process_geteuid(void); ///< Public RADix kernel API entry point.
-rad_gid_t rad_process_getgid(void); ///< Public RADix kernel API entry point.
-rad_gid_t rad_process_getegid(void); ///< Public RADix kernel API entry point.
-rad_status_t rad_process_setuid(rad_uid_t uid); ///< Public RADix kernel API entry point.
-rad_status_t rad_process_setgid(rad_gid_t gid); ///< Public RADix kernel API entry point.
-int32_t rad_process_getpgid(int32_t pid); ///< Public RADix kernel API entry point.
-int32_t rad_process_setpgid(int32_t pid, int32_t pgid); ///< Public RADix kernel API entry point.
-int32_t rad_process_getsid(int32_t pid); ///< Public RADix kernel API entry point.
-int32_t rad_process_setsid(void); ///< Public RADix kernel API entry point.
-int32_t rad_process_tcgetpgrp(int32_t fd); ///< Public RADix kernel API entry point.
-int32_t rad_process_tcsetpgrp(int32_t fd, int32_t pgid); ///< Public RADix kernel API entry point.
+int32_t rad_process_current_pid(void); ///< Public RADPx kernel API entry point.
+int32_t rad_process_parent_pid(void); ///< Public RADPx kernel API entry point.
+int32_t rad_process_fork(void); ///< Public RADPx kernel API entry point.
+int32_t rad_process_execve(const char *path, const char *const argv[]); ///< Public RADPx kernel API entry point.
+int32_t rad_process_waitpid(int32_t pid, int32_t *status, uint32_t options); ///< Public RADPx kernel API entry point.
+void rad_process_exit(int32_t status); ///< Public RADPx kernel API entry point.
+int32_t rad_process_kill(int32_t pid, int32_t signal_number); ///< Public RADPx kernel API entry point.
+size_t rad_process_list(rad_process_info_t *processes, size_t capacity); ///< Public RADPx kernel API entry point.
+int32_t rad_process_create(const char *path, int32_t parent_pid); ///< Public RADPx kernel API entry point.
+rad_status_t rad_process_attach_task(int32_t pid, rad_task_t task); ///< Public RADPx kernel API entry point.
+void rad_process_set_current_pid(int32_t pid); ///< Public RADPx kernel API entry point.
+rad_status_t rad_process_mark_exec(int32_t pid, const char *path); ///< Public RADPx kernel API entry point.
+rad_status_t rad_process_clone_fds(int32_t parent_pid, int32_t child_pid); ///< Public RADPx kernel API entry point.
+rad_status_t rad_process_arch_register(const rad_process_arch_ops_t *ops); ///< Public RADPx kernel API entry point.
+int32_t rad_process_fork_from_arch_frame(void *trap_frame); ///< Public RADPx kernel API entry point.
+int32_t rad_process_reap(int32_t pid, int32_t *status); ///< Public RADPx kernel API entry point.
+rad_status_t rad_process_get_credentials(int32_t pid, rad_credentials_t *credentials); ///< Public RADPx kernel API entry point.
+rad_status_t rad_process_set_credentials(int32_t pid, const rad_credentials_t *credentials); ///< Public RADPx kernel API entry point.
+rad_uid_t rad_process_getuid(void); ///< Public RADPx kernel API entry point.
+rad_uid_t rad_process_geteuid(void); ///< Public RADPx kernel API entry point.
+rad_gid_t rad_process_getgid(void); ///< Public RADPx kernel API entry point.
+rad_gid_t rad_process_getegid(void); ///< Public RADPx kernel API entry point.
+rad_status_t rad_process_setuid(rad_uid_t uid); ///< Public RADPx kernel API entry point.
+rad_status_t rad_process_setgid(rad_gid_t gid); ///< Public RADPx kernel API entry point.
+int32_t rad_process_getpgid(int32_t pid); ///< Public RADPx kernel API entry point.
+int32_t rad_process_setpgid(int32_t pid, int32_t pgid); ///< Public RADPx kernel API entry point.
+int32_t rad_process_getsid(int32_t pid); ///< Public RADPx kernel API entry point.
+int32_t rad_process_setsid(void); ///< Public RADPx kernel API entry point.
+int32_t rad_process_tcgetpgrp(int32_t fd); ///< Public RADPx kernel API entry point.
+int32_t rad_process_tcsetpgrp(int32_t fd, int32_t pgid); ///< Public RADPx kernel API entry point.
 
-rad_status_t rad_module_register(const rad_module_descriptor_t *descriptor); ///< Public RADix kernel API entry point.
-rad_status_t rad_module_unregister(const char *name); ///< Public RADix kernel API entry point.
-size_t rad_module_list(rad_module_info_t *modules, size_t capacity); ///< Public RADix kernel API entry point.
-rad_status_t rad_service_register(const rad_service_descriptor_t *descriptor); ///< Public RADix kernel API entry point.
-rad_status_t rad_service_unregister(const char *name); ///< Public RADix kernel API entry point.
-rad_status_t rad_service_configure(const char *name, const rad_service_config_t *config); ///< Public RADix kernel API entry point.
-rad_status_t rad_service_configure_tree(rad_tree_node_t node); ///< Public RADix kernel API entry point.
-rad_status_t rad_service_start(const char *name); ///< Public RADix kernel API entry point.
-rad_status_t rad_service_stop(const char *name); ///< Public RADix kernel API entry point.
-rad_status_t rad_service_poll_all(void); ///< Public RADix kernel API entry point.
-size_t rad_service_list(rad_service_info_t *services, size_t capacity); ///< Public RADix kernel API entry point.
+rad_status_t rad_module_register(const rad_module_descriptor_t *descriptor); ///< Public RADPx kernel API entry point.
+rad_status_t rad_module_unregister(const char *name); ///< Public RADPx kernel API entry point.
+size_t rad_module_list(rad_module_info_t *modules, size_t capacity); ///< Public RADPx kernel API entry point.
+rad_status_t rad_service_register(const rad_service_descriptor_t *descriptor); ///< Public RADPx kernel API entry point.
+rad_status_t rad_service_unregister(const char *name); ///< Public RADPx kernel API entry point.
+rad_status_t rad_service_configure(const char *name, const rad_service_config_t *config); ///< Public RADPx kernel API entry point.
+rad_status_t rad_service_configure_tree(rad_tree_node_t node); ///< Public RADPx kernel API entry point.
+rad_status_t rad_service_start(const char *name); ///< Public RADPx kernel API entry point.
+rad_status_t rad_service_stop(const char *name); ///< Public RADPx kernel API entry point.
+rad_status_t rad_service_poll_all(void); ///< Public RADPx kernel API entry point.
+size_t rad_service_list(rad_service_info_t *services, size_t capacity); ///< Public RADPx kernel API entry point.
 
-rad_status_t rad_irq_register(uint32_t irq, const char *name, rad_irq_handler_t handler, void *context); ///< Public RADix kernel API entry point.
-rad_status_t rad_irq_unregister(uint32_t irq); ///< Public RADix kernel API entry point.
-rad_status_t rad_irq_enable(uint32_t irq); ///< Public RADix kernel API entry point.
-rad_status_t rad_irq_disable(uint32_t irq); ///< Public RADix kernel API entry point.
-rad_status_t rad_irq_dispatch(uint32_t irq); ///< Public RADix kernel API entry point.
-size_t rad_irq_list(rad_irq_info_t *irqs, size_t capacity); ///< Public RADix kernel API entry point.
-rad_status_t rad_irq_domain_register(const rad_irq_domain_config_t *config, rad_irq_domain_t *domain); ///< Public RADix kernel API entry point.
-rad_status_t rad_irq_domain_unregister(const char *tree_path); ///< Public RADix kernel API entry point.
-rad_status_t rad_irq_domain_find(const char *tree_path, rad_irq_domain_t *domain); ///< Public RADix kernel API entry point.
-size_t rad_irq_resolve_tree(rad_tree_node_t node, rad_irq_resource_t *resources, size_t capacity); ///< Public RADix kernel API entry point.
-rad_status_t rad_irq_resource_enable(const rad_irq_resource_t *resource); ///< Public RADix kernel API entry point.
-rad_status_t rad_irq_resource_disable(const rad_irq_resource_t *resource); ///< Public RADix kernel API entry point.
-rad_status_t rad_irq_resource_register_handler(const rad_irq_resource_t *resource, const char *name, rad_irq_handler_t handler, void *context); ///< Public RADix kernel API entry point.
+rad_status_t rad_irq_register(uint32_t irq, const char *name, rad_irq_handler_t handler, void *context); ///< Public RADPx kernel API entry point.
+rad_status_t rad_irq_unregister(uint32_t irq); ///< Public RADPx kernel API entry point.
+rad_status_t rad_irq_enable(uint32_t irq); ///< Public RADPx kernel API entry point.
+rad_status_t rad_irq_disable(uint32_t irq); ///< Public RADPx kernel API entry point.
+rad_status_t rad_irq_dispatch(uint32_t irq); ///< Public RADPx kernel API entry point.
+size_t rad_irq_list(rad_irq_info_t *irqs, size_t capacity); ///< Public RADPx kernel API entry point.
+rad_status_t rad_irq_domain_register(const rad_irq_domain_config_t *config, rad_irq_domain_t *domain); ///< Public RADPx kernel API entry point.
+rad_status_t rad_irq_domain_unregister(const char *tree_path); ///< Public RADPx kernel API entry point.
+rad_status_t rad_irq_domain_find(const char *tree_path, rad_irq_domain_t *domain); ///< Public RADPx kernel API entry point.
+size_t rad_irq_resolve_tree(rad_tree_node_t node, rad_irq_resource_t *resources, size_t capacity); ///< Public RADPx kernel API entry point.
+rad_status_t rad_irq_resource_enable(const rad_irq_resource_t *resource); ///< Public RADPx kernel API entry point.
+rad_status_t rad_irq_resource_disable(const rad_irq_resource_t *resource); ///< Public RADPx kernel API entry point.
+rad_status_t rad_irq_resource_register_handler(const rad_irq_resource_t *resource, const char *name, rad_irq_handler_t handler, void *context); ///< Public RADPx kernel API entry point.
 
-int32_t rad_fd_open(const char *path, uint32_t flags); ///< Public RADix kernel API entry point.
-int32_t rad_fd_close(int32_t fd); ///< Public RADix kernel API entry point.
-intptr_t rad_fd_read(int32_t fd, void *buffer, size_t size); ///< Public RADix kernel API entry point.
-intptr_t rad_fd_write(int32_t fd, const void *buffer, size_t size); ///< Public RADix kernel API entry point.
-int64_t rad_fd_lseek(int32_t fd, int64_t offset, rad_seek_origin_t origin); ///< Public RADix kernel API entry point.
-int32_t rad_fd_ioctl(int32_t fd, uint32_t request, void *argument); ///< Public RADix kernel API entry point.
-intptr_t rad_fd_getdents(int32_t fd, rad_dirent_user_t *entries, size_t capacity); ///< Public RADix kernel API entry point.
-int32_t rad_fd_stat(const char *path, rad_vfs_stat_t *stat); ///< Public RADix kernel API entry point.
-int32_t rad_fd_fstat(int32_t fd, rad_vfs_stat_t *stat); ///< Public RADix kernel API entry point.
-int32_t rad_fd_fchdir(int32_t fd); ///< Public RADix kernel API entry point.
-int32_t rad_fd_ftruncate(int32_t fd, uint64_t size); ///< Public RADix kernel API entry point.
-int32_t rad_fd_dup(int32_t fd); ///< Public RADix kernel API entry point.
-int32_t rad_fd_dup2(int32_t old_fd, int32_t new_fd); ///< Public RADix kernel API entry point.
-int32_t rad_fd_fcntl(int32_t fd, uint32_t command, uintptr_t argument); ///< Public RADix kernel API entry point.
-int32_t rad_fd_poll(rad_pollfd_t *fds, size_t count, int32_t timeout_ms); ///< Public RADix kernel API entry point.
-int32_t rad_pipe_create(int32_t pipefd[2]); ///< Public RADix kernel API entry point.
-int32_t rad_shm_open(const char *name, size_t byte_size, uint32_t flags); ///< Public RADix kernel API entry point.
-int32_t rad_shm_unlink(const char *name); ///< Public RADix kernel API entry point.
-int32_t rad_shm_get_info(int32_t fd, rad_shm_info_t *info); ///< Public RADix kernel API entry point.
-int32_t rad_shm_set_page(int32_t fd, size_t page_index, uintptr_t page_token); ///< Public RADix kernel API entry point.
-int32_t rad_shm_get_page(int32_t fd, size_t page_index, uintptr_t *page_token); ///< Public RADix kernel API entry point.
-void *rad_shm_kernel_pointer(int32_t fd); ///< Public RADix kernel API entry point.
+int32_t rad_fd_open(const char *path, uint32_t flags); ///< Public RADPx kernel API entry point.
+int32_t rad_fd_close(int32_t fd); ///< Public RADPx kernel API entry point.
+intptr_t rad_fd_read(int32_t fd, void *buffer, size_t size); ///< Public RADPx kernel API entry point.
+intptr_t rad_fd_write(int32_t fd, const void *buffer, size_t size); ///< Public RADPx kernel API entry point.
+int64_t rad_fd_lseek(int32_t fd, int64_t offset, rad_seek_origin_t origin); ///< Public RADPx kernel API entry point.
+int32_t rad_fd_ioctl(int32_t fd, uint32_t request, void *argument); ///< Public RADPx kernel API entry point.
+intptr_t rad_fd_getdents(int32_t fd, rad_dirent_user_t *entries, size_t capacity); ///< Public RADPx kernel API entry point.
+int32_t rad_fd_stat(const char *path, rad_vfs_stat_t *stat); ///< Public RADPx kernel API entry point.
+int32_t rad_fd_fstat(int32_t fd, rad_vfs_stat_t *stat); ///< Public RADPx kernel API entry point.
+int32_t rad_fd_fchdir(int32_t fd); ///< Public RADPx kernel API entry point.
+int32_t rad_fd_ftruncate(int32_t fd, uint64_t size); ///< Public RADPx kernel API entry point.
+int32_t rad_fd_dup(int32_t fd); ///< Public RADPx kernel API entry point.
+int32_t rad_fd_dup2(int32_t old_fd, int32_t new_fd); ///< Public RADPx kernel API entry point.
+int32_t rad_fd_fcntl(int32_t fd, uint32_t command, uintptr_t argument); ///< Public RADPx kernel API entry point.
+int32_t rad_fd_poll(rad_pollfd_t *fds, size_t count, int32_t timeout_ms); ///< Public RADPx kernel API entry point.
+int32_t rad_pipe_create(int32_t pipefd[2]); ///< Public RADPx kernel API entry point.
+int32_t rad_shm_open(const char *name, size_t byte_size, uint32_t flags); ///< Public RADPx kernel API entry point.
+int32_t rad_shm_unlink(const char *name); ///< Public RADPx kernel API entry point.
+int32_t rad_shm_get_info(int32_t fd, rad_shm_info_t *info); ///< Public RADPx kernel API entry point.
+int32_t rad_shm_set_page(int32_t fd, size_t page_index, uintptr_t page_token); ///< Public RADPx kernel API entry point.
+int32_t rad_shm_get_page(int32_t fd, size_t page_index, uintptr_t *page_token); ///< Public RADPx kernel API entry point.
+void *rad_shm_kernel_pointer(int32_t fd); ///< Public RADPx kernel API entry point.
 
-intptr_t rad_syscall_dispatch(uintptr_t number, uintptr_t arg0, uintptr_t arg1, uintptr_t arg2, uintptr_t arg3, uintptr_t arg4, uintptr_t arg5); ///< Public RADix kernel API entry point.
+intptr_t rad_syscall_dispatch(uintptr_t number, uintptr_t arg0, uintptr_t arg1, uintptr_t arg2, uintptr_t arg3, uintptr_t arg4, uintptr_t arg5); ///< Public RADPx kernel API entry point.
 
-rad_status_t rad_program_load(const char *path, rad_program_t *program); ///< Public RADix kernel API entry point.
-rad_status_t rad_program_spawn(rad_program_t program, int argc, const char **argv, rad_task_t *task); ///< Public RADix kernel API entry point.
-void rad_program_unload(rad_program_t program); ///< Public RADix kernel API entry point.
-size_t rad_program_list(rad_program_info_t *programs, size_t capacity); ///< Public RADix kernel API entry point.
+rad_status_t rad_program_load(const char *path, rad_program_t *program); ///< Public RADPx kernel API entry point.
+rad_status_t rad_program_spawn(rad_program_t program, int argc, const char **argv, rad_task_t *task); ///< Public RADPx kernel API entry point.
+void rad_program_unload(rad_program_t program); ///< Public RADPx kernel API entry point.
+size_t rad_program_list(rad_program_info_t *programs, size_t capacity); ///< Public RADPx kernel API entry point.
 
-rad_status_t rad_overlay_load_memory(const void *data, size_t size); ///< Public RADix kernel API entry point.
-rad_status_t rad_overlay_load_file(const char *path); ///< Public RADix kernel API entry point.
-rad_status_t rad_overlay_apply_boot(void); ///< Public RADix kernel API entry point.
-size_t rad_overlay_list(rad_overlay_info_t *overlays, size_t capacity); ///< Public RADix kernel API entry point.
-size_t rad_tree_list(rad_tree_node_info_t *nodes, size_t capacity); ///< Public RADix kernel API entry point.
-rad_tree_node_t rad_tree_find(const char *path); ///< Public RADix kernel API entry point.
-rad_status_t rad_tree_get_property_u32(rad_tree_node_t node, const char *name, uint32_t *value); ///< Public RADix kernel API entry point.
-size_t rad_tree_get_property_u32_array(rad_tree_node_t node, const char *name, uint32_t *values, size_t capacity); ///< Public RADix kernel API entry point.
-rad_status_t rad_tree_get_property_bool(rad_tree_node_t node, const char *name, int *value); ///< Public RADix kernel API entry point.
-rad_status_t rad_tree_get_property_string(rad_tree_node_t node, const char *name, char *buffer, size_t size); ///< Public RADix kernel API entry point.
+rad_status_t rad_overlay_load_memory(const void *data, size_t size); ///< Public RADPx kernel API entry point.
+rad_status_t rad_overlay_load_file(const char *path); ///< Public RADPx kernel API entry point.
+rad_status_t rad_overlay_apply_boot(void); ///< Public RADPx kernel API entry point.
+size_t rad_overlay_list(rad_overlay_info_t *overlays, size_t capacity); ///< Public RADPx kernel API entry point.
+size_t rad_tree_list(rad_tree_node_info_t *nodes, size_t capacity); ///< Public RADPx kernel API entry point.
+rad_tree_node_t rad_tree_find(const char *path); ///< Public RADPx kernel API entry point.
+rad_status_t rad_tree_get_property_u32(rad_tree_node_t node, const char *name, uint32_t *value); ///< Public RADPx kernel API entry point.
+size_t rad_tree_get_property_u32_array(rad_tree_node_t node, const char *name, uint32_t *values, size_t capacity); ///< Public RADPx kernel API entry point.
+rad_status_t rad_tree_get_property_bool(rad_tree_node_t node, const char *name, int *value); ///< Public RADPx kernel API entry point.
+rad_status_t rad_tree_get_property_string(rad_tree_node_t node, const char *name, char *buffer, size_t size); ///< Public RADPx kernel API entry point.
 
-rad_status_t rad_device_register(const char *name, rad_device_type_t type, const rad_device_ops_t *ops); ///< Public RADix kernel API entry point.
-rad_status_t rad_device_unregister(const char *name); ///< Public RADix kernel API entry point.
-rad_status_t rad_device_open(const char *name, rad_device_t *device); ///< Public RADix kernel API entry point.
-void rad_device_close(rad_device_t device); ///< Public RADix kernel API entry point.
-rad_status_t rad_device_read(rad_device_t device, void *buffer, size_t size, size_t *bytes_read); ///< Public RADix kernel API entry point.
-rad_status_t rad_device_write(rad_device_t device, const void *buffer, size_t size, size_t *bytes_written); ///< Public RADix kernel API entry point.
-rad_status_t rad_device_ioctl(rad_device_t device, uint32_t request, void *argument); ///< Public RADix kernel API entry point.
-size_t rad_device_list(char names[][64], rad_device_type_t *types, size_t capacity); ///< Public RADix kernel API entry point.
+rad_status_t rad_device_register(const char *name, rad_device_type_t type, const rad_device_ops_t *ops); ///< Public RADPx kernel API entry point.
+rad_status_t rad_device_unregister(const char *name); ///< Public RADPx kernel API entry point.
+rad_status_t rad_device_open(const char *name, rad_device_t *device); ///< Public RADPx kernel API entry point.
+void rad_device_close(rad_device_t device); ///< Public RADPx kernel API entry point.
+rad_status_t rad_device_read(rad_device_t device, void *buffer, size_t size, size_t *bytes_read); ///< Public RADPx kernel API entry point.
+rad_status_t rad_device_write(rad_device_t device, const void *buffer, size_t size, size_t *bytes_written); ///< Public RADPx kernel API entry point.
+rad_status_t rad_device_ioctl(rad_device_t device, uint32_t request, void *argument); ///< Public RADPx kernel API entry point.
+size_t rad_device_list(char names[][64], rad_device_type_t *types, size_t capacity); ///< Public RADPx kernel API entry point.
 
-rad_status_t rad_input_device_register(const char *name, const rad_device_ops_t *ops); ///< Public RADix kernel API entry point.
-rad_status_t rad_input_device_unregister(const char *name); ///< Public RADix kernel API entry point.
-rad_status_t rad_input_open(const char *name, rad_device_t *device); ///< Public RADix kernel API entry point.
-rad_status_t rad_input_read_event(rad_device_t device, rad_input_event_t *event); ///< Public RADix kernel API entry point.
-rad_status_t rad_input_queue_create(const char *name, size_t capacity, rad_input_queue_t *queue); ///< Public RADix kernel API entry point.
-void rad_input_queue_destroy(rad_input_queue_t queue); ///< Public RADix kernel API entry point.
-rad_status_t rad_input_queue_push(rad_input_queue_t queue, const rad_input_event_t *event); ///< Public RADix kernel API entry point.
-rad_status_t rad_input_queue_read(rad_input_queue_t queue, rad_input_event_t *events, size_t capacity, uint32_t timeout_ms, size_t *count); ///< Public RADix kernel API entry point.
-rad_status_t rad_input_device_register_queue(const char *name, rad_input_queue_t queue); ///< Public RADix kernel API entry point.
+rad_status_t rad_input_device_register(const char *name, const rad_device_ops_t *ops); ///< Public RADPx kernel API entry point.
+rad_status_t rad_input_device_unregister(const char *name); ///< Public RADPx kernel API entry point.
+rad_status_t rad_input_open(const char *name, rad_device_t *device); ///< Public RADPx kernel API entry point.
+rad_status_t rad_input_read_event(rad_device_t device, rad_input_event_t *event); ///< Public RADPx kernel API entry point.
+rad_status_t rad_input_queue_create(const char *name, size_t capacity, rad_input_queue_t *queue); ///< Public RADPx kernel API entry point.
+void rad_input_queue_destroy(rad_input_queue_t queue); ///< Public RADPx kernel API entry point.
+rad_status_t rad_input_queue_push(rad_input_queue_t queue, const rad_input_event_t *event); ///< Public RADPx kernel API entry point.
+rad_status_t rad_input_queue_read(rad_input_queue_t queue, rad_input_event_t *events, size_t capacity, uint32_t timeout_ms, size_t *count); ///< Public RADPx kernel API entry point.
+rad_status_t rad_input_device_register_queue(const char *name, rad_input_queue_t queue); ///< Public RADPx kernel API entry point.
 
-rad_status_t rad_block_device_register(const char *name, const rad_device_ops_t *ops); ///< Public RADix kernel API entry point.
-rad_status_t rad_block_open(const char *name, rad_device_t *device); ///< Public RADix kernel API entry point.
-rad_status_t rad_block_info(rad_device_t device, rad_block_info_t *info); ///< Public RADix kernel API entry point.
-rad_status_t rad_block_read(rad_device_t device, uint64_t sector, uint32_t sector_count, void *buffer); ///< Public RADix kernel API entry point.
-rad_status_t rad_block_write(rad_device_t device, uint64_t sector, uint32_t sector_count, const void *buffer); ///< Public RADix kernel API entry point.
-rad_status_t rad_block_flush(rad_device_t device); ///< Public RADix kernel API entry point.
-rad_status_t rad_net_device_register(const char *name, const rad_device_ops_t *ops); ///< Public RADix kernel API entry point.
-rad_status_t rad_net_open(const char *name, rad_device_t *device); ///< Public RADix kernel API entry point.
-rad_status_t rad_net_link_info(rad_device_t device, rad_net_link_info_t *info); ///< Public RADix kernel API entry point.
-rad_status_t rad_net_send(rad_device_t device, const void *data, size_t length); ///< Public RADix kernel API entry point.
-intptr_t rad_net_receive(rad_device_t device, void *data, size_t length); ///< Public RADix kernel API entry point.
-rad_status_t rad_net_poll(rad_device_t device); ///< Public RADix kernel API entry point.
-rad_status_t rad_net_stack_info(rad_net_stack_info_t *info); ///< Public RADix kernel API entry point.
-rad_status_t rad_net_configure(const rad_net_stack_config_t *config); ///< Public RADix kernel API entry point.
-rad_status_t rad_net_ntp_status(rad_ntp_status_t *status); ///< Public RADix kernel API entry point.
-rad_status_t rad_net_ntp_query(rad_ntp_query_t *query); ///< Public RADix kernel API entry point.
-int32_t rad_socket_create(int domain, int type, int protocol); ///< Public RADix kernel API entry point.
-int32_t rad_socket_bind(int32_t fd, const rad_sockaddr_in_t *address, size_t address_length); ///< Public RADix kernel API entry point.
-int32_t rad_socket_listen(int32_t fd, int backlog); ///< Public RADix kernel API entry point.
-int32_t rad_socket_accept(int32_t fd, rad_sockaddr_in_t *address, size_t *address_length); ///< Public RADix kernel API entry point.
-int32_t rad_socket_connect(int32_t fd, const rad_sockaddr_in_t *address, size_t address_length); ///< Public RADix kernel API entry point.
-intptr_t rad_socket_sendto(int32_t fd, const void *buffer, size_t size, uint32_t flags, const rad_sockaddr_in_t *address, size_t address_length); ///< Public RADix kernel API entry point.
-intptr_t rad_socket_recvfrom(int32_t fd, void *buffer, size_t size, uint32_t flags, rad_sockaddr_in_t *address, size_t *address_length); ///< Public RADix kernel API entry point.
-intptr_t rad_socket_send(int32_t fd, const void *buffer, size_t size, uint32_t flags); ///< Public RADix kernel API entry point.
-intptr_t rad_socket_recv(int32_t fd, void *buffer, size_t size, uint32_t flags); ///< Public RADix kernel API entry point.
-int32_t rad_socket_shutdown(int32_t fd, int how); ///< Public RADix kernel API entry point.
-int32_t rad_socket_get_info(int32_t fd, rad_socket_info_t *info); ///< Public RADix kernel API entry point.
-int32_t rad_socket_setsockopt(int32_t fd, int level, int option, const void *value, size_t value_length); ///< Public RADix kernel API entry point.
-int32_t rad_socket_getsockopt(int32_t fd, int level, int option, void *value, size_t *value_length); ///< Public RADix kernel API entry point.
+rad_status_t rad_block_device_register(const char *name, const rad_device_ops_t *ops); ///< Public RADPx kernel API entry point.
+rad_status_t rad_block_open(const char *name, rad_device_t *device); ///< Public RADPx kernel API entry point.
+rad_status_t rad_block_info(rad_device_t device, rad_block_info_t *info); ///< Public RADPx kernel API entry point.
+rad_status_t rad_block_read(rad_device_t device, uint64_t sector, uint32_t sector_count, void *buffer); ///< Public RADPx kernel API entry point.
+rad_status_t rad_block_write(rad_device_t device, uint64_t sector, uint32_t sector_count, const void *buffer); ///< Public RADPx kernel API entry point.
+rad_status_t rad_block_flush(rad_device_t device); ///< Public RADPx kernel API entry point.
+rad_status_t rad_net_device_register(const char *name, const rad_device_ops_t *ops); ///< Public RADPx kernel API entry point.
+rad_status_t rad_net_open(const char *name, rad_device_t *device); ///< Public RADPx kernel API entry point.
+rad_status_t rad_net_link_info(rad_device_t device, rad_net_link_info_t *info); ///< Public RADPx kernel API entry point.
+rad_status_t rad_net_send(rad_device_t device, const void *data, size_t length); ///< Public RADPx kernel API entry point.
+intptr_t rad_net_receive(rad_device_t device, void *data, size_t length); ///< Public RADPx kernel API entry point.
+rad_status_t rad_net_poll(rad_device_t device); ///< Public RADPx kernel API entry point.
+rad_status_t rad_net_stack_info(rad_net_stack_info_t *info); ///< Public RADPx kernel API entry point.
+rad_status_t rad_net_configure(const rad_net_stack_config_t *config); ///< Public RADPx kernel API entry point.
+rad_status_t rad_net_ntp_status(rad_ntp_status_t *status); ///< Public RADPx kernel API entry point.
+rad_status_t rad_net_ntp_query(rad_ntp_query_t *query); ///< Public RADPx kernel API entry point.
+int32_t rad_socket_create(int domain, int type, int protocol); ///< Public RADPx kernel API entry point.
+int32_t rad_socket_bind(int32_t fd, const rad_sockaddr_in_t *address, size_t address_length); ///< Public RADPx kernel API entry point.
+int32_t rad_socket_listen(int32_t fd, int backlog); ///< Public RADPx kernel API entry point.
+int32_t rad_socket_accept(int32_t fd, rad_sockaddr_in_t *address, size_t *address_length); ///< Public RADPx kernel API entry point.
+int32_t rad_socket_connect(int32_t fd, const rad_sockaddr_in_t *address, size_t address_length); ///< Public RADPx kernel API entry point.
+intptr_t rad_socket_sendto(int32_t fd, const void *buffer, size_t size, uint32_t flags, const rad_sockaddr_in_t *address, size_t address_length); ///< Public RADPx kernel API entry point.
+intptr_t rad_socket_recvfrom(int32_t fd, void *buffer, size_t size, uint32_t flags, rad_sockaddr_in_t *address, size_t *address_length); ///< Public RADPx kernel API entry point.
+intptr_t rad_socket_send(int32_t fd, const void *buffer, size_t size, uint32_t flags); ///< Public RADPx kernel API entry point.
+intptr_t rad_socket_recv(int32_t fd, void *buffer, size_t size, uint32_t flags); ///< Public RADPx kernel API entry point.
+int32_t rad_socket_shutdown(int32_t fd, int how); ///< Public RADPx kernel API entry point.
+int32_t rad_socket_get_info(int32_t fd, rad_socket_info_t *info); ///< Public RADPx kernel API entry point.
+int32_t rad_socket_setsockopt(int32_t fd, int level, int option, const void *value, size_t value_length); ///< Public RADPx kernel API entry point.
+int32_t rad_socket_getsockopt(int32_t fd, int level, int option, void *value, size_t *value_length); ///< Public RADPx kernel API entry point.
 
-rad_status_t rad_framebuffer_register(const char *name, const rad_framebuffer_info_t *info, const rad_framebuffer_ops_t *ops); ///< Public RADix kernel API entry point.
-rad_status_t rad_framebuffer_register_ex(const rad_framebuffer_config_t *config, const rad_framebuffer_ops_t *ops); ///< Public RADix kernel API entry point.
-rad_status_t rad_framebuffer_unregister(const char *name); ///< Public RADix kernel API entry point.
-rad_status_t rad_framebuffer_open(const char *name, rad_framebuffer_t *framebuffer); ///< Public RADix kernel API entry point.
-rad_status_t rad_framebuffer_open_primary(rad_framebuffer_t *framebuffer); ///< Public RADix kernel API entry point.
-void rad_framebuffer_close(rad_framebuffer_t framebuffer); ///< Public RADix kernel API entry point.
-rad_status_t rad_framebuffer_get_info(rad_framebuffer_t framebuffer, rad_framebuffer_info_t *info); ///< Public RADix kernel API entry point.
-rad_status_t rad_framebuffer_get_display_info(rad_framebuffer_t framebuffer, rad_framebuffer_display_info_t *info); ///< Public RADix kernel API entry point.
-rad_status_t rad_framebuffer_set_primary(const char *name); ///< Public RADix kernel API entry point.
-rad_status_t rad_framebuffer_set_mode(rad_framebuffer_t framebuffer, uint32_t mode_index); ///< Public RADix kernel API entry point.
-rad_status_t rad_framebuffer_blank(rad_framebuffer_t framebuffer, int blanked); ///< Public RADix kernel API entry point.
-rad_status_t rad_framebuffer_get_vsync_counter(rad_framebuffer_t framebuffer, uint64_t *counter); ///< Public RADix kernel API entry point.
-rad_status_t rad_framebuffer_clear(rad_framebuffer_t framebuffer, uint32_t color); ///< Public RADix kernel API entry point.
-rad_status_t rad_framebuffer_draw_text(rad_framebuffer_t framebuffer, uint32_t cell_x, uint32_t cell_y, const char *text, uint32_t foreground, uint32_t background); ///< Public RADix kernel API entry point.
-rad_status_t rad_framebuffer_flush(rad_framebuffer_t framebuffer, const rad_framebuffer_rect_t *rect); ///< Public RADix kernel API entry point.
-rad_status_t rad_framebuffer_present(rad_framebuffer_t framebuffer, const rad_framebuffer_present_t *present); ///< Public RADix kernel API entry point.
-size_t rad_framebuffer_list(rad_framebuffer_info_t *framebuffers, char names[][64], size_t capacity); ///< Public RADix kernel API entry point.
-size_t rad_framebuffer_list_ex(rad_framebuffer_display_info_t *framebuffers, size_t capacity); ///< Public RADix kernel API entry point.
+rad_status_t rad_framebuffer_register(const char *name, const rad_framebuffer_info_t *info, const rad_framebuffer_ops_t *ops); ///< Public RADPx kernel API entry point.
+rad_status_t rad_framebuffer_register_ex(const rad_framebuffer_config_t *config, const rad_framebuffer_ops_t *ops); ///< Public RADPx kernel API entry point.
+rad_status_t rad_framebuffer_unregister(const char *name); ///< Public RADPx kernel API entry point.
+rad_status_t rad_framebuffer_open(const char *name, rad_framebuffer_t *framebuffer); ///< Public RADPx kernel API entry point.
+rad_status_t rad_framebuffer_open_primary(rad_framebuffer_t *framebuffer); ///< Public RADPx kernel API entry point.
+void rad_framebuffer_close(rad_framebuffer_t framebuffer); ///< Public RADPx kernel API entry point.
+rad_status_t rad_framebuffer_get_info(rad_framebuffer_t framebuffer, rad_framebuffer_info_t *info); ///< Public RADPx kernel API entry point.
+rad_status_t rad_framebuffer_get_display_info(rad_framebuffer_t framebuffer, rad_framebuffer_display_info_t *info); ///< Public RADPx kernel API entry point.
+rad_status_t rad_framebuffer_set_primary(const char *name); ///< Public RADPx kernel API entry point.
+rad_status_t rad_framebuffer_set_mode(rad_framebuffer_t framebuffer, uint32_t mode_index); ///< Public RADPx kernel API entry point.
+rad_status_t rad_framebuffer_blank(rad_framebuffer_t framebuffer, int blanked); ///< Public RADPx kernel API entry point.
+rad_status_t rad_framebuffer_get_vsync_counter(rad_framebuffer_t framebuffer, uint64_t *counter); ///< Public RADPx kernel API entry point.
+rad_status_t rad_framebuffer_clear(rad_framebuffer_t framebuffer, uint32_t color); ///< Public RADPx kernel API entry point.
+rad_status_t rad_framebuffer_draw_text(rad_framebuffer_t framebuffer, uint32_t cell_x, uint32_t cell_y, const char *text, uint32_t foreground, uint32_t background); ///< Public RADPx kernel API entry point.
+rad_status_t rad_framebuffer_flush(rad_framebuffer_t framebuffer, const rad_framebuffer_rect_t *rect); ///< Public RADPx kernel API entry point.
+rad_status_t rad_framebuffer_present(rad_framebuffer_t framebuffer, const rad_framebuffer_present_t *present); ///< Public RADPx kernel API entry point.
+size_t rad_framebuffer_list(rad_framebuffer_info_t *framebuffers, char names[][64], size_t capacity); ///< Public RADPx kernel API entry point.
+size_t rad_framebuffer_list_ex(rad_framebuffer_display_info_t *framebuffers, size_t capacity); ///< Public RADPx kernel API entry point.
 
-rad_status_t rad_i2c_controller_register(const rad_i2c_controller_config_t *config, const rad_i2c_controller_ops_t *ops); ///< Public RADix kernel API entry point.
-rad_status_t rad_i2c_controller_unregister(uint32_t bus_id); ///< Public RADix kernel API entry point.
-rad_status_t rad_i2c_bus_open(uint32_t bus_id, rad_i2c_bus_t *bus); ///< Public RADix kernel API entry point.
-void rad_i2c_bus_close(rad_i2c_bus_t bus); ///< Public RADix kernel API entry point.
-rad_status_t rad_i2c_transfer(rad_i2c_bus_t bus, const rad_i2c_transfer_t *transfer); ///< Public RADix kernel API entry point.
-rad_status_t rad_i2c_bind_tree(void); ///< Public RADix kernel API entry point.
-rad_status_t rad_i2c_driver_register(const rad_i2c_driver_t *driver); ///< Public RADix kernel API entry point.
-rad_status_t rad_i2c_driver_unregister(const char *name); ///< Public RADix kernel API entry point.
-rad_status_t rad_i2c_device_open(uint32_t bus_id, uint8_t address, rad_i2c_device_t **device); ///< Public RADix kernel API entry point.
-void rad_i2c_device_close(rad_i2c_device_t *device); ///< Public RADix kernel API entry point.
-rad_status_t rad_i2c_device_transfer(rad_i2c_device_t *device, const rad_i2c_transfer_t *transfer); ///< Public RADix kernel API entry point.
-size_t rad_i2c_device_irq_count(const rad_i2c_device_t *device); ///< Public RADix kernel API entry point.
-rad_status_t rad_i2c_device_get_irq(const rad_i2c_device_t *device, size_t index, rad_irq_resource_t *resource); ///< Public RADix kernel API entry point.
-size_t rad_i2c_list_devices(rad_i2c_device_info_t *devices, size_t capacity); ///< Public RADix kernel API entry point.
-rad_status_t rad_i2c_transfer_device(rad_device_t device, const rad_i2c_transfer_t *transfer); ///< Public RADix kernel API entry point.
+rad_status_t rad_i2c_controller_register(const rad_i2c_controller_config_t *config, const rad_i2c_controller_ops_t *ops); ///< Public RADPx kernel API entry point.
+rad_status_t rad_i2c_controller_unregister(uint32_t bus_id); ///< Public RADPx kernel API entry point.
+rad_status_t rad_i2c_bus_open(uint32_t bus_id, rad_i2c_bus_t *bus); ///< Public RADPx kernel API entry point.
+void rad_i2c_bus_close(rad_i2c_bus_t bus); ///< Public RADPx kernel API entry point.
+rad_status_t rad_i2c_transfer(rad_i2c_bus_t bus, const rad_i2c_transfer_t *transfer); ///< Public RADPx kernel API entry point.
+rad_status_t rad_i2c_bind_tree(void); ///< Public RADPx kernel API entry point.
+rad_status_t rad_i2c_driver_register(const rad_i2c_driver_t *driver); ///< Public RADPx kernel API entry point.
+rad_status_t rad_i2c_driver_unregister(const char *name); ///< Public RADPx kernel API entry point.
+rad_status_t rad_i2c_device_open(uint32_t bus_id, uint8_t address, rad_i2c_device_t **device); ///< Public RADPx kernel API entry point.
+void rad_i2c_device_close(rad_i2c_device_t *device); ///< Public RADPx kernel API entry point.
+rad_status_t rad_i2c_device_transfer(rad_i2c_device_t *device, const rad_i2c_transfer_t *transfer); ///< Public RADPx kernel API entry point.
+size_t rad_i2c_device_irq_count(const rad_i2c_device_t *device); ///< Public RADPx kernel API entry point.
+rad_status_t rad_i2c_device_get_irq(const rad_i2c_device_t *device, size_t index, rad_irq_resource_t *resource); ///< Public RADPx kernel API entry point.
+size_t rad_i2c_list_devices(rad_i2c_device_info_t *devices, size_t capacity); ///< Public RADPx kernel API entry point.
+rad_status_t rad_i2c_transfer_device(rad_device_t device, const rad_i2c_transfer_t *transfer); ///< Public RADPx kernel API entry point.
 
-rad_status_t rad_spi_controller_register(const rad_spi_controller_config_t *config, const rad_spi_controller_ops_t *ops); ///< Public RADix kernel API entry point.
-rad_status_t rad_spi_controller_unregister(uint32_t bus_id); ///< Public RADix kernel API entry point.
-rad_status_t rad_spi_bus_open(uint32_t bus_id, rad_spi_bus_t *bus); ///< Public RADix kernel API entry point.
-void rad_spi_bus_close(rad_spi_bus_t bus); ///< Public RADix kernel API entry point.
-rad_status_t rad_spi_transfer(rad_spi_bus_t bus, const rad_spi_transfer_t *transfer); ///< Public RADix kernel API entry point.
-rad_status_t rad_spi_driver_register(const rad_spi_driver_t *driver); ///< Public RADix kernel API entry point.
-rad_status_t rad_spi_driver_unregister(const char *name); ///< Public RADix kernel API entry point.
-rad_status_t rad_spi_device_open(uint32_t bus_id, uint8_t cs, rad_spi_device_t **device); ///< Public RADix kernel API entry point.
-void rad_spi_device_close(rad_spi_device_t *device); ///< Public RADix kernel API entry point.
-rad_status_t rad_spi_device_transfer(rad_spi_device_t *device, const rad_spi_transfer_t *transfer); ///< Public RADix kernel API entry point.
-size_t rad_spi_device_irq_count(const rad_spi_device_t *device); ///< Public RADix kernel API entry point.
-rad_status_t rad_spi_device_get_irq(const rad_spi_device_t *device, size_t index, rad_irq_resource_t *resource); ///< Public RADix kernel API entry point.
-size_t rad_spi_list_devices(rad_spi_device_info_t *devices, size_t capacity); ///< Public RADix kernel API entry point.
-rad_status_t rad_spi_transfer_device(rad_device_t device, const rad_spi_transfer_t *transfer); ///< Public RADix kernel API entry point.
+rad_status_t rad_spi_controller_register(const rad_spi_controller_config_t *config, const rad_spi_controller_ops_t *ops); ///< Public RADPx kernel API entry point.
+rad_status_t rad_spi_controller_unregister(uint32_t bus_id); ///< Public RADPx kernel API entry point.
+rad_status_t rad_spi_bus_open(uint32_t bus_id, rad_spi_bus_t *bus); ///< Public RADPx kernel API entry point.
+void rad_spi_bus_close(rad_spi_bus_t bus); ///< Public RADPx kernel API entry point.
+rad_status_t rad_spi_transfer(rad_spi_bus_t bus, const rad_spi_transfer_t *transfer); ///< Public RADPx kernel API entry point.
+rad_status_t rad_spi_driver_register(const rad_spi_driver_t *driver); ///< Public RADPx kernel API entry point.
+rad_status_t rad_spi_driver_unregister(const char *name); ///< Public RADPx kernel API entry point.
+rad_status_t rad_spi_device_open(uint32_t bus_id, uint8_t cs, rad_spi_device_t **device); ///< Public RADPx kernel API entry point.
+void rad_spi_device_close(rad_spi_device_t *device); ///< Public RADPx kernel API entry point.
+rad_status_t rad_spi_device_transfer(rad_spi_device_t *device, const rad_spi_transfer_t *transfer); ///< Public RADPx kernel API entry point.
+size_t rad_spi_device_irq_count(const rad_spi_device_t *device); ///< Public RADPx kernel API entry point.
+rad_status_t rad_spi_device_get_irq(const rad_spi_device_t *device, size_t index, rad_irq_resource_t *resource); ///< Public RADPx kernel API entry point.
+size_t rad_spi_list_devices(rad_spi_device_info_t *devices, size_t capacity); ///< Public RADPx kernel API entry point.
+rad_status_t rad_spi_transfer_device(rad_device_t device, const rad_spi_transfer_t *transfer); ///< Public RADPx kernel API entry point.
 
-rad_status_t rad_dma_controller_register(const rad_dma_controller_config_t *config, const rad_dma_backend_ops_t *ops); ///< Public RADix kernel API entry point.
-rad_status_t rad_dma_controller_unregister(const char *name); ///< Public RADix kernel API entry point.
-rad_status_t rad_dma_channel_request(rad_dma_request_id_t request_id, rad_dma_channel_t *channel); ///< Public RADix kernel API entry point.
-void rad_dma_channel_release(rad_dma_channel_t channel); ///< Public RADix kernel API entry point.
-rad_status_t rad_dma_submit(rad_dma_channel_t channel, const rad_dma_transfer_t *transfer); ///< Public RADix kernel API entry point.
-rad_status_t rad_dma_wait(rad_dma_channel_t channel, uint32_t timeout_ms); ///< Public RADix kernel API entry point.
-rad_status_t rad_dma_cancel(rad_dma_channel_t channel); ///< Public RADix kernel API entry point.
-size_t rad_dma_list_channels(rad_dma_channel_info_t *channels, size_t capacity); ///< Public RADix kernel API entry point.
+rad_status_t rad_dma_controller_register(const rad_dma_controller_config_t *config, const rad_dma_backend_ops_t *ops); ///< Public RADPx kernel API entry point.
+rad_status_t rad_dma_controller_unregister(const char *name); ///< Public RADPx kernel API entry point.
+rad_status_t rad_dma_channel_request(rad_dma_request_id_t request_id, rad_dma_channel_t *channel); ///< Public RADPx kernel API entry point.
+void rad_dma_channel_release(rad_dma_channel_t channel); ///< Public RADPx kernel API entry point.
+rad_status_t rad_dma_submit(rad_dma_channel_t channel, const rad_dma_transfer_t *transfer); ///< Public RADPx kernel API entry point.
+rad_status_t rad_dma_wait(rad_dma_channel_t channel, uint32_t timeout_ms); ///< Public RADPx kernel API entry point.
+rad_status_t rad_dma_cancel(rad_dma_channel_t channel); ///< Public RADPx kernel API entry point.
+size_t rad_dma_list_channels(rad_dma_channel_info_t *channels, size_t capacity); ///< Public RADPx kernel API entry point.
 
-size_t rad_driver_list(rad_driver_info_t *drivers, size_t capacity); ///< Public RADix kernel API entry point.
-rad_status_t rad_audio_configure(rad_device_t device, const rad_audio_format_t *format); ///< Public RADix kernel API entry point.
-rad_status_t rad_serial_configure(rad_device_t device, const rad_serial_config_t *config); ///< Public RADix kernel API entry point.
+size_t rad_driver_list(rad_driver_info_t *drivers, size_t capacity); ///< Public RADPx kernel API entry point.
+rad_status_t rad_audio_configure(rad_device_t device, const rad_audio_format_t *format); ///< Public RADPx kernel API entry point.
+rad_status_t rad_serial_configure(rad_device_t device, const rad_serial_config_t *config); ///< Public RADPx kernel API entry point.
 
-rad_status_t rad_tty_open(const char *name, rad_tty_t *tty); ///< Public RADix kernel API entry point.
-void rad_tty_close(rad_tty_t tty); ///< Public RADix kernel API entry point.
-rad_status_t rad_tty_read(rad_tty_t tty, void *buffer, size_t size, size_t *bytes_read); ///< Public RADix kernel API entry point.
-rad_status_t rad_tty_write(rad_tty_t tty, const void *buffer, size_t size, size_t *bytes_written); ///< Public RADix kernel API entry point.
-rad_status_t rad_tty_push_input(rad_tty_t tty, const void *buffer, size_t size, size_t *bytes_consumed); ///< Public RADix kernel API entry point.
-rad_status_t rad_tty_set_output_callback(rad_tty_t tty, rad_tty_output_t output, void *context); ///< Public RADix kernel API entry point.
-rad_status_t rad_tty_set_window_size(rad_tty_t tty, const rad_tty_window_size_t *size); ///< Public RADix kernel API entry point.
-rad_status_t rad_tty_get_window_size(rad_tty_t tty, rad_tty_window_size_t *size); ///< Public RADix kernel API entry point.
-rad_status_t rad_tty_set_mode(rad_tty_t tty, uint32_t mode); ///< Public RADix kernel API entry point.
-rad_status_t rad_tty_get_mode(rad_tty_t tty, uint32_t *mode); ///< Public RADix kernel API entry point.
-rad_status_t rad_tty_set_termios(rad_tty_t tty, const rad_tty_termios_t *termios); ///< Public RADix kernel API entry point.
-rad_status_t rad_tty_get_termios(rad_tty_t tty, rad_tty_termios_t *termios); ///< Public RADix kernel API entry point.
-rad_status_t rad_tty_flush(rad_tty_t tty, uint32_t queues); ///< Public RADix kernel API entry point.
+rad_status_t rad_tty_open(const char *name, rad_tty_t *tty); ///< Public RADPx kernel API entry point.
+void rad_tty_close(rad_tty_t tty); ///< Public RADPx kernel API entry point.
+rad_status_t rad_tty_read(rad_tty_t tty, void *buffer, size_t size, size_t *bytes_read); ///< Public RADPx kernel API entry point.
+rad_status_t rad_tty_write(rad_tty_t tty, const void *buffer, size_t size, size_t *bytes_written); ///< Public RADPx kernel API entry point.
+rad_status_t rad_tty_push_input(rad_tty_t tty, const void *buffer, size_t size, size_t *bytes_consumed); ///< Public RADPx kernel API entry point.
+rad_status_t rad_tty_set_output_callback(rad_tty_t tty, rad_tty_output_t output, void *context); ///< Public RADPx kernel API entry point.
+rad_status_t rad_tty_set_window_size(rad_tty_t tty, const rad_tty_window_size_t *size); ///< Public RADPx kernel API entry point.
+rad_status_t rad_tty_get_window_size(rad_tty_t tty, rad_tty_window_size_t *size); ///< Public RADPx kernel API entry point.
+rad_status_t rad_tty_set_mode(rad_tty_t tty, uint32_t mode); ///< Public RADPx kernel API entry point.
+rad_status_t rad_tty_get_mode(rad_tty_t tty, uint32_t *mode); ///< Public RADPx kernel API entry point.
+rad_status_t rad_tty_set_termios(rad_tty_t tty, const rad_tty_termios_t *termios); ///< Public RADPx kernel API entry point.
+rad_status_t rad_tty_get_termios(rad_tty_t tty, rad_tty_termios_t *termios); ///< Public RADPx kernel API entry point.
+rad_status_t rad_tty_flush(rad_tty_t tty, uint32_t queues); ///< Public RADPx kernel API entry point.
 
-rad_status_t rad_pty_open_pair(const char *name, rad_pty_t *pty); ///< Public RADix kernel API entry point.
-void rad_pty_close(rad_pty_t pty); ///< Public RADix kernel API entry point.
-rad_status_t rad_pty_read_master(rad_pty_t pty, void *buffer, size_t size, size_t *bytes_read); ///< Public RADix kernel API entry point.
-rad_status_t rad_pty_write_master(rad_pty_t pty, const void *buffer, size_t size, size_t *bytes_written); ///< Public RADix kernel API entry point.
-rad_status_t rad_pty_read_slave(rad_pty_t pty, void *buffer, size_t size, size_t *bytes_read); ///< Public RADix kernel API entry point.
-rad_status_t rad_pty_write_slave(rad_pty_t pty, const void *buffer, size_t size, size_t *bytes_written); ///< Public RADix kernel API entry point.
-rad_status_t rad_pty_resize(rad_pty_t pty, const rad_tty_window_size_t *size); ///< Public RADix kernel API entry point.
-rad_status_t rad_pty_slave_name(rad_pty_t pty, char *buffer, size_t size); ///< Public RADix kernel API entry point.
+rad_status_t rad_pty_open_pair(const char *name, rad_pty_t *pty); ///< Public RADPx kernel API entry point.
+void rad_pty_close(rad_pty_t pty); ///< Public RADPx kernel API entry point.
+rad_status_t rad_pty_read_master(rad_pty_t pty, void *buffer, size_t size, size_t *bytes_read); ///< Public RADPx kernel API entry point.
+rad_status_t rad_pty_write_master(rad_pty_t pty, const void *buffer, size_t size, size_t *bytes_written); ///< Public RADPx kernel API entry point.
+rad_status_t rad_pty_read_slave(rad_pty_t pty, void *buffer, size_t size, size_t *bytes_read); ///< Public RADPx kernel API entry point.
+rad_status_t rad_pty_write_slave(rad_pty_t pty, const void *buffer, size_t size, size_t *bytes_written); ///< Public RADPx kernel API entry point.
+rad_status_t rad_pty_resize(rad_pty_t pty, const rad_tty_window_size_t *size); ///< Public RADPx kernel API entry point.
+rad_status_t rad_pty_slave_name(rad_pty_t pty, char *buffer, size_t size); ///< Public RADPx kernel API entry point.
 
-rad_status_t rad_terminal_register_command(const char *name, const char *description, rad_terminal_handler_t handler, void *context); ///< Public RADix kernel API entry point.
-rad_status_t rad_terminal_execute(const char *line, rad_terminal_write_t write, void *write_context); ///< Public RADix kernel API entry point.
-rad_status_t rad_terminal_poll_tty(rad_tty_t tty); ///< Public RADix kernel API entry point.
-rad_status_t rad_terminal_attach_device(const char *device_name); ///< Public RADix kernel API entry point.
-rad_status_t rad_terminal_attach_tty(const char *serial_device_name, const char *tty_name); ///< Public RADix kernel API entry point.
-rad_status_t rad_terminal_poll_attached(void); ///< Public RADix kernel API entry point.
+rad_status_t rad_terminal_register_command(const char *name, const char *description, rad_terminal_handler_t handler, void *context); ///< Public RADPx kernel API entry point.
+rad_status_t rad_terminal_execute(const char *line, rad_terminal_write_t write, void *write_context); ///< Public RADPx kernel API entry point.
+rad_status_t rad_terminal_poll_tty(rad_tty_t tty); ///< Public RADPx kernel API entry point.
+rad_status_t rad_terminal_attach_device(const char *device_name); ///< Public RADPx kernel API entry point.
+rad_status_t rad_terminal_attach_tty(const char *serial_device_name, const char *tty_name); ///< Public RADPx kernel API entry point.
+rad_status_t rad_terminal_poll_attached(void); ///< Public RADPx kernel API entry point.
 void rad_terminal_repl_set(int enabled); ///< Enable/disable the kernel debug REPL on the attached tty; disable while a user session owns it. Input pumping continues either way.
-size_t rad_terminal_command_count(void); ///< Public RADix kernel API entry point.
+size_t rad_terminal_command_count(void); ///< Public RADPx kernel API entry point.
 
 #if defined(__cplusplus)
 }
@@ -1765,7 +1765,7 @@ public:
     static rad_status_t init(const char *backend = "linux_sim") {
         rad_kernel_config_t config{};
         config.backend_name = backend;
-        return rad_kernel_init(&config); //< Public RADix kernel API entry point.
+        return rad_kernel_init(&config); //< Public RADPx kernel API entry point.
     }
     static void shutdown() { rad_kernel_shutdown(); }
     static bool initialized() { return rad_kernel_is_initialized() != 0; }

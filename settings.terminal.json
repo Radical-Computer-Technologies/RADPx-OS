@@ -1,12 +1,12 @@
 {
   "radbuild_schema": "2.0",
   "radbuild_version": "0.2.1",
-  "project_name": "RADix-OS Terminal",
+  "project_name": "RADPx-OS Terminal",
   "systems": [
     {
       "id": "radix-x86-64-grub-terminal",
       "type": "os.radix",
-      "name": "RADix x86_64 GRUB terminal VM image",
+      "name": "RADPx x86_64 GRUB terminal VM image",
       "provider": "radix-os",
       "depends_on": [],
       "toolchain": {

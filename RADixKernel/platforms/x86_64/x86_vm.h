@@ -26,7 +26,7 @@ typedef struct x86_vm_summary {
     int user_address_space_ready;
 } x86_vm_summary_t;
 
-/** x86_64 process address space descriptor owned by the RADix process layer. */
+/** x86_64 process address space descriptor owned by the RADPx process layer. */
 typedef struct x86_address_space {
     /** Physical address of the top-level PML4 table. */
     uint64_t pml4;

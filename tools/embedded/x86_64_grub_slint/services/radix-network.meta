@@ -5,4 +5,4 @@ service=/etc/radix/services/network.json
 config=/etc/radix/network/netinterfaces.json
 entry=/sbin/network-service
 requires=radix-core
-note=RADix network interface configuration service package.
+note=RADPx network interface configuration service package.

@@ -242,7 +242,7 @@ extern "C" void radix_pi_entry(rad_boot_handoff_t *handoff) {
     rad_framebuffer_t framebuffer = nullptr;
     if (rad_framebuffer_open_primary(&framebuffer) == RAD_STATUS_OK) {
         rad_framebuffer_clear(framebuffer, 0x00071422u);
-        rad_framebuffer_draw_text(framebuffer, 2, 2, "RADix Pi Zero 2 W", 0x00f8fafcu, 0x00071422u);
+        rad_framebuffer_draw_text(framebuffer, 2, 2, "RADPx Pi Zero 2 W", 0x00f8fafcu, 0x00071422u);
         rad_framebuffer_draw_text(framebuffer, 2, 4, "RAD-owned bcm283x runtime", 0x00d1fae5u, 0x00071422u);
         rad_framebuffer_rect_t rect{0, 0, 1280, 720};
         rad_framebuffer_flush(framebuffer, &rect);

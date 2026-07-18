@@ -1,6 +1,6 @@
-# RADix ZUBoard 1CG Serial Target
+# RADPx ZUBoard 1CG Serial Target
 
-This target builds a serial-only AArch64 RADix payload for the Avnet/Tria
+This target builds a serial-only AArch64 RADPx payload for the Avnet/Tria
 ZUBoard 1CG. It is intended to be loaded by U-Boot with `bootelf` after FSBL,
 PMU firmware, and optional TF-A/BL31 have initialized the Zynq UltraScale+ MPSoC
 processing system.
@@ -17,7 +17,7 @@ Current scope:
 
 Out of scope for this first bring-up:
 
-- SD/eMMC filesystem access inside RADix.
+- SD/eMMC filesystem access inside RADPx.
 - USB, Ethernet, framebuffer, or PL runtime drivers.
 - R5 AMP scheduling or mailbox ownership.
 

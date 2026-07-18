@@ -111,7 +111,7 @@ static void draw_screen(const char *path, const char *buffer, size_t size, int s
 
 static int version(void) {
     puts_fd(1, RADIX_NANO_VARIANT);
-    puts_fd(1, " (GNU nano 9.0 RADix port");
+    puts_fd(1, " (GNU nano 9.0 RADPx port");
 #if RADIX_NANO_FULL
     puts_fd(1, ", full profile");
 #else

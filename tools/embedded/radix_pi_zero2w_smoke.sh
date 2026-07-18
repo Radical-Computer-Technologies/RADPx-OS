@@ -35,7 +35,7 @@ require_marker() {
     local marker="${1:?missing marker}"
     if ! grep -q "$marker" "$LOG"; then
         cat "$LOG"
-        echo "RADix Pi Zero 2 W payload smoke missing marker: $marker" >&2
+        echo "RADPx Pi Zero 2 W payload smoke missing marker: $marker" >&2
         exit 1
     fi
 }
@@ -102,4 +102,4 @@ require_marker "RADIX_PI_SLINT_WM_OK"
 require_marker "RADIX_PI_SLINT_APP_TERMINAL_WINDOW_OK"
 require_marker "RADIX_PI_COMPOSITOR_DAMAGE_QUEUE_OK"
 
-echo "RADix Pi Zero 2 W payload smoke passed: $LOG"
+echo "RADPx Pi Zero 2 W payload smoke passed: $LOG"

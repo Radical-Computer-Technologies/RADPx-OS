@@ -540,7 +540,7 @@ extern "C" rad_status_t x86_fat_mount(const char *block_device, const char *moun
 }
 
 extern "C" int x86_fat_self_test(void) {
-    const char message[] = "RADix FAT32 write path\n";
+    const char message[] = "RADPx FAT32 write path\n";
     rad_file_t file = nullptr;
     if (rad_vfs_open("/mnt/fat/RADWRITE.TXT", RAD_VFS_CREATE | RAD_VFS_WRITE | RAD_VFS_TRUNCATE, &file) != RAD_STATUS_OK) {
         rad_debug_marker("RADIX_FAT_RW_FAIL");

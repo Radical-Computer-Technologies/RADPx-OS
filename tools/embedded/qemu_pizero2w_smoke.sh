@@ -55,7 +55,7 @@ if grep -q "RADIX_PI_CIRCLE_LOADER_OK" "$LOG"; then
     require_marker "RADIX_PI_LOADER_HANDOFF_RECORD_OK"
 else
     cat "$LOG"
-    echo "Pi Zero 2 W Circle loader built, but QEMU emitted no loader serial markers; running RADix payload gate." >&2
+    echo "Pi Zero 2 W Circle loader built, but QEMU emitted no loader serial markers; running RADPx payload gate." >&2
 fi
 
 "$ROOT/tools/embedded/radix_pi_zero2w_smoke.sh"

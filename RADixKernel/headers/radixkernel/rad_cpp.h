@@ -1,6 +1,6 @@
 /**
  * @file rad_cpp.h
- * @brief Small C++ convenience wrappers over the RADix-OS C kernel ABI.
+ * @brief Small C++ convenience wrappers over the RADPx-OS C kernel ABI.
  */
 
 #ifndef RADEMBEDDEDKERNEL_RAD_CPP_H
@@ -55,7 +55,7 @@ private:
     size_t size_ = 0;
 };
 
-/// Move-only RAII owner for nullable RADix handles.
+/// Move-only RAII owner for nullable RADPx handles.
 template <typename Handle, void (*CloseFn)(Handle)>
 class UniqueHandle {
 public:

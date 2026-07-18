@@ -1,6 +1,6 @@
-# RADix-OS Kernel API
+# RADPx-OS Kernel API
 
-RADix-OS is a POSIX-inspired operating system kernel aimed at embedded boards,
+RADPx-OS (Radical Posix OS) is a POSIX-inspired operating system kernel aimed at embedded boards,
 desktop VM testing, and future SoC targets. The Crimson 0.2.0 package line keeps an
 RTOS-influenced bias toward explicit subsystems while exposing familiar process,
 file, device, terminal, framebuffer, filesystem, and driver APIs.
@@ -45,7 +45,7 @@ mkdir, rename, truncate, symlink/readlink, unlink, rmdir, chmod, and fsync.
 Journal replay and journaled metadata commits are intentionally outside the
 current beta profile.
 
-RadBuild stages RADix packages through RadicalPackages `.radpm` packagegroups.
+RadBuild stages RADPx packages through RadicalPackages `.radpm` packagegroups.
 The standard terminal image selects `radix-terminal-base` and can add
 `radix-networking`; RADCompositor images select `radix-desktop-base`.
 

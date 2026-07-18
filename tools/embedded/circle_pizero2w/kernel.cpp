@@ -78,7 +78,7 @@ boolean CKernel::Initialize(void) {
 }
 
 TShutdownMode CKernel::Run(void) {
-    m_Logger.Write(FromKernel, LogNotice, "RADix-OS Circle loader");
+    m_Logger.Write(FromKernel, LogNotice, "RADPx-OS Circle loader");
     serial_write("RADIX_PI_CIRCLE_LOADER_OK\n", &m_Serial);
     raw_marker("RADIX_PI_CIRCLE_LOADER_OK");
 

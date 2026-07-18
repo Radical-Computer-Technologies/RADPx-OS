@@ -1,6 +1,6 @@
 # RADixKernel/boards — per-board bring-up source
 
-Board-specific kernel entry, early boot assembly, and link scripts. This is RADix
+Board-specific kernel entry, early boot assembly, and link scripts. This is RADPx
 *source* (previously under `tools/embedded/`); the build glue (Makefiles/CMake/
 smoke scripts) stays in `tools/embedded/<target>/` and references these files.
 

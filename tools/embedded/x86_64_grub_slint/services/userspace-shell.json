@@ -1,6 +1,6 @@
 {
   "name": "userspace-shell",
-  "description": "RADix shell self-test and first userspace command service",
+  "description": "RADPx shell self-test and first userspace command service",
   "exec": "/bin/rash",
   "args": ["--selftest"],
   "type": "oneshot",

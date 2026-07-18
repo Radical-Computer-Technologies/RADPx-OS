@@ -3156,7 +3156,7 @@ void register_builtins() {
     rad_terminal_register_command("services", "List runtime services", cmd_services, nullptr);
     rad_terminal_register_command("dmesg", "Print kernel log ring", cmd_dmesg, nullptr);
     rad_terminal_register_command("initctl", "Inspect radinit services", cmd_initctl, nullptr);
-    rad_terminal_register_command("logread", "Read RADix text logs", cmd_logread, nullptr);
+    rad_terminal_register_command("logread", "Read RADPx text logs", cmd_logread, nullptr);
     rad_terminal_register_command("pwd", "Print current directory", cmd_pwd, nullptr);
     rad_terminal_register_command("ls", "List a VFS directory", cmd_ls, nullptr);
     rad_terminal_register_command("cd", "Change current directory", cmd_cd, nullptr);

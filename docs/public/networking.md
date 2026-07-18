@@ -1,6 +1,6 @@
 # Experimental Networking {#networking}
 
-RADix-OS Crimson 0.2.0 includes an experimental networking path for the x86 VM
+RADPx-OS Crimson 0.2.0 includes an experimental networking path for the x86 VM
 target. The goal of this surface is to prove the kernel interfaces for network
 devices, packet receive, POSIX-inspired datagram sockets, host-verified UDP,
 SNTP/NTP sampling, and the first TCP stream socket lifecycle before adding a
@@ -17,7 +17,7 @@ guest.
 The minimal IPv4 path now includes Ethernet II dispatch, ARP request/reply and
 cache learning, IPv4 checksum validation, UDP transmit/receive, ICMP echo
 reply, static default-gateway routing, IPv4 DNS A-record lookup, and
-SNTP/NTP sampling. RADix uses this path for host UDP echo verification and can
+SNTP/NTP sampling. RADPx uses this path for host UDP echo verification and can
 query either the deterministic host-side test responder or public NTP servers.
 
 The socket layer currently supports:

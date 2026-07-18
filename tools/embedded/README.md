@@ -48,12 +48,12 @@ That builds:
 Use `--realtime` when validating lower-latency interrupt behavior for audio or
 control paths. Use `--c++20` only when an application needs C++20 features.
 
-## Build the standalone RADix Pi Zero 2 W payload
+## Build the standalone RADPx Pi Zero 2 W payload
 
-The new Pi bring-up path separates Circle from the RADix runtime. Raspberry Pi
+The new Pi bring-up path separates Circle from the RADPx runtime. Raspberry Pi
 firmware remains the real first-stage boot path; Circle is being narrowed into
 an optional second-stage loader for kernel selection, maintenance, reflash, and
-validated handoff. The RADix-owned payload is built as `RADIXKRN.IMG` and does
+validated handoff. The RADPx-owned payload is built as `RADIXKRN.IMG` and does
 not link Circle:
 
 ```bash
@@ -70,12 +70,12 @@ engine, DWC OTG USB host enumeration, hardware HID input, AArch64 page-table
 implementation, and Slint rendering on Pi hardware are the next Pi-specific
 driver work.
 
-## Build the standalone RADix ZUBoard 1CG serial payload
+## Build the standalone RADPx ZUBoard 1CG serial payload
 
 The ZuBoard path targets the Avnet/Tria ZUBoard 1CG Zynq UltraScale+ MPSoC
 board. The first payload is intentionally serial-only and expects FSBL, PMU
 firmware, and U-Boot to initialize clocks, DDR, and MIO before U-Boot enters
-RADix with `bootelf`.
+RADPx with `bootelf`.
 
 ```bash
 make -C tools/embedded/radix_zuboard_1cg
@@ -189,7 +189,7 @@ Slint's Rust/C++ runtime as a static freestanding software renderer and verifies
 `RADIX_SLINT_TERMINAL_READY_OK`, `RADIX_SLINT_WM_OK`, and
 `RADIX_SLINT_APP_TERMINAL_WINDOW_OK` during the VM smoke.
 
-The first RADix POSIX substrate is also present in this target. It initializes
+The first RADPx POSIX substrate is also present in this target. It initializes
 pid 1, integer file descriptors with `0/1/2` bound to `/dev/console`, installs a
 GDT/TSS/IDT, provides an `int 0x80` syscall entry path, inventories multiboot
 memory into a simple physical page allocator, and boots a tiny freestanding

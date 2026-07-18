@@ -100,7 +100,7 @@ cp "${RADIX_NCURSESW_ARCHIVE:-${lib_dir}/libncursesw.a}" "${lib_dir}/libncursesw
 cp "${RADIX_TINFO_ARCHIVE:-${lib_dir}/libtinfo.a}" "${lib_dir}/libtinfo.a" 2>/dev/null || true
 
 if [[ ! -f "${lib_dir}/libradixc.a" || ! -f "${lib_dir}/libncursesw.a" || ! -f "${lib_dir}/libtinfo.a" ]]; then
-    echo "missing RADix userspace libraries in ${lib_dir}; build radix_userspace_libs first" >&2
+    echo "missing RADPx userspace libraries in ${lib_dir}; build radix_userspace_libs first" >&2
     exit 4
 fi
 

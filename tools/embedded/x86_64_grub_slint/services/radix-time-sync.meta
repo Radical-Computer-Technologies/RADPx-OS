@@ -5,4 +5,4 @@ service=/etc/radix/services/time-sync.json
 config=/etc/radix/time/time-sync.json
 entry=/sbin/time-sync
 requires=radix-network,radix-dns-resolver,radix-tzdata
-note=RADix NTP/SNTP time synchronization service package.
+note=RADPx NTP/SNTP time synchronization service package.

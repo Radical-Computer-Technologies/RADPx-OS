@@ -1,4 +1,4 @@
-PROJECT_NAME           = "RADix-OS Kernel"
+PROJECT_NAME           = "RADPx-OS Kernel (Radical Posix OS)"
 PROJECT_NUMBER         = "Crimson 0.2.0"
 PROJECT_BRIEF          = "POSIX-inspired kernel API with embedded and desktop VM targets"
 OUTPUT_DIRECTORY       = $(RADIX_DOCS_OUTPUT)

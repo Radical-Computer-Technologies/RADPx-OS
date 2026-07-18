@@ -1,6 +1,6 @@
 # API Structure {#api_structure}
 
-RADix-OS exposes one stable C ABI through `radixkernel.h`. The smaller
+RADPx-OS exposes one stable C ABI through `radixkernel.h`. The smaller
 subsystem headers, such as `rad_vfs.h` and `rad_spi.h`, include that ABI and
 exist so drivers and applications can include the subsystem they use.
 

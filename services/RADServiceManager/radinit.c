@@ -719,7 +719,7 @@ int radinit_main(long argc, char **argv, char **envp) {
     (void)envp;
     ensure_dirs();
     emit_boot_selftest_markers();
-    log_line("radinit", "RADix radinit starting");
+    log_line("radinit", "RADPx radinit starting");
 
     radinit_log_entry_t entries[4];
     long log_count = sc(SYS_LOG_READ, (long)entries, 4, 0, 0, 0, 0);

@@ -952,7 +952,7 @@ void render_terminal(rad_framebuffer_t framebuffer) {
     }
     if (!info.pixels || info.pixel_format != RAD_PIXEL_FORMAT_XRGB8888) {
         rad_framebuffer_clear(framebuffer, g_terminal_theme.background);
-        rad_framebuffer_draw_text(framebuffer, 1, 1, "RADix x86_64 Base Terminal", g_terminal_theme.foreground, g_terminal_theme.background);
+        rad_framebuffer_draw_text(framebuffer, 1, 1, "RADPx x86_64 Base Terminal", g_terminal_theme.foreground, g_terminal_theme.background);
         rad_framebuffer_draw_text(framebuffer, 1, 3, "Fallback framebuffer text renderer", g_terminal_theme.bright[3], g_terminal_theme.background);
         rad_framebuffer_rect_t rect{0, 0, info.width, info.height};
         rad_framebuffer_flush(framebuffer, &rect);
@@ -1001,11 +1001,11 @@ void render_terminal(rad_framebuffer_t framebuffer) {
     const uint32_t scale = terminal_scale_for(info);
     if (!info.pixels || info.pixel_format != RAD_PIXEL_FORMAT_XRGB8888) {
         rad_framebuffer_clear(framebuffer, 0x00071422u);
-        rad_framebuffer_draw_text(framebuffer, 1, 1, "RADix x86_64 Base Terminal", 0x00e5f3ffu, 0x0010273au);
+        rad_framebuffer_draw_text(framebuffer, 1, 1, "RADPx x86_64 Base Terminal", 0x00e5f3ffu, 0x0010273au);
         rad_framebuffer_draw_text(framebuffer, 1, 3, "Fallback framebuffer text renderer", 0x00fef3c7u, 0x00071422u);
     } else {
         terminal_fill_rect(info, 0, 0, info.width, info.height, 0x00071422u);
-        terminal_draw_text(info, 2, 1, "RADix x86_64 Base Terminal", 0x00e5f3ffu, 0x0010273au, scale);
+        terminal_draw_text(info, 2, 1, "RADPx x86_64 Base Terminal", 0x00e5f3ffu, 0x0010273au, scale);
         terminal_draw_text(info, 2, 3, "Base framebuffer PTY shell active; Slint WM disabled for isolation", 0x00fef3c7u, 0x00071422u, scale);
     }
 
@@ -1070,7 +1070,7 @@ void posix_abi_self_test(void) {
     rad_posix_timeval_t tv{};
     const intptr_t pid = rad_syscall_dispatch(RAD_SYSCALL_GETPID, 0, 0, 0, 0, 0, 0);
     const intptr_t time_status = rad_syscall_dispatch(RAD_SYSCALL_GETTIMEOFDAY, reinterpret_cast<uintptr_t>(&tv), 0, 0, 0, 0, 0);
-    const char message[] = "RADix POSIX ABI stdio probe\n";
+    const char message[] = "RADPx POSIX ABI stdio probe\n";
     const intptr_t wrote = rad_syscall_dispatch(RAD_SYSCALL_WRITE, 1, reinterpret_cast<uintptr_t>(message), sizeof(message) - 1, 0, 0, 0);
     if (pid == 0 && time_status == RAD_STATUS_OK && wrote == static_cast<intptr_t>(sizeof(message) - 1)) {
         append_text("RADIX_POSIX_ABI_OK\n");
@@ -1535,7 +1535,7 @@ bool nano_autotest_file_matches(void) {
     size_t bytes = 0;
     const rad_status_t read = rad_vfs_read(file, buffer, sizeof(buffer) - 1u, &bytes);
     rad_vfs_close(file);
-    return read == RAD_STATUS_OK && bytes >= 28u && memcmp(buffer, "RADix nano interactive smoke", 28u) == 0;
+    return read == RAD_STATUS_OK && bytes >= 28u && memcmp(buffer, "RADPx nano interactive smoke", 28u) == 0;
 }
 
 void nano_autotest_fail(const char *marker) {

@@ -1,4 +1,4 @@
-# RADix Platform Layout
+# RADPx Platform Layout
 
 `platforms/a53` contains portable ARMv8-A/Cortex-A53 execution support: boot
 normalization contracts, 4 KiB page-table setup, TTBR0 process roots, TTBR1

@@ -1,6 +1,6 @@
 {
   "name": "dns-resolver",
-  "description": "RADix DNS resolver configuration service",
+  "description": "RADPx DNS resolver configuration service",
   "exec": "/sbin/dns-resolver",
   "args": ["/etc/radix/network/dns-resolver.json"],
   "type": "simple",

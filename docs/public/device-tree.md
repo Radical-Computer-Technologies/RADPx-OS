@@ -1,6 +1,6 @@
 # Overlay And Device Tree Guide {#device_tree_guide}
 
-RADix-OS uses `.radoverlay` blobs as its runtime device tree format. The JSON
+RADPx-OS uses `.radoverlay` blobs as its runtime device tree format. The JSON
 source is compiled by `tools/radoverlay_compile.py` and loaded through
 `rad_overlay_load_file()` or `rad_overlay_load_memory()`.
 
@@ -104,5 +104,5 @@ overlay format for now.
 ## Current Limits
 
 Crimson 0.2.0 overlays are a compact runtime binding format, not a full Linux
-DTB replacement. They intentionally cover the current RADix buses, IRQ domains,
+DTB replacement. They intentionally cover the current RADPx buses, IRQ domains,
 boot metadata, framebuffer selection, and boot-service seeds first.

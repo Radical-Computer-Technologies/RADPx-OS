@@ -1,6 +1,6 @@
-# RADix-OS
+# RADPx-OS (Radical Posix OS)
 
-RADix OS is a POSIX-inspired operating system targeting hybrid RTOS-like
+RADPx OS is a POSIX-inspired operating system targeting hybrid RTOS-like
 performance with a POSIX-like feature set.
 
 ## Layout
@@ -12,14 +12,14 @@ performance with a POSIX-like feature set.
 - `tools/embedded/` contains the current bootable targets and smoke scripts:
   the x86_64 GRUB terminal and RADCompositor/Slint VM profiles, and the
   ZuBoard-1CG (ZynqMP A53) serial target under `radix_zuboard_1cg/`.
-- `tests/` contains host-side RADix kernel tests.
+- `tests/` contains host-side RADPx kernel tests.
 
 RADLib is now an optional sibling dependency for RADLib/Slint UI integration.
 Kernel-only builds do not require RADLib.
 
 ## Building with RadBuild
 
-RadBuild is the build driver for RADix-OS. Install the frozen release once and
+RadBuild is the build driver for RADPx-OS. Install the frozen release once and
 invoke the `radbuild` command directly — no Python checkout or interpreter
 handling required:
 
@@ -93,7 +93,7 @@ tools/embedded/radix_zuboard_1cg/qemu_smp_smoke.sh      # second A53 core (-smp 
 
 ## API Documentation
 
-RADix-OS uses Doxygen for the public Crimson 0.1.0 experimental kernel API
+RADPx-OS uses Doxygen for the public Crimson 0.1.0 experimental kernel API
 docs:
 
 ```bash

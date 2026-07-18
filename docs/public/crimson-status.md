@@ -1,6 +1,6 @@
 # Crimson 0.2.0 Status {#crimson_status}
 
-Crimson 0.2.0 is an experimental beta package line for RADix-OS. The branch goal is to
+Crimson 0.2.0 is an experimental beta package line for RADPx-OS. The branch goal is to
 stabilize the kernel-facing API, x86 VM smoke path, Slint shell integration,
 overlay binding, filesystem profile, and driver model enough for repeatable
 testing.

@@ -1,4 +1,4 @@
-radix|RADix framebuffer terminal,
+radix|RADPx framebuffer terminal,
     am, bce, mir, msgr, xenl,
     colors#16, cols#120, lines#30, pairs#256,
     bel=^G,

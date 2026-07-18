@@ -48,7 +48,7 @@ controllers provide channels for peripherals such as SPI TX/RX.
 ## Overlay Tree And IRQs
 
 Use the overlay APIs to load runtime tree blobs, query properties, and bind
-devices. IRQ domains convert tree-local `interrupts` cells into flat RADix IRQ
+devices. IRQ domains convert tree-local `interrupts` cells into flat RADPx IRQ
 resources that drivers can enable, disable, and attach handlers to.
 
 ## Display And Input

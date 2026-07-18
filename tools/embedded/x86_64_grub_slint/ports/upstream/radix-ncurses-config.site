@@ -1,9 +1,9 @@
-# RADix cross-configure defaults for upstream ncurses.
+# RADPx cross-configure defaults for upstream ncurses.
 #
 # These intentionally mark unimplemented kernel facilities as unavailable.
 # The libc may expose ENOSYS entry points for source compatibility, but
 # upstream packages should not compile optional paths that require them until
-# RADix implements the corresponding kernel semantics.
+# RADPx implements the corresponding kernel semantics.
 ac_cv_func_sigaction=no
 ac_cv_func_sigvec=no
 ac_cv_func_sigprocmask=no

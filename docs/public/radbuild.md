@@ -1,13 +1,13 @@
 # RadBuild Integration {#radbuild_integration}
 
-RADix-OS uses RadBuild 0.2.1 as the canonical graph entrypoint for repeatable
+RADPx-OS uses RadBuild 0.2.1 as the canonical graph entrypoint for repeatable
 x86 VM image builds. Crimson defines standalone RadBuild project JSON files for
 the terminal and RADCompositor/Slint profiles, plus a root `settings.json` that
 can build both profiles together.
 
 ## Build Command
 
-Run from the RADix-OS repository root:
+Run from the RADPx-OS repository root:
 
 ```bash
 radbuild build os --settings settings.json --json-events
@@ -50,7 +50,7 @@ Crimson fields are:
 - `terminal_theme`: framebuffer terminal color/theme selection.
 - `terminal_autocomplete`: enables `rash` tab completion.
 - `terminal_posix_compat`: enables the POSIX terminal compatibility layer.
-- `terminal_ncurses`: stages the RADix terminfo/sysroot readiness pieces for
+- `terminal_ncurses`: stages the RADPx terminfo/sysroot readiness pieces for
   ncurses-style ports.
 - `terminal_nano`: disabled by default; reserved for the experimental upstream
   nano port while TTY/libc compatibility matures.
@@ -70,7 +70,7 @@ The generated ext4 image stages a Unix-like base layout:
 
 Kernel modules use the `.rko` extension under `/lib/radix/modules`. Dynamic
 shared objects use `.rso` under `/lib` or `/usr/lib` once the runtime dynamic
-linker lands. These names are RADix-specific and intentionally do not collide
+linker lands. These names are RADPx-specific and intentionally do not collide
 with Linux `.ko` kernel modules or `.so` shared libraries.
 
 RadBuild writes the machine-readable manifest at:
@@ -80,11 +80,11 @@ RadBuild writes the machine-readable manifest at:
 ```
 
 `artifacts/` and `.radmeta/` are local build outputs and are intentionally not
-tracked in the RADix-OS source repository.
+tracked in the RADPx-OS source repository.
 
 ## Publication and Packagegroups
 
-RADix-OS source documentation, generated API docs, VM image bundles, and
+RADPx-OS source documentation, generated API docs, VM image bundles, and
 `.radpm` packages are published through RadicalPackages experimental releases.
 RadBuild can consume packagegroups from that repository during image creation:
 

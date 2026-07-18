@@ -1,6 +1,6 @@
 {
   "name": "time-sync",
-  "description": "RADix NTP/SNTP realtime clock synchronization service",
+  "description": "RADPx NTP/SNTP realtime clock synchronization service",
   "exec": "/sbin/time-sync",
   "args": ["/etc/radix/time/time-sync.json"],
   "type": "simple",

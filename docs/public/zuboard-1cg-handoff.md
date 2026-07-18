@@ -1,6 +1,6 @@
 # ZuBoard 1CG A53 Handoff Status
 
-This note captures the current handoff point for the RADix ZuBoard/ZynqMP A53
+This note captures the current handoff point for the RADPx ZuBoard/ZynqMP A53
 bring-up.
 
 ## What Works

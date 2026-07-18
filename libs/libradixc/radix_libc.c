@@ -1205,7 +1205,7 @@ char *strerror(int errnum) {
     case ENOENT: return "No such file";
     case ENOMEM: return "Out of memory";
     case ENOSYS: return "Not implemented";
-    default: return "RADix error";
+    default: return "RADPx error";
     }
 }
 
@@ -1563,7 +1563,7 @@ static struct passwd g_root_passwd = {
     (char*)"x",
     0,
     0,
-    (char*)"RADix root",
+    (char*)"RADPx root",
     (char*)"/root",
     (char*)"/bin/rash",
 };

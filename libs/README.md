@@ -1,6 +1,6 @@
-# RADix Libraries
+# RADPx Libraries
 
-This directory owns RADix-provided userspace and kernel-adjacent library source.
+This directory owns RADPx-provided userspace and kernel-adjacent library source.
 Target build trees under `tools/` may package these libraries into a sysroot,
 rootfs, archive, or `.rso`, but they should not own the library implementation.
 

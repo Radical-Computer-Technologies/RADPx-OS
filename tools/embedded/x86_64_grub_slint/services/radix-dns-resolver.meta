@@ -5,4 +5,4 @@ service=/etc/radix/services/dns-resolver.json
 config=/etc/radix/network/dns-resolver.json
 entry=/sbin/dns-resolver
 requires=radix-network
-note=RADix DNS resolver configuration service package.
+note=RADPx DNS resolver configuration service package.

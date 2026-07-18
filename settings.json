@@ -1,12 +1,12 @@
 {
   "radbuild_schema": "2.0",
   "radbuild_version": "0.2.1",
-  "project_name": "RADix-OS",
+  "project_name": "RADPx-OS",
   "systems": [
     {
       "id": "radix-x86-64-grub-terminal",
       "type": "os.radix",
-      "name": "RADix x86_64 GRUB terminal VM image",
+      "name": "RADPx x86_64 GRUB terminal VM image",
       "provider": "radix-os",
       "depends_on": [],
       "toolchain": {
@@ -80,7 +80,7 @@
     {
       "id": "radix-x86-64-grub-wm",
       "type": "os.radix",
-      "name": "RADix x86_64 GRUB RADCompositor WM image",
+      "name": "RADPx x86_64 GRUB RADCompositor WM image",
       "provider": "radix-os",
       "depends_on": [],
       "toolchain": {
@@ -157,7 +157,7 @@
     {
       "id": "radix-zuboard-1cg-serial",
       "type": "os.radix",
-      "name": "RADix ZUBoard 1CG ext4 rootfs serial image",
+      "name": "RADPx ZUBoard 1CG ext4 rootfs serial image",
       "provider": "radix-os",
       "depends_on": [],
       "toolchain": {
@@ -223,7 +223,7 @@
     {
       "id": "radix-zuboard-1cg-qemu",
       "type": "os.radix",
-      "name": "RADix ZUBoard 1CG QEMU serial image",
+      "name": "RADPx ZUBoard 1CG QEMU serial image",
       "provider": "radix-os",
       "depends_on": [],
       "toolchain": {

@@ -3,4 +3,4 @@ upstream=nano
 upstream_version=9.0
 upstream_sha256=9f384374b496110a25b73ad5a5febb384783c6e3188b37063f677ac908013fde
 profiles=tiny,full
-note=RADix freestanding nano port target; upstream source is pinned for full libc/ncurses convergence.
+note=RADPx freestanding nano port target; upstream source is pinned for full libc/ncurses convergence.

@@ -39,7 +39,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          path: RADix-OS
+          path: RADPx-OS
       - uses: actions/checkout@v4
         with:
           repository: Radical-Computer-Technologies/RadBuild
@@ -49,7 +49,7 @@ jobs:
       # settings.ci.json's radpm block stages coreutils (radix-core), radlib, and
       # vim-tiny into the rootfs; without them the shell's execve of ls/clear/etc.
       # fails (RADIX_USER_EXECVE_LOAD_NOT_FOUND). The radpm repository path
-      # "../RadicalPackages" resolves relative to the settings dir (RADix-OS/), so
+      # "../RadicalPackages" resolves relative to the settings dir (RADPx-OS/), so
       # check it out as a sibling. (The token must have RadicalPackages read too.)
       - uses: actions/checkout@v4
         with:
@@ -69,7 +69,7 @@ jobs:
       - name: Build and smoke via RadBuild
         run: |
           python3 RadBuild/radbuild/.tools/radbuild.py build os \
-            --settings RADix-OS/settings.ci.json \
+            --settings RADPx-OS/settings.ci.json \
             --system radix-x86-64-grub-terminal-ci \
             --json-events
       - name: Upload smoke logs
@@ -77,7 +77,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: x86-terminal-smoke-logs
-          path: RADix-OS/.radmeta/ci/terminal/logs/
+          path: RADPx-OS/.radmeta/ci/terminal/logs/
           if-no-files-found: ignore
 
   zuboard-qemu-smoke:
@@ -91,7 +91,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          path: RADix-OS
+          path: RADPx-OS
       - uses: actions/checkout@v4
         with:
           repository: Radical-Computer-Technologies/RadBuild
@@ -110,19 +110,19 @@ jobs:
       - name: Install Arm GNU toolchain # no-op on cache hit (script skips if present)
         run: |
           RADLIB_ROOT="$GITHUB_WORKSPACE/RADLib" \
-            RADix-OS/tools/embedded/setup_circle_toolchains.sh --arch aarch64
+            RADPx-OS/tools/embedded/setup_circle_toolchains.sh --arch aarch64
       - name: Build image and run QEMU marker smoke via RadBuild
         run: |
           python3 RadBuild/radbuild/.tools/radbuild.py build os \
-            --settings RADix-OS/settings.ci.json \
+            --settings RADPx-OS/settings.ci.json \
             --system radix-zuboard-1cg-qemu-ci \
             --json-events
       - name: Assert QEMU SD image exists # belt-and-braces vs silent image skips
-        run: test -s RADix-OS/artifacts/radix/zuboard-1cg-qemu/radix-zuboard-1cg-qemu.img
+        run: test -s RADPx-OS/artifacts/radix/zuboard-1cg-qemu/radix-zuboard-1cg-qemu.img
       - name: Upload serial and build logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: zuboard-qemu-logs
-          path: RADix-OS/.radmeta/ci/zuboard-qemu/logs/
+          path: RADPx-OS/.radmeta/ci/zuboard-qemu/logs/
           if-no-files-found: ignore

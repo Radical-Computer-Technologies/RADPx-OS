@@ -200,7 +200,7 @@ def main() -> int:
         ),
         encoding="utf-8",
     )
-    (out / "issue").write_text(f"RADix OS {version} x86_64\nKernel API {version}\n\n", encoding="utf-8")
+    (out / "issue").write_text(f"RADPx OS {version} x86_64\nKernel API {version}\n\n", encoding="utf-8")
     (out / "hostname").write_text(f"{args.hostname}\n", encoding="utf-8")
     (out / "terminal.theme").write_text(
         "\n".join(
@@ -332,7 +332,7 @@ def main() -> int:
     zone_file.write_text(
         "\n".join(
             [
-                "# RADix tzdata package marker.",
+                "# RADPx tzdata package marker.",
                 "# Full binary TZif coverage is packaged by radix-tzdata releases as the timezone loader grows.",
                 f"TZID={args.timezone}",
                 "",
@@ -346,11 +346,11 @@ def main() -> int:
         encoding="utf-8",
     )
     (out / "rko-note.txt").write_text(
-        ".rko files are trusted RADix kernel objects and must be loaded only from privileged module paths.\n",
+        ".rko files are trusted RADPx kernel objects and must be loaded only from privileged module paths.\n",
         encoding="utf-8",
     )
     (out / "rso-note.txt").write_text(
-        ".rso files are RADix shared objects; future POSIX compatibility may add .so aliases.\n",
+        ".rso files are RADPx shared objects; future POSIX compatibility may add .so aliases.\n",
         encoding="utf-8",
     )
     return 0

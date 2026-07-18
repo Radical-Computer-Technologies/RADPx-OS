@@ -3,7 +3,7 @@
 
 #include <radixkernel/radixkernel.h>
 
-/** x86_64 user-mode execution context used by the RADix process layer. */
+/** x86_64 user-mode execution context used by the RADPx process layer. */
 typedef struct x86_user_context {
     /** Kernel stack pointer used while handling this process. */
     uint64_t kernel_rsp;
@@ -13,7 +13,7 @@ typedef struct x86_user_context {
     uint64_t stack_top;
     /** Reason code recorded when returning from user mode. */
     uint64_t exit_reason;
-    /** RADix process identifier. */
+    /** RADPx process identifier. */
     int32_t pid;
     /** Reserved for ABI alignment. */
     uint32_t reserved;

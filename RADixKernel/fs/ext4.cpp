@@ -1322,7 +1322,7 @@ extern "C" int x86_ext4_self_test(void) {
     }
     rad_debug_marker("RADIX_EXT4_ROOTFS_OK");
     rad_debug_marker("RADIX_ROOTFS_INIT_FOUND");
-    const char message[] = "RADix ext4 write path\n";
+    const char message[] = "RADPx ext4 write path\n";
     rad_file_t file = nullptr;
     if (rad_vfs_open("/tmp/radwrite.txt", RAD_VFS_READ | RAD_VFS_WRITE, &file) != RAD_STATUS_OK) {
         rad_debug_marker("RADIX_EXT4_RW_FAIL");

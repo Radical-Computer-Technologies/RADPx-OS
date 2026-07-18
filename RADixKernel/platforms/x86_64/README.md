@@ -1,4 +1,4 @@
-# RADix x86_64 Platform
+# RADPx x86_64 Platform
 
 This directory owns x86_64-specific kernel/platform implementation for the GRUB
 boot path: early boot assembly, linker script, CPU/IRQ/VM glue, userspace entry,

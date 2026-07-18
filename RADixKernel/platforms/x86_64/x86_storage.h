@@ -10,11 +10,11 @@ typedef struct x86_storage_summary {
     uint32_t pci_devices;
     /** Number of virtio block devices discovered. */
     uint32_t virtio_block_devices;
-    /** Number of block devices registered with the RADix block layer. */
+    /** Number of block devices registered with the RADPx block layer. */
     uint32_t registered_block_devices;
     /** Number of virtio network devices discovered. */
     uint32_t virtio_net_devices;
-    /** Number of network devices registered with the RADix network layer. */
+    /** Number of network devices registered with the RADPx network layer. */
     uint32_t registered_net_devices;
     /** PCI bus containing the primary virtio block device. */
     uint8_t virtio_bus;

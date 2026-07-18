@@ -37,7 +37,7 @@ int main(void) {
     start_color();
     init_pair(1, COLOR_GREEN, COLOR_BLACK);
     clear();
-    mvaddstr(1, 2, "RADix dynamic ncurses");
+    mvaddstr(1, 2, "RADPx dynamic ncurses");
     mvaddstr(3, 4, "libncurses.rso");
     move(3, 4);
     refresh();

@@ -1,4 +1,4 @@
-" RADix OS Vim defaults.
+" RADPx OS Vim defaults.
 "
 " Keep this file self-contained until the full upstream Vim runtime is staged.
 

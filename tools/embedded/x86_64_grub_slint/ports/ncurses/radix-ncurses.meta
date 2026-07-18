@@ -10,4 +10,4 @@ libraries=/usr/lib/libradixc.rso,/usr/lib/libtinfo.rso,/usr/lib/libncurses.rso,/
 headers=/usr/include/curses.h,/usr/include/ncurses.h,/usr/include/term.h,/usr/include/termcap.h,/usr/include/unctrl.h,/usr/include/panel.h,/usr/include/menu.h,/usr/include/form.h,/usr/include/eti.h,/usr/include/ncurses_dll.h
 provides=libncurses,libncursesw,libtinfo,libradixc,radix-terminal-ui-dev
 requires=radix-core
-note=RADix ncurses/tinfo shared runtime, static archives, and terminal UI development headers.
+note=RADPx ncurses/tinfo shared runtime, static archives, and terminal UI development headers.

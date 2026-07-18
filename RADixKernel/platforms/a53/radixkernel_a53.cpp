@@ -1245,7 +1245,7 @@ extern "C" intptr_t rad_a53_syscall_dispatch(uintptr_t number, uintptr_t arg0, u
     (void)arg3;
     (void)arg4;
     (void)arg5;
-    // Userland (libradixc, embedded stubs) passes RADix syscall numbers in x8;
+    // Userland (libradixc, embedded stubs) passes RADPx syscall numbers in x8;
     // dispatch them natively. Pointer arguments are always marshalled through
     // kernel buffers -- the core dispatcher dereferences raw pointers, so only
     // scalar-argument syscalls may fall through to it.

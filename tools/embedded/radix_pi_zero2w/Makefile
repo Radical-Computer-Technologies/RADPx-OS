@@ -1,5 +1,5 @@
 #
-# Standalone RADix-OS payload for Raspberry Pi Zero 2 W.
+# Standalone RADPx-OS payload for Raspberry Pi Zero 2 W.
 #
 
 RADIX_OS_ROOT ?= ../../..

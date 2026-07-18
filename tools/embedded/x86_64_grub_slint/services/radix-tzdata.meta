@@ -4,4 +4,4 @@ kind=data
 data=/usr/share/zoneinfo
 config=/etc/timezone,/etc/localtime
 requires=radix-core
-note=RADix timezone data package; default image includes UTC/local selectors and package-owned zoneinfo path.
+note=RADPx timezone data package; default image includes UTC/local selectors and package-owned zoneinfo path.

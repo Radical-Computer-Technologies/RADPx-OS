@@ -1,7 +1,7 @@
 # RADCompositor
 
 RADCompositor is the experimental Crimson window-composition service. It keeps
-Slint as a UI toolkit while RADix owns the desktop coordinate space, input
+Slint as a UI toolkit while RADPx owns the desktop coordinate space, input
 routing, z-order, and final framebuffer blit.
 
 The current implementation is monolithic and trusted: desktop and terminal

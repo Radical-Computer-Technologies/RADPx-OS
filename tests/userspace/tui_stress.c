@@ -26,7 +26,7 @@ int main(void) {
     }
 
     clear();
-    mvaddstr(1, 2, "RADix TUI Stress");
+    mvaddstr(1, 2, "RADPx TUI Stress");
     mvaddstr(3, 4, "> Terminal");
     mvaddstr(4, 4, "  Ncurses");
     move(3, 4);

@@ -997,7 +997,7 @@ void set_shell_state(const char *status) {
     const DesktopWindow *terminal = g_desktop.terminalWindow();
     (*g_desktop_shell)->set_surface_width(static_cast<float>(g_desktop_surface_width));
     (*g_desktop_shell)->set_surface_height(static_cast<float>(g_desktop_surface_height));
-    (*g_desktop_shell)->set_backend(shared_string("x86_64_grub / RADix"));
+    (*g_desktop_shell)->set_backend(shared_string("x86_64_grub / RADPx"));
     (*g_desktop_shell)->set_status(shared_string(status ? status : shell_status_text()));
     (*g_desktop_shell)->set_applications_open(g_desktop.applicationsMenuOpen());
     (*g_terminal_shell)->set_terminal(shared_string(g_terminal_visible_text));
@@ -1042,7 +1042,7 @@ void launch_terminal(const char *terminal_text) {
         if (status == RAD_STATUS_OK) {
             rad_debug_marker("RADIX_SLINT_APP_LAUNCH_PROCESS_OK");
             rad_debug_marker("RADIX_SLINT_APP_LIVE_PTY_OK");
-            append_terminal_text("RADix PTY terminal ready\n$ ", 27);
+            append_terminal_text("RADPx PTY terminal ready\n$ ", 27);
         }
     } else if (radix_shell_launch_terminal_process) {
         status = radix_shell_launch_terminal_process();

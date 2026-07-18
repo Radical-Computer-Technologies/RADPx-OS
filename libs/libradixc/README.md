@@ -1,6 +1,6 @@
 # libradixc
 
-`libradixc` is the current freestanding RADix C/POSIX compatibility library.
+`libradixc` is the current freestanding RADPx C/POSIX compatibility library.
 The x86_64 GRUB target builds this source into both `libradixc.a` and
 `libradixc.rso`, then stages those artifacts into its generated root filesystem.
 
