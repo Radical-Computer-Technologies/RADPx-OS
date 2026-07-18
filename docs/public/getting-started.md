@@ -3,8 +3,7 @@
 This page takes you from a fresh checkout to a running RADPx-OS image on two
 targets — the x86_64 GRUB terminal and the ZuBoard-1CG (ZynqMP Cortex-A53)
 under QEMU. It is the narrative companion to the command reference in the
-[README](../../README.md); read this first if you have not built RADPx-OS
-before.
+repository README; read this first if you have not built RADPx-OS before.
 
 ## What you are building
 
@@ -86,11 +85,11 @@ requires each `RAD_*` milestone marker to appear in order on the serial log.
 
 ## Where to go next
 
-- [API Structure](api-structure.md) — the stable `radkernel.h` C ABI and how the
-  subsystem headers fit together.
-- [Architecture & Layout](architecture.md) — the source tree: core, fs, drivers,
-  platforms, boards, runtime, hal.
-- [Networking](networking.md), [Device Tree](device-tree.md), and the
-  [ZuBoard-1CG](zuboard-1cg.md) bring-up notes for target-specific detail.
+- @ref api_structure — the stable `radkernel.h` C ABI and how the subsystem
+  headers fit together.
+- @ref architecture — the source tree: core, fs, drivers, platforms, boards,
+  runtime, hal.
+- @ref networking and @ref device_tree_guide, plus the ZuBoard-1CG bring-up
+  notes, for target-specific detail.
 - The public Crimson API docs are published through RadicalPackages under
   `docs/radpx-os/0.1.0/api/`.

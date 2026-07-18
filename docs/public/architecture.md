@@ -10,7 +10,7 @@ so you know where a given concern lives before you change it.
   target supplies a thin platform/board layer and a HAL; the core does not
   change per target.
 - **Stable C ABI.** Everything the kernel exposes goes through `radkernel.h`
-  (see [API Structure](api-structure.md)). Subsystem headers under
+  (see @ref api_structure). Subsystem headers under
   `RADKernel/headers/radkernel/` (`rad_vfs.h`, `rad_net.h`, `rad_spi.h`, …) each
   include that ABI so a driver or app pulls in only what it uses.
 - **Shared services, not copies.** Filesystems, drivers, and the freestanding
@@ -57,5 +57,5 @@ filesystem, the Cadence GEM driver, and the `zuboard_1cg` board entry. Because
 the core and shared services are identical across targets, parity work on one
 target (a filesystem fix, a syscall) benefits the others without a port.
 
-See [Getting Started](getting-started.md) to build and boot a target, and the
+See @ref getting_started to build and boot a target, and the
 [ZuBoard-1CG](zuboard-1cg.md) notes for the A53 bring-up specifics.
