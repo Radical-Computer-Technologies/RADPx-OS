@@ -32,7 +32,7 @@ LDFLAGS := -nostdlib -static -Wl,-T,$(BOARD_DIR)/linker.ld -Wl,--build-id=none
 
 OBJS := \
 	boot.o \
-	freestanding_runtime.o \
+	a53_freestanding.o \
 	kernel.o \
 	a53_init_image.o \
 	a53_radsh_image.o \
@@ -43,7 +43,8 @@ OBJS := \
 	radixkernel_overlay.o \
 	radixkernel_ext4.o \
 	radixkernel_hal_zynqmp.o \
-	gem_cadence.o
+	gem_cadence.o \
+	radixkernel_runtime_newlib.o
 
 USERLAND_ELFS := \
 	$(USER_BUILD_DIR)/radinit.elf \
@@ -102,7 +103,7 @@ $(PORTS_DIR)/.stamp: $(PORTS_SCRIPTS_DIR)/build_upstream_ncurses.sh $(PORTS_SCRI
 	touch $@
 
 radix-zuboard.elf: $(OBJS)
-	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(OBJS) -Wl,--start-group -lgcc -Wl,--end-group
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(OBJS) -Wl,--start-group -lc -lm -lgcc -Wl,--end-group
 
 radix-zuboard.img: radix-zuboard.elf
 	$(OBJCOPY) -O binary $< $@
@@ -110,11 +111,12 @@ radix-zuboard.img: radix-zuboard.elf
 boot.o: $(BOARD_DIR)/boot.S
 	$(CC) $(CFLAGS) $(ASFLAGS) -c -o $@ $<
 
-# Unified freestanding runtime (heap/malloc, mem/string, snprintf, C++ ABI stubs)
-# shared with x86 -- replaces both libs/freestanding/mem.c and the newlib glue, so
-# the a53 kernel no longer links the toolchain newlib (-lc -lm).
-freestanding_runtime.o: $(RADIX_OS_ROOT)/RADixKernel/runtime/freestanding_runtime.cpp
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -fno-builtin -c -o $@ $<
+# a53 uses the toolchain newlib (-lc -lm) for malloc/snprintf plus mem.c for the
+# mem/string family. The unified freestanding runtime (RADixKernel/runtime/) is
+# used by x86; switching a53 to it is deferred pending an intermittent heap-path
+# corruption seen only on a53 (init load hangs; see the milestone memory).
+a53_freestanding.o: $(RADIX_OS_ROOT)/libs/freestanding/mem.c
+	$(CC) $(CFLAGS) -fno-builtin -c -o $@ $<
 
 kernel.o: $(BOARD_DIR)/kernel.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c -o $@ $<

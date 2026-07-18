@@ -37,7 +37,13 @@ struct AllocationHeader {
 
 constexpr uint32_t AllocationMagic = 0x52414441u;
 
-alignas(64) uint8_t g_heap[64u * 1024u * 1024u];
+// Kernel heap size. x86 (which has no separate static page pool) defaults to a
+// large heap; targets with their own big static allocations (e.g. the a53 page
+// pool g_host_pages, 256 MiB) override this to a modest value via the build.
+#ifndef RADIX_KERNEL_HEAP_BYTES
+#define RADIX_KERNEL_HEAP_BYTES (64u * 1024u * 1024u)
+#endif
+alignas(64) uint8_t g_heap[RADIX_KERNEL_HEAP_BYTES];
 HeapBlock *g_heap_head = nullptr;
 volatile int g_heap_lock = 0;
 int g_cpp_ctor_ran = 0;
