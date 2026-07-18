@@ -18,6 +18,11 @@ RADIX_GEM_LOOPBACK_OK
 # (validates TX out to the host backend + RX back, vs. internal loopback above).
 RADIX_GEM_ARP_GATEWAY_OK
 RADIX_GEM_NET0_REGISTERED
+# Real traffic through the portable IP/UDP stack (socket -> UDP -> IPv4 -> ARP),
+# not raw L2: a datagram to the SLIRP gateway routes via send_udp_frame, so the
+# stack's frame egresses GEM (TX) and the ARP reply ingresses GEM (RX).
+RADIX_GEM_STACK_TX_OK
+RADIX_GEM_STACK_RX_OK
 RADIX_AARCH64_MMU_ON_OK
 RADIX_AARCH64_EXCEPTION_VECTORS_OK
 # Parity Stage 2a (2026-07-17): GICv2 + CNTP generic timer at 250 Hz.

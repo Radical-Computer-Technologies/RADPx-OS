@@ -337,6 +337,40 @@ void gem_slirp_arp_probe(GemDevice *device) {
     }
 }
 
+// Real-traffic-via-stack self-test. Unlike gem_slirp_arp_probe (which hand-builds
+// raw L2 frames and drives the MAC directly), this exercises the portable
+// socket -> UDP -> IPv4 -> ARP stack (RADixKernel_runtime.cpp). A datagram sent to
+// the SLIRP gateway 10.0.2.2 is NON-local, so rad_socket_sendto routes it through
+// send_udp_frame, which resolves the gateway's MAC via a real ARP exchange over
+// THIS device and then transmits the UDP frame. So the stack's traffic egresses
+// through GEM (TX) and the ARP reply ingresses through GEM (RX); both are proven
+// by the device packet counters moving. Deterministic under QEMU user-net (SLIRP
+// always answers the gateway ARP -- same guarantee that gates
+// RADIX_GEM_ARP_GATEWAY_OK). A no-op if sockets/net aren't ready (fd < 0).
+void gem_stack_traffic_selftest(GemDevice *device) {
+    const uint64_t tx0 = device->tx_packets;
+    const uint64_t rx0 = device->rx_packets;
+    const int32_t fd = rad_socket_create(RAD_AF_INET, RAD_SOCK_DGRAM, RAD_IPPROTO_UDP);
+    if (fd < 0) return;
+    rad_sockaddr_in_t gateway{};
+    gateway.family = RAD_AF_INET;
+    gateway.port = 9u; // discard
+    gateway.address = rad_ipv4_address_t{{10u, 0u, 2u, 2u}};
+    static const char payload[] = "radix-gem-stack";
+    (void)rad_socket_sendto(fd, payload, sizeof(payload), 0u, &gateway, sizeof(gateway));
+    // Drain inbound so the ARP reply (received via GEM by the stack's poll) is
+    // accounted; also lets any datagram land.
+    char scratch[64];
+    rad_sockaddr_in_t from{};
+    size_t from_len = sizeof(from);
+    for (int i = 0; i < 8; ++i) {
+        (void)rad_socket_recvfrom(fd, scratch, sizeof(scratch), 0u, &from, &from_len);
+    }
+    rad_fd_close(fd);
+    if (device->tx_packets > tx0) rad_debug_marker("RADIX_GEM_STACK_TX_OK");
+    if (device->rx_packets > rx0) rad_debug_marker("RADIX_GEM_STACK_RX_OK");
+}
+
 // ---------------------------------------------------------------------------
 // rad_device_ops_t.ioctl contract (mirrors x86 net_ioctl).
 // ---------------------------------------------------------------------------
@@ -454,6 +488,10 @@ extern "C" rad_status_t rad_zynqmp_gem_init(void) {
     const rad_status_t status = rad_net_device_register(device->name, &ops);
     if (status == RAD_STATUS_OK) {
         rad_debug_marker("RADIX_GEM_NET0_REGISTERED");
+        // Now that /dev/net0 is registered, drive real traffic through the IP/UDP
+        // stack (not just raw L2 loopback/ARP) and confirm it egresses/ingresses
+        // GEM.
+        gem_stack_traffic_selftest(device);
     } else {
         rad_debug_marker("RADIX_GEM_NET0_REGISTER_FAIL");
     }
