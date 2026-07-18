@@ -3,6 +3,7 @@
 #
 
 RADIX_OS_ROOT ?= ../../..
+BOARD_DIR := $(RADIX_OS_ROOT)/RADixKernel/boards/zuboard_1cg
 RADLIB_ROOT ?= $(RADIX_OS_ROOT)/../RADLib
 TOOLCHAIN_PREFIX ?= $(RADLIB_ROOT)/.radbuild/toolchains/arm-gnu-toolchain-15.2.rel1-x86_64-aarch64-none-elf/bin/aarch64-none-elf-
 RADIX_ZYNQMP_SDHCI_BASE ?= 0xff170000u
@@ -27,7 +28,7 @@ USER_BUILD_DIR := userland-a53
 USER_INCLUDES := -I$(RADIX_OS_ROOT)/libs/libradixc/include -I$(RADIX_OS_ROOT)/userland/core/login -I$(USER_BUILD_DIR)
 USER_CFLAGS := -Os $(A53_USER_ARCH_FLAGS) -ffreestanding -fno-builtin -fno-pic -fno-pie -fno-stack-protector -fomit-frame-pointer -Wall -Wextra $(USER_INCLUDES)
 USER_ASFLAGS := $(ASFLAGS) $(USER_INCLUDES)
-LDFLAGS := -nostdlib -static -Wl,-T,$(CURDIR)/linker.ld -Wl,--build-id=none
+LDFLAGS := -nostdlib -static -Wl,-T,$(BOARD_DIR)/linker.ld -Wl,--build-id=none
 
 OBJS := \
 	boot.o \
@@ -106,7 +107,7 @@ radix-zuboard.elf: $(OBJS)
 radix-zuboard.img: radix-zuboard.elf
 	$(OBJCOPY) -O binary $< $@
 
-boot.o: boot.S
+boot.o: $(BOARD_DIR)/boot.S
 	$(CC) $(CFLAGS) $(ASFLAGS) -c -o $@ $<
 
 # Unified freestanding runtime (heap/malloc, mem/string, snprintf, C++ ABI stubs)
@@ -115,7 +116,7 @@ boot.o: boot.S
 freestanding_runtime.o: $(RADIX_OS_ROOT)/RADixKernel/runtime/freestanding_runtime.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -fno-builtin -c -o $@ $<
 
-kernel.o: kernel.cpp
+kernel.o: $(BOARD_DIR)/kernel.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c -o $@ $<
 
 a53-init.elf: $(RADIX_OS_ROOT)/userland/embedded/a53/init.S
