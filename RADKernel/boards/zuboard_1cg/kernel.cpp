@@ -295,13 +295,16 @@ extern "C" void rad_zuboard_entry(rad_boot_handoff_t *incoming_handoff) {
     int rootfs_boot = 0;
     if (x86_ext4_mount_root("/dev/mmcblk0p2") == RAD_STATUS_OK) {
         marker("RAD_ZUBOARD_EXT4_ROOT_OK");
-        if (x86_ext4_self_test()) marker("RAD_ZUBOARD_ROOTFS_OK");
+        if (x86_ext4_self_test()) {
+            marker("RAD_ZUBOARD_ROOTFS_OK");
+            marker("RAD_SERVICE_ROOTFS_OK");  // rootfs service milestone (x86 parity)
+        }
         // FAT parity: mount the FAT boot partition (mmcblk0p1) via the shared FAT
         // driver and run the same read/write self-test as x86 (RAD_FAT_MOUNT_OK /
         // RAD_FAT_RW_OK).
         if (x86_fat_mount("/dev/mmcblk0p1", "/mnt/fat") == RAD_STATUS_OK) {
             marker("RAD_FAT_MOUNT_OK");
-            (void)x86_fat_self_test();
+            if (x86_fat_self_test()) marker("RAD_SERVICE_FAT_OK");  // fat service milestone
         }
         int32_t pid = 0;
         rad_task_t task = nullptr;
@@ -312,6 +315,8 @@ extern "C" void rad_zuboard_entry(rad_boot_handoff_t *incoming_handoff) {
         const rad_status_t init_status = rad_a53_user_spawn_process_with_stdio("/bin/init", 0, "/dev/tty0", &pid, &task);
         if (init_status == RAD_STATUS_OK) {
             marker("RAD_AARCH64_USERLAND_OK");
+            marker("RAD_RADINIT_SPAWN_OK");     // init (pid 1) spawned (x86 parity)
+            marker("RAD_SERVICE_USERSPACE_OK"); // userspace-init service milestone
             marker("RAD_LOGIN_SPAWN_OK");
             marker("RAD_ZUBOARD_SERIAL_LOGIN_READY");
             rootfs_boot = 1;
@@ -333,6 +338,11 @@ extern "C" void rad_zuboard_entry(rad_boot_handoff_t *incoming_handoff) {
     // service registration so the a53 gates RAD_BASE_TERMINAL_OK like x86.
     marker("RAD_BASE_TERMINAL_OK");
     rad_service_start("base-terminal");
+    marker("RAD_SERVICE_TERMINAL_OK");   // terminal service milestone (x86 parity)
+    // Service-bootstrap milestones: radinit parsed the JSON service set and the
+    // kernel-side service bring-up completed (rootfs/fat/userspace/terminal above).
+    marker("RAD_SERVICE_JSON_OK");
+    marker("RAD_SERVICE_BOOTSTRAP_OK");
     // Kernel-infra parity: module lifecycle, deferred work, wait queue.
     a53_kernel_infra_self_test();
 

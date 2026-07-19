@@ -438,6 +438,7 @@ void gem_socket_dgram_selftest() {
     // host responder on the SLIRP gateway 10.0.2.2 (echo 12301, NTP 12300). These
     // egress/ingress through GEM and only complete when run under the net smoke
     // that starts host_udp_ntp_responder.py; a plain boot just skips the markers.
+    bool net_host_ok = false;
     const int32_t echo_client = rad_socket_create(RAD_AF_INET, RAD_SOCK_DGRAM, RAD_IPPROTO_UDP);
     if (echo_client >= 0) {
         rad_sockaddr_in_t host{};
@@ -459,6 +460,7 @@ void gem_socket_dgram_selftest() {
                     && memcmp(echo_received, echo_payload, sizeof(echo_payload)) == 0) {
                     rad_debug_marker("RAD_NET_UDP_RX_OK");
                     rad_debug_marker("RAD_NET_HOST_UDP_ECHO_OK");
+                    net_host_ok = true;
                     break;
                 }
                 rad_sleep_ms(1);
@@ -511,6 +513,11 @@ void gem_socket_dgram_selftest() {
     }
     if (tcp_client >= 0) rad_fd_close(tcp_client);
     if (tcp_server >= 0) rad_fd_close(tcp_server);
+
+    // Network service milestone (x86 parity): the full stack -- in-guest loopback
+    // plus the host UDP-echo leg -- is up. Gated on the host echo so it only fires
+    // under the net smoke (host responder running), matching x86's network smoke.
+    if (net_host_ok) rad_debug_marker("RAD_SERVICE_NETWORK_OK");
 }
 
 // RX-complete interrupt handler (GIC SPI 57). Runs in IRQ context, so it stays

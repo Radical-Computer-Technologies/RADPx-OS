@@ -1,6 +1,6 @@
-# Ordered serial markers gating the ZuBoard QEMU smoke (regenerated to the
-# actual boot order of the freshly-rebuilt rootfs, 2026-07-19). '~' = presence-
-# only (emitted from IRQ/child context; may race the ordered cursor).
+# Ordered serial markers gating the ZuBoard QEMU smoke (regenerated 2026-07-19 to the
+# fresh-rootfs boot order incl. TCP + kernel-infra + named-service parity markers).
+# '~' = presence-only (IRQ/child context; may race the ordered cursor).
 RAD_ZUBOARD_SD_OK
 RAD_ZUBOARD_MMCBLK0_OK
 RAD_ZUBOARD_PARTITION_BOOT_OK
@@ -28,6 +28,7 @@ RAD_TCP_CONNECT_OK
 RAD_TCP_LISTEN_ACCEPT_OK
 RAD_TCP_STREAM_IO_OK
 RAD_TCP_SHUTDOWN_OK
+RAD_SERVICE_NETWORK_OK
 RAD_AARCH64_MMU_ON_OK
 RAD_AARCH64_EXCEPTION_VECTORS_OK
 RAD_TIMER_IRQ_OK
@@ -43,13 +44,20 @@ RAD_EXT4_TRUNCATE_OK
 RAD_EXT4_SYMLINK_OK
 RAD_EXT4_UNLINK_OK
 RAD_EXT4_RMDIR_OK
+RAD_SERVICE_ROOTFS_OK
 RAD_FAT_MOUNT_OK
 RAD_FAT_RW_OK
+RAD_SERVICE_FAT_OK
 RAD_AARCH64_USER_PROCESS_SPAWN_OK
+RAD_RADINIT_SPAWN_OK
+RAD_SERVICE_USERSPACE_OK
 RAD_LOGIN_SPAWN_OK
 RAD_ZUBOARD_SERIAL_LOGIN_READY
 RAD_ZUBOARD_SERIAL_READY
 RAD_BASE_TERMINAL_OK
+RAD_SERVICE_TERMINAL_OK
+RAD_SERVICE_JSON_OK
+RAD_SERVICE_BOOTSTRAP_OK
 RAD_MODULE_LIFECYCLE_OK
 RAD_DEFERRED_WORK_OK
 RAD_WAIT_QUEUE_OK
