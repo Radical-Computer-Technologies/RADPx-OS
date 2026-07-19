@@ -12,13 +12,25 @@ QEMU="$(rad_resolve_qemu_system_aarch64 "$ROOT")"
 make -C "$PAYLOAD_DIR" clean >/dev/null 2>&1 || true
 make -C "$PAYLOAD_DIR" >/dev/null
 
+# Build the ext4-rootfs SD image so the Pi boots the full userland (radinit ->
+# services -> rootfs) and gates RAD_SERVICE_ROOTFS_OK etc. The image is derived
+# from the shared ZuBoard rootfs (same aarch64 userland); if that source rootfs
+# has not been built, the marker gate cannot be satisfied -- build it first.
+SD_IMG="$ROOT/artifacts/rad/pi-zero2w/pi-zero2w-sd.img"
+if ! bash "$ROOT/tools/embedded/rad_pi_zero2w_mkimage.sh"; then
+    echo "rad_pi_zero2w_smoke: could not build the SD rootfs image (see above)." >&2
+    echo "  The Pi marker gate requires the ext4 rootfs; build the ZuBoard rootfs first." >&2
+    exit 1
+fi
+
 mkdir -p "$(dirname "$LOG")"
 set +e
-timeout "${RAD_PI_QEMU_TIMEOUT:-8s}" "$QEMU" \
+timeout "${RAD_PI_QEMU_TIMEOUT:-20s}" "$QEMU" \
     -M raspi3b \
     -cpu cortex-a53 \
     -m 1G \
     -kernel "$PAYLOAD_DIR/RADKRN.IMG" \
+    -drive "file=$SD_IMG,if=sd,format=raw" \
     -serial stdio \
     -display none \
     -no-reboot \
@@ -41,30 +53,26 @@ require_marker() {
 }
 
 # Gate against the ordered parity marker set (kept in expected-markers.txt next to
-# the board sources). This is the set the bcm283x Pi Zero 2 W boots reliably from a
-# kernel-only image under QEMU raspi3b: the SoC HAL bring-up, the shared A53
-# kernel (MMU/exception/EL0/process-arch), the x86<->a53 parity self-tests
-# (kernel-infra, in-guest UDP+TCP L4, named services, base-terminal), preemption
-# (QA7 local-timer + EL1 CNTP: RAD_TIMER_IRQ_OK / RAD_PREEMPT_SCHED_OK), the full
-# preemptive userland smoke (init -> radsh -> fork/COW/exec/wait/reap/shebang:
-# RAD_AARCH64_FORK/USER_FORK/COW_PAGE_FAULT/USER_ZOMBIE_REAP/USER_EXECVE/
-# USER_EXECVE_REENTER/USER_PIPE_FORK/USER_WAIT_WAKE/USER_SCRIPT_SHEBANG/
-# USERMODE_EXIT_OK), and the framebuffer/compositor path.
+# the board sources). The bcm283x Pi Zero 2 W boots the full stack under QEMU
+# raspi3b: SoC HAL bring-up, the real SDHCI card + MBR partitions, the ext4 rootfs
+# off the SD (RAD_SERVICE_ROOTFS_OK), the shared A53 kernel (MMU/exception/EL0/
+# process-arch), the x86<->a53 parity self-tests (kernel-infra, in-guest UDP+TCP
+# L4, named services), preemption (QA7 local-timer + EL1 CNTP: RAD_TIMER_IRQ_OK /
+# RAD_PREEMPT_SCHED_OK), and the full rootfs userland (radinit -> services ->
+# boot-session/rash: RAD_RADINIT_*, RAD_RASH_*, fork/COW/exec/wait/reap markers).
 GATE="$ROOT/tools/embedded/rad_pi_zero2w/expected-markers.txt"
 while IFS= read -r marker; do
     [[ -z "$marker" || "$marker" == \#* ]] && continue
     require_marker "$marker"
 done < "$GATE"
 
-# DEFERRED -- the remaining ZuBoard markers not covered here need infrastructure
-# the Pi payload does not carry (it is a kernel-only image, no rootfs / no NIC):
-#   RAD_SERVICE_ROOTFS_OK / RAD_ZUBOARD_EXT4_ROOT_OK -- need an ext4 SD rootfs
-#     image (the Pi boots kernel-only with an embedded /bin; wiring a radbuild Pi
-#     SD image is the follow-up).
-#   RAD_LOGIN_OK -- the embedded init execs radsh directly; the full login.elf
-#     flow needs the rootfs userland.
+# RAD_LOGIN_OK is exercised by the interactive login smoke (rad_pi_zero2w_login_smoke.sh),
+# which types credentials -- this non-interactive marker gate stops at RAD_LOGIN_SPAWN_OK.
+#
+# DEFERRED -- genuinely absent hardware on QEMU raspi3b, not a bug:
 #   RAD_NET_HOST_UDP_ECHO_OK / RAD_NTP_* -- need a hardware NIC + SLIRP host
 #     responder; raspi3b has no GEM-equivalent (in-guest UDP/TCP L4 loopback is
-#     covered above and is NIC-independent).
+#     covered above and is NIC-independent). SD writes are also not modeled
+#     (read-only card), so RAD_FAT_RW_OK is not gated here.
 
 echo "RADPx-OS Pi Zero 2 W payload smoke passed ($(grep -cvE '^\s*(#|$)' "$GATE") markers): $LOG"

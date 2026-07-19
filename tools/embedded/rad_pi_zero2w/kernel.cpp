@@ -15,6 +15,11 @@ extern "C" void rad_bcm283x_bind_handoff(const rad_boot_handoff_t *handoff);
 extern "C" rad_status_t rad_bcm283x_preempt_init(void);
 // Real init (pid 1) spawn -- same shared a53 entry the ZuBoard board uses.
 extern "C" rad_status_t rad_a53_user_spawn_process_with_stdio(const char *path, int32_t parent_pid, const char *stdio_path, int32_t *pid_out, rad_task_t *task_out);
+// Shared filesystems: ext4 rootfs + FAT boot partition on the real SD card.
+extern "C" rad_status_t x86_ext4_mount_root(const char *block_device);
+extern "C" int x86_ext4_self_test(void);
+extern "C" rad_status_t x86_fat_mount(const char *block_device, const char *mount_point);
+extern "C" int x86_fat_self_test(void);
 extern "C" const unsigned char _binary_a53_init_elf_start[];
 extern "C" const unsigned char _binary_a53_init_elf_end[];
 extern "C" const unsigned char _binary_a53_radsh_elf_start[];
@@ -192,7 +197,8 @@ extern "C" void rad_pi_entry(rad_boot_handoff_t *handoff) {
     config.backend_name = "bcm283x_pi";
     config.boot_info = &handoff->boot;
     rad_kernel_init(&config);
-    mount_embedded_bin();
+    // Embedded /bin is mounted only as the no-SD fallback (see the rootfs branch
+    // below) so it does not shadow a real ext4 rootfs mounted at /.
     rad_a53_note_boot_normalized(0u, static_cast<uintptr_t>(rad_pi_boot_argument), 1u);
     rad_a53_platform_init();
 
@@ -304,20 +310,49 @@ extern "C" void rad_pi_entry(rad_boot_handoff_t *handoff) {
     marker("RAD_PI_SLINT_APP_TERMINAL_WINDOW_OK");
     marker("RAD_PI_COMPOSITOR_DAMAGE_QUEUE_OK");
 
-    // Spawn real init (pid 1) last -- non-blocking create -- then hand off to the
-    // poll loop, which drives it cooperatively: init runs at EL0 (emitting
-    // RAD_AARCH64_USERMODE_ENTER_OK / SVC_DISPATCH_OK) and execs the shell (radsh),
-    // which parks on console input. That interactive-shell wait is the steady
-    // state (the ZuBoard reaches the same point, kept live by its timer tick).
+    // Boot the userland. Preferred path: mount the real ext4 rootfs off the SD
+    // card (mmcblk0p2) and run the full userland (radinit -> login) from it,
+    // gating RAD_SERVICE_ROOTFS_OK / RAD_LOGIN_OK like x86/ZuBoard. Fallback (no SD
+    // image, e.g. the kernel-only marker smoke): mount the embedded /bin and run
+    // the init -> radsh userland smoke. Init spawn is non-blocking; the poll loop
+    // below drives it under the preemptive scheduler.
     int32_t init_pid = 0;
     rad_task_t init_task = nullptr;
-    if (rad_a53_user_spawn_process_with_stdio("/bin/init", 0, "/dev/console", &init_pid, &init_task) == RAD_STATUS_OK) {
-        marker("RAD_AARCH64_USERLAND_OK");
-        marker("RAD_RADINIT_SPAWN_OK");     // init (pid 1) spawned (x86 parity)
-        marker("RAD_SERVICE_USERSPACE_OK"); // userspace-init service milestone
-        marker("RAD_LOGIN_SPAWN_OK");
-    } else {
-        marker("RAD_PI_INIT_SPAWN_FAIL");
+    int rootfs_boot = 0;
+    if (x86_ext4_mount_root("/dev/mmcblk0p2") == RAD_STATUS_OK) {
+        marker("RAD_PI_EXT4_ROOT_OK");
+        if (x86_ext4_self_test()) {
+            marker("RAD_PI_ROOTFS_OK");
+            marker("RAD_SERVICE_ROOTFS_OK");   // rootfs service milestone (x86 parity)
+        }
+        if (x86_fat_mount("/dev/mmcblk0p1", "/mnt/fat") == RAD_STATUS_OK) {
+            marker("RAD_FAT_MOUNT_OK");
+            if (x86_fat_self_test()) marker("RAD_FAT_RW_OK");
+        }
+        // Hand the console to the user session so login/rash read typed input.
+        rad_terminal_repl_set(0);
+        if (rad_a53_user_spawn_process_with_stdio("/bin/init", 0, "/dev/tty0", &init_pid, &init_task) == RAD_STATUS_OK) {
+            marker("RAD_AARCH64_USERLAND_OK");
+            marker("RAD_RADINIT_SPAWN_OK");
+            marker("RAD_SERVICE_USERSPACE_OK");
+            marker("RAD_LOGIN_SPAWN_OK");
+            rootfs_boot = 1;
+        } else {
+            rad_terminal_repl_set(1);
+            marker("RAD_PI_INIT_SPAWN_FAIL");
+        }
+    }
+    if (!rootfs_boot) {
+        marker("RAD_PI_ROOTFS_EMBEDDED_FALLBACK_OK");
+        mount_embedded_bin();
+        if (rad_a53_user_spawn_process_with_stdio("/bin/init", 0, "/dev/console", &init_pid, &init_task) == RAD_STATUS_OK) {
+            marker("RAD_AARCH64_USERLAND_OK");
+            marker("RAD_RADINIT_SPAWN_OK");
+            marker("RAD_SERVICE_USERSPACE_OK");
+            marker("RAD_LOGIN_SPAWN_OK");
+        } else {
+            marker("RAD_PI_INIT_SPAWN_FAIL");
+        }
     }
 
     while (!rad_kernel_is_shutdown_requested()) {

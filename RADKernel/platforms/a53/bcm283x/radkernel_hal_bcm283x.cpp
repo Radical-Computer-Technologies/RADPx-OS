@@ -44,12 +44,30 @@ struct Bcm283xState {
     uint64_t vsync_counter = 0;
     int emmc_ready = 0;
     int usb_ready = 0;
+    // Real SD card (Arasan SDHCI EMMC) state; sd_ready=0 falls back to the
+    // in-RAM g_emmc_storage stub so a kernel-only boot (no -sd image) still works.
+    int sd_ready = 0;
+    uint32_t sd_high_capacity = 1;
+    uint32_t sd_rca = 0;
+    uint64_t sd_sector_count = 0;
     rad_input_queue_t input_queue = nullptr;
 };
 
 Bcm283xState g_bcm283x;
 alignas(16) volatile uint32_t g_mailbox[64];
 alignas(16) uint8_t g_emmc_storage[EmmcSectorSize * EmmcSectorCount];
+
+// MBR partition block devices layered on the real SD card (mirrors the ZynqMP).
+struct PartitionDevice {
+    const char *name;
+    uint64_t start_sector;
+    uint64_t sector_count;
+    int ready;
+};
+PartitionDevice g_partitions[2] = {
+    {"/dev/mmcblk0p1", 0, 0, 0},
+    {"/dev/mmcblk0p2", 0, 0, 0},
+};
 
 volatile uint32_t *reg32(uintptr_t address) {
     return reinterpret_cast<volatile uint32_t*>(address);
@@ -69,6 +87,27 @@ uint32_t read32(uintptr_t address) {
 
 void write32(uintptr_t address, uint32_t value) {
     *reg32(address) = value;
+}
+
+uint8_t read8(uintptr_t address) { return *reinterpret_cast<volatile uint8_t*>(address); }
+void write8(uintptr_t address, uint8_t value) { *reinterpret_cast<volatile uint8_t*>(address) = value; }
+void write16(uintptr_t address, uint16_t value) { *reinterpret_cast<volatile uint16_t*>(address) = value; }
+} // anonymous namespace (helpers below need rad_hal_time_micros, declared next)
+
+extern "C" uint64_t rad_hal_time_micros(void);
+
+namespace {
+void udelay(uint32_t us) {
+    const uint64_t start = rad_hal_time_micros();
+    while (rad_hal_time_micros() - start < us) { asm volatile("nop"); }
+}
+
+int wait_mask(uintptr_t reg, uint32_t mask, uint32_t value, uint32_t timeout_us) {
+    for (uint32_t i = 0; i < timeout_us; ++i) {
+        if ((read32(reg) & mask) == value) return 1;
+        if ((i & 0xffu) == 0) udelay(1);
+    }
+    return 0;
 }
 
 uint32_t arm_to_vc_bus(uintptr_t address) {
@@ -229,14 +268,20 @@ rad_status_t register_mailbox_framebuffer() {
     return status;
 }
 
+// Defined further below with the SDHCI driver; used by the block ioctl here.
+rad_status_t sd_read_single(uint64_t sector, void *buffer);
+
 rad_status_t bcm_block_info(void*, uint32_t request, void *argument) {
+    // A real SD card reports a large sector count so ext4/FAT can read anywhere
+    // in the image; the RAM stub keeps its small fixed capacity.
+    const uint64_t capacity = g_bcm283x.sd_ready ? (1ull << 23u) /*4 GiB window*/ : EmmcSectorCount;
     if (request == RAD_DEVICE_IOCTL_BLOCK_INFO) {
         if (!argument) return RAD_STATUS_INVALID_ARGUMENT;
         auto *info = static_cast<rad_block_info_t*>(argument);
         memset(info, 0, sizeof(*info));
         info->size = sizeof(*info);
         info->sector_size = EmmcSectorSize;
-        info->sector_count = EmmcSectorCount;
+        info->sector_count = capacity;
         info->flags = 0u;
         return RAD_STATUS_OK;
     }
@@ -244,8 +289,19 @@ rad_status_t bcm_block_info(void*, uint32_t request, void *argument) {
         if (!argument) return RAD_STATUS_INVALID_ARGUMENT;
         auto *block = static_cast<rad_block_request_t*>(argument);
         if (!block->buffer || block->sector_count == 0u) return RAD_STATUS_INVALID_ARGUMENT;
-        if (block->sector >= EmmcSectorCount || block->sector_count > EmmcSectorCount - block->sector) {
+        if (block->sector >= capacity || block->sector_count > capacity - block->sector) {
             return RAD_STATUS_INVALID_ARGUMENT;
+        }
+        if (g_bcm283x.sd_ready) {
+            // Real SD: PIO single-block transfers (read only; writes not modeled).
+            if (request == RAD_DEVICE_IOCTL_BLOCK_WRITE) return RAD_STATUS_NOT_SUPPORTED;
+            auto *bytes = static_cast<uint8_t*>(block->buffer);
+            for (uint32_t i = 0; i < block->sector_count; ++i) {
+                const rad_status_t st = sd_read_single(block->sector + i, bytes + static_cast<size_t>(i) * EmmcSectorSize);
+                if (st != RAD_STATUS_OK) return st;
+            }
+            rad_debug_marker("RAD_PI_BLOCK_READ_OK");
+            return RAD_STATUS_OK;
         }
         const size_t offset = static_cast<size_t>(block->sector) * EmmcSectorSize;
         const size_t bytes = static_cast<size_t>(block->sector_count) * EmmcSectorSize;
@@ -276,12 +332,182 @@ rad_status_t bcm_usb_ioctl(void*, uint32_t request, void *argument) {
     return RAD_STATUS_OK;
 }
 
+// --- Arasan SDHCI (BCM2835 "EMMC") real block driver ------------------------
+// The BCM2835 EMMC is an SD-spec SDHCI controller at peripheral+0x300000 (the
+// standard register map, same as the ZynqMP SD). QEMU raspi3b connects the SD
+// card here, so this reads a real -sd image. PIO single-block transfers.
+// (Already inside the file's anonymous namespace -- no nested namespace here, so
+// sd_read_single matches its forward declaration above bcm_block_info.)
+constexpr uint32_t SdSectorSize = 512u;
+constexpr uint32_t SdPresentCmdInhibit = 1u << 0u;
+constexpr uint32_t SdPresentDatInhibit = 1u << 1u;
+constexpr uint32_t SdPresentReadReady = 1u << 11u;
+constexpr uint32_t SdIntCmdComplete = 1u << 0u;
+constexpr uint32_t SdIntTransferComplete = 1u << 1u;
+constexpr uint32_t SdIntBufferReadReady = 1u << 5u;
+constexpr uint32_t SdIntError = 0xffff0000u;
+constexpr uint16_t SdCmdRespNone = 0x0000u;
+constexpr uint16_t SdCmdRespLong = 0x0001u;
+constexpr uint16_t SdCmdRespShort = 0x0002u;
+constexpr uint16_t SdCmdCrc = 0x0008u;
+constexpr uint16_t SdCmdIndex = 0x0010u;
+constexpr uint16_t SdCmdData = 0x0020u;
+
+uintptr_t emmc(uintptr_t offset) { return peripheral(EmmcOffset + offset); }
+uint32_t sd_response32() { return read32(emmc(0x10u)); }
+
+rad_status_t sd_send_cmd(uint32_t index, uint32_t argument, uint16_t flags, uint32_t *response) {
+    const uint32_t inhibit = (flags & SdCmdData) ? (SdPresentCmdInhibit | SdPresentDatInhibit) : SdPresentCmdInhibit;
+    if (!wait_mask(emmc(0x24u), inhibit, 0u, 1000000u)) return RAD_STATUS_TIMEOUT;
+    write32(emmc(0x30u), 0xffffffffu);
+    write32(emmc(0x08u), argument);
+    write16(emmc(0x0eu), static_cast<uint16_t>((index << 8u) | flags));
+    for (uint32_t spin = 0; spin < 1000000u; ++spin) {
+        const uint32_t status = read32(emmc(0x30u));
+        if (status & SdIntError) { write32(emmc(0x30u), status); return RAD_STATUS_ERROR; }
+        if (status & SdIntCmdComplete) {
+            write32(emmc(0x30u), SdIntCmdComplete);
+            if (response) *response = sd_response32();
+            return RAD_STATUS_OK;
+        }
+        if ((spin & 0xffu) == 0) udelay(1);
+    }
+    return RAD_STATUS_TIMEOUT;
+}
+
+rad_status_t sd_set_clock() {
+    write16(emmc(0x2cu), 0x0000u);
+    udelay(1000);
+    write16(emmc(0x2cu), 0x0101u);
+    if (!wait_mask(emmc(0x2cu), 0x0002u, 0x0002u, 100000u)) return RAD_STATUS_TIMEOUT;
+    write16(emmc(0x2cu), 0x0107u);
+    return RAD_STATUS_OK;
+}
+
+rad_status_t sd_reset() {
+    write8(emmc(0x2fu), 0x01u);
+    for (uint32_t spin = 0; spin < 100000u; ++spin) {
+        if ((read8(emmc(0x2fu)) & 0x01u) == 0) break;
+        if ((spin & 0xffu) == 0) udelay(1);
+    }
+    write8(emmc(0x29u), 0x0fu);
+    write32(emmc(0x34u), 0xffffffffu);
+    write32(emmc(0x38u), 0x00000000u);
+    write8(emmc(0x2eu), 0x0eu);
+    return sd_set_clock();
+}
+
+rad_status_t sd_read_single(uint64_t sector, void *buffer) {
+    if (!buffer || !g_bcm283x.sd_ready) return RAD_STATUS_INVALID_ARGUMENT;
+    write16(emmc(0x04u), SdSectorSize);
+    write16(emmc(0x06u), 1u);
+    write16(emmc(0x0cu), 0x0010u);
+    const uint32_t argument = g_bcm283x.sd_high_capacity ? static_cast<uint32_t>(sector) : static_cast<uint32_t>(sector * SdSectorSize);
+    rad_status_t status = sd_send_cmd(17u, argument, SdCmdRespShort | SdCmdCrc | SdCmdIndex | SdCmdData, nullptr);
+    if (status != RAD_STATUS_OK) return status;
+    for (uint32_t spin = 0; spin < 1000000u; ++spin) {
+        const uint32_t irq = read32(emmc(0x30u));
+        if (irq & SdIntError) { write32(emmc(0x30u), irq); return RAD_STATUS_ERROR; }
+        if ((irq & SdIntBufferReadReady) || (read32(emmc(0x24u)) & SdPresentReadReady)) {
+            auto *words = static_cast<uint32_t*>(buffer);
+            for (uint32_t i = 0; i < SdSectorSize / sizeof(uint32_t); ++i) words[i] = read32(emmc(0x20u));
+            write32(emmc(0x30u), SdIntBufferReadReady | SdIntTransferComplete);
+            return RAD_STATUS_OK;
+        }
+        if ((spin & 0xffu) == 0) udelay(1);
+    }
+    return RAD_STATUS_TIMEOUT;
+}
+
+rad_status_t sd_init_card() {
+    if (sd_reset() != RAD_STATUS_OK) return RAD_STATUS_ERROR;
+    uint32_t response = 0;
+    (void)sd_send_cmd(0u, 0u, SdCmdRespNone, nullptr);
+    (void)sd_send_cmd(8u, 0x1aau, SdCmdRespShort | SdCmdCrc | SdCmdIndex, &response);
+    rad_status_t status = RAD_STATUS_TIMEOUT;
+    for (uint32_t retry = 0; retry < 1000u; ++retry) {
+        (void)sd_send_cmd(55u, 0u, SdCmdRespShort | SdCmdCrc | SdCmdIndex, nullptr);
+        status = sd_send_cmd(41u, 0x40300000u, SdCmdRespShort, &response);
+        if (status == RAD_STATUS_OK && (response & 0x80000000u)) break;
+        udelay(1000);
+    }
+    if ((response & 0x80000000u) == 0) return RAD_STATUS_TIMEOUT;
+    g_bcm283x.sd_high_capacity = (response & 0x40000000u) ? 1u : 0u;
+    if (sd_send_cmd(2u, 0u, SdCmdRespLong | SdCmdCrc, nullptr) != RAD_STATUS_OK) return RAD_STATUS_ERROR;
+    if (sd_send_cmd(3u, 0u, SdCmdRespShort | SdCmdCrc | SdCmdIndex, &response) != RAD_STATUS_OK) return RAD_STATUS_ERROR;
+    g_bcm283x.sd_rca = response & 0xffff0000u;
+    if (sd_send_cmd(7u, g_bcm283x.sd_rca, 0x0003u | SdCmdCrc | SdCmdIndex, nullptr) != RAD_STATUS_OK) return RAD_STATUS_ERROR;
+    return RAD_STATUS_OK;
+}
+
+// Partition block device: offsets requests into the parent SD by start_sector.
+rad_status_t bcm_partition_ioctl(void *context, uint32_t request, void *argument) {
+    auto *partition = static_cast<PartitionDevice*>(context);
+    if (!partition || !partition->ready) return RAD_STATUS_NOT_FOUND;
+    if (request == RAD_DEVICE_IOCTL_BLOCK_INFO) {
+        if (!argument) return RAD_STATUS_INVALID_ARGUMENT;
+        auto *info = static_cast<rad_block_info_t*>(argument);
+        memset(info, 0, sizeof(*info));
+        info->size = sizeof(*info);
+        info->sector_size = SdSectorSize;
+        info->sector_count = partition->sector_count;
+        return RAD_STATUS_OK;
+    }
+    if (request == RAD_DEVICE_IOCTL_BLOCK_READ || request == RAD_DEVICE_IOCTL_BLOCK_WRITE) {
+        if (!argument) return RAD_STATUS_INVALID_ARGUMENT;
+        auto *block = static_cast<rad_block_request_t*>(argument);
+        if (!block->buffer || block->sector_count == 0u) return RAD_STATUS_INVALID_ARGUMENT;
+        if (block->sector >= partition->sector_count || block->sector_count > partition->sector_count - block->sector) return RAD_STATUS_INVALID_ARGUMENT;
+        if (request == RAD_DEVICE_IOCTL_BLOCK_WRITE) return RAD_STATUS_NOT_SUPPORTED;
+        auto *bytes = static_cast<uint8_t*>(block->buffer);
+        for (uint32_t i = 0; i < block->sector_count; ++i) {
+            const rad_status_t st = sd_read_single(partition->start_sector + block->sector + i, bytes + static_cast<size_t>(i) * SdSectorSize);
+            if (st != RAD_STATUS_OK) return st;
+        }
+        return RAD_STATUS_OK;
+    }
+    if (request == RAD_DEVICE_IOCTL_BLOCK_FLUSH) return RAD_STATUS_OK;
+    return RAD_STATUS_NOT_SUPPORTED;
+}
+
+uint32_t le32(const uint8_t *p) {
+    return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8u) | (static_cast<uint32_t>(p[2]) << 16u) | (static_cast<uint32_t>(p[3]) << 24u);
+}
+
+void register_mbr_partitions() {
+    uint8_t mbr[SdSectorSize]{};
+    if (sd_read_single(0, mbr) != RAD_STATUS_OK || mbr[510] != 0x55u || mbr[511] != 0xaau) return;
+    for (uint32_t i = 0; i < 2u; ++i) {
+        const uint8_t *entry = mbr + 446u + i * 16u;
+        const uint32_t start = le32(entry + 8u);
+        const uint32_t count = le32(entry + 12u);
+        if (!start || !count) continue;
+        g_partitions[i].start_sector = start;
+        g_partitions[i].sector_count = count;
+        g_partitions[i].ready = 1;
+        rad_device_ops_t ops{};
+        ops.context = &g_partitions[i];
+        ops.ioctl = bcm_partition_ioctl;
+        rad_block_device_register(g_partitions[i].name, &ops);
+    }
+    if (g_partitions[0].ready) rad_debug_marker("RAD_PI_PARTITION_BOOT_OK");
+    if (g_partitions[1].ready) rad_debug_marker("RAD_PI_PARTITION_ROOT_OK");
+}
+
 void bcm283x_emmc_init() {
     if (g_bcm283x.emmc_ready) return;
-    memset(g_emmc_storage, 0, sizeof(g_emmc_storage));
-    const char signature[] = "RAD_PI_EMMC_BACKING";
-    memcpy(g_emmc_storage, signature, sizeof(signature));
-    (void)read32(peripheral(EmmcOffset + 0x00u));
+    // Try the real SDHCI card first (QEMU -sd image / hardware SD). If none is
+    // present, fall back to the in-RAM stub so a kernel-only boot still works.
+    if (sd_init_card() == RAD_STATUS_OK) {
+        g_bcm283x.sd_ready = 1;
+        g_bcm283x.sd_sector_count = 0; // unknown exact size; reads are bounds-free
+        rad_debug_marker("RAD_PI_SD_CARD_OK");
+        register_mbr_partitions();
+    } else {
+        memset(g_emmc_storage, 0, sizeof(g_emmc_storage));
+        const char signature[] = "RAD_PI_EMMC_BACKING";
+        memcpy(g_emmc_storage, signature, sizeof(signature));
+    }
     g_bcm283x.emmc_ready = 1;
     rad_debug_marker("RAD_PI_EMMC_INIT_OK");
 }
@@ -532,6 +758,12 @@ extern "C" rad_status_t rad_hal_register_default_devices(void) {
     rad_debug_marker("RAD_PI_UART_OK");
     register_mailbox_framebuffer();
     rad_terminal_attach_device("/dev/console");
+    // Attach a /dev/tty0 TTY backed by the UART (mirrors the ZuBoard). The rootfs
+    // radinit boot-session + login services open /dev/tty0 as their terminal_path,
+    // so without this login cannot read typed credentials and RAD_LOGIN_OK never
+    // fires. Output reaches the PL011 UART and the poll loop pumps typed input.
+    rad_terminal_attach_device("/dev/serial0");
+    rad_terminal_attach_tty("/dev/serial0", "/dev/tty0");
     return RAD_STATUS_OK;
 }
 
