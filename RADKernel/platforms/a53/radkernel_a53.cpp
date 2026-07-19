@@ -963,6 +963,11 @@ void user_process_task(void *context) {
 }
 
 int32_t a53_fork_from_frame(void*, void *trap_frame) {
+    // #17: a fork means the forking process already ran at EL0 past its first
+    // entry, so the first-dispatch hang did not occur -- disarm the stall
+    // watchdog on this reliable kernel-side signal (the userland zombie-reap
+    // marker is a weaker signal that may not route through the kernel marker path).
+    g_a53_boot_reached_reap = 1;
     const int32_t parent = rad_process_current_pid();
     auto *parent_process = find_user_process(parent);
     if (!parent_process || !trap_frame) {
@@ -1779,9 +1784,10 @@ extern "C" void rad_a53_boot_stall_check(const void *frame_ptr) {
         static_cast<unsigned long long>(space ? space->ttbr0 : 0u),
         static_cast<unsigned long long>(g_a53.summary.active_table));
     rad_debug_marker("RAD_AARCH64_BOOT_STALL_PANIC");
-#if defined(__aarch64__)
-    for (;;) asm volatile("wfe");
-#endif
+    // Dump once and CONTINUE -- do NOT halt. On a real first-entry hang the
+    // system is already stuck, so continuing costs nothing; but if this ever
+    // mis-fires on a slow-but-healthy boot, halting would turn a good boot into a
+    // dead one. The dump is the diagnostic value; the halt is not worth the risk.
 }
 
 extern "C" rad_status_t rad_a53_platform_init(void) {
