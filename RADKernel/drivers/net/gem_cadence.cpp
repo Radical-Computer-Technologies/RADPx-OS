@@ -395,6 +395,46 @@ void gem_stack_traffic_selftest(GemDevice *device) {
     if (device->rx_packets > rx0) rad_debug_marker("RAD_GEM_STACK_RX_OK");
 }
 
+// In-guest socket-datagram parity self-test. Mirrors the x86 path
+// (x86_storage.cpp): bind a UDP server on the guest IP and loop a datagram
+// through the portable socket -> UDP -> IPv4 stack (RADKernel_runtime.cpp), which
+// recognises its own address and delivers locally without egressing. Proves the
+// L4 socket API works on a53 identically to x86 -- emits the same
+// RAD_IPV4_OK / RAD_UDP_OK / RAD_UDP_RX_OK / RAD_SOCKET_DGRAM_OK markers. A no-op
+// if sockets/net are not ready (fd < 0).
+void gem_socket_dgram_selftest() {
+    const int32_t server = rad_socket_create(RAD_AF_INET, RAD_SOCK_DGRAM, RAD_IPPROTO_UDP);
+    const int32_t client = rad_socket_create(RAD_AF_INET, RAD_SOCK_DGRAM, RAD_IPPROTO_UDP);
+    if (server < 0 || client < 0) {
+        if (server >= 0) rad_fd_close(server);
+        if (client >= 0) rad_fd_close(client);
+        return;
+    }
+    rad_sockaddr_in_t address{};
+    address.family = RAD_AF_INET;
+    address.port = 9000u;
+    address.address = rad_ipv4_address_t{{10u, 0u, 2u, 15u}};
+    static const char payload[] = "rad-a53-udp";
+    char received[32]{};
+    rad_sockaddr_in_t from{};
+    size_t from_len = sizeof(from);
+    const bool bound = rad_socket_bind(server, &address, sizeof(address)) == RAD_STATUS_OK;
+    const bool sent = rad_socket_sendto(client, payload, sizeof(payload), 0u, &address, sizeof(address))
+        == static_cast<intptr_t>(sizeof(payload));
+    if (bound && sent) {
+        rad_debug_marker("RAD_IPV4_OK");
+        rad_debug_marker("RAD_UDP_OK");
+        if (rad_socket_recvfrom(server, received, sizeof(received), 0u, &from, &from_len)
+                == static_cast<intptr_t>(sizeof(payload))
+            && memcmp(received, payload, sizeof(payload)) == 0) {
+            rad_debug_marker("RAD_UDP_RX_OK");
+            rad_debug_marker("RAD_SOCKET_DGRAM_OK");
+        }
+    }
+    rad_fd_close(client);
+    rad_fd_close(server);
+}
+
 // RX-complete interrupt handler (GIC SPI 57). Runs in IRQ context, so it stays
 // minimal and never touches the descriptor ring (the poller owns that -- keeping
 // them apart avoids any IRQ/thread race). It acknowledges the GEM interrupt,
@@ -580,6 +620,9 @@ extern "C" rad_status_t rad_zynqmp_gem_init(void) {
         // stack (not just raw L2 loopback/ARP) and confirm it egresses/ingresses
         // GEM.
         gem_stack_traffic_selftest(device);
+        // L4 socket-datagram parity: prove the portable socket/UDP/IPv4 API on a53
+        // (in-guest loopback, mirrors the x86 selftest markers).
+        gem_socket_dgram_selftest();
     } else {
         rad_debug_marker("RAD_GEM_NET0_REGISTER_FAIL");
     }
