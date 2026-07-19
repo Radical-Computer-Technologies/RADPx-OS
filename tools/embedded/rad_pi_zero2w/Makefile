@@ -24,6 +24,7 @@ OBJS := \
 	a53_radsh_image.o \
 	a53_sh_image.o \
 	radkernel_a53.o \
+	a53_parity_selftest.o \
 	radboot.o \
 	radkernel_runtime.o \
 	radkernel_overlay.o \
@@ -63,6 +64,9 @@ a53_sh_image.o: a53-sh.elf
 	$(OBJCOPY) -I binary -O elf64-littleaarch64 -B aarch64 $< $@
 
 radkernel_a53.o: $(RADPX_OS_ROOT)/RADKernel/platforms/a53/radkernel_a53.cpp
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c -o $@ $<
+
+a53_parity_selftest.o: $(RADPX_OS_ROOT)/RADKernel/platforms/a53/a53_parity_selftest.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c -o $@ $<
 
 radboot.o: $(RADPX_OS_ROOT)/RADKernel/boot/radboot.cpp

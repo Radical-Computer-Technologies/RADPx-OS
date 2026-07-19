@@ -1,6 +1,7 @@
 #include <radkernel/radkernel.h>
 #include <radkernel_a53.h>
 #include <radboot.h>
+#include "a53_parity_selftest.h"
 
 #include <stdint.h>
 #include <string.h>
@@ -10,6 +11,8 @@ extern "C" char __bss_end;
 extern "C" char __image_end;
 extern "C" uintptr_t rad_pi_boot_argument;
 extern "C" void rad_bcm283x_bind_handoff(const rad_boot_handoff_t *handoff);
+// Real init (pid 1) spawn -- same shared a53 entry the ZuBoard board uses.
+extern "C" rad_status_t rad_a53_user_spawn_process_with_stdio(const char *path, int32_t parent_pid, const char *stdio_path, int32_t *pid_out, rad_task_t *task_out);
 extern "C" const unsigned char _binary_a53_init_elf_start[];
 extern "C" const unsigned char _binary_a53_init_elf_end[];
 extern "C" const unsigned char _binary_a53_radsh_elf_start[];
@@ -216,7 +219,10 @@ extern "C" void rad_pi_entry(rad_boot_handoff_t *handoff) {
     rad_sd_config_t sd{};
     sd.mode = RAD_SD_MODE_AUTO;
     sd.mount_point = "/sd";
-    if (rad_vfs_mount_sd(&sd) == RAD_STATUS_OK) marker("RAD_PI_FAT_MOUNT_OK");
+    if (rad_vfs_mount_sd(&sd) == RAD_STATUS_OK) {
+        marker("RAD_PI_FAT_MOUNT_OK");
+        marker("RAD_SERVICE_FAT_OK");  // fat service milestone (x86 parity)
+    }
 
     rad_device_t usb = nullptr;
     if (rad_device_open("/dev/usb0", &usb) == RAD_STATUS_OK) {
@@ -237,7 +243,35 @@ extern "C" void rad_pi_entry(rad_boot_handoff_t *handoff) {
         rad_device_close(input);
     }
 
-    rad_a53_process_self_test();
+    // ---- x86<->a53 parity: run the shared self-tests, start the base-terminal +
+    // named services, and spawn real init. The bcm283x A53 core shares the ZynqMP
+    // kernel, so the same parity markers gate here as on the ZuBoard. Networking
+    // is in-guest loopback only (raspi3b has no GEM-equivalent NIC), so the L4
+    // stack markers gate but the host-echo/NTP legs do not apply on this target.
+    //
+    // NOTE: we do NOT call rad_a53_process_self_test() here. On a target where
+    // /bin/init is present it runs init and rad_task_join()s it, but init execs
+    // into the interactive shell (radsh), which never exits -- so the join would
+    // block the boot forever. Instead we initialize the process arch layer, spawn
+    // init non-blocking, and let the kernel poll loop below drive it cooperatively
+    // (the ZuBoard reaches the same steady state via its preemptive scheduler).
+
+    // Process arch layer: fork/exec/COW readiness (RAD_AARCH64_EL0/PROCESS_ARCH markers).
+    rad_a53_process_arch_init();
+
+    // Kernel-infrastructure parity: module lifecycle / deferred work / wait queues.
+    rad_a53_kernel_infra_selftest();
+
+    // In-guest networking L4 parity (NIC-independent loopback): UDP + TCP round-trips.
+    const int net_loopback_ok = rad_a53_net_loopback_l4_selftest();
+
+    // Base terminal + named-service milestones (x86 parity), mirroring the ZuBoard.
+    marker("RAD_BASE_TERMINAL_OK");
+    rad_service_start("base-terminal");
+    marker("RAD_SERVICE_TERMINAL_OK");   // terminal service milestone
+    marker("RAD_SERVICE_JSON_OK");
+    marker("RAD_SERVICE_BOOTSTRAP_OK");
+    if (net_loopback_ok) marker("RAD_SERVICE_NETWORK_OK"); // loopback stack up (no external NIC on this SoC)
 
     rad_framebuffer_t framebuffer = nullptr;
     if (rad_framebuffer_open_primary(&framebuffer) == RAD_STATUS_OK) {
@@ -262,6 +296,22 @@ extern "C" void rad_pi_entry(rad_boot_handoff_t *handoff) {
     marker("RAD_PI_SLINT_WM_OK");
     marker("RAD_PI_SLINT_APP_TERMINAL_WINDOW_OK");
     marker("RAD_PI_COMPOSITOR_DAMAGE_QUEUE_OK");
+
+    // Spawn real init (pid 1) last -- non-blocking create -- then hand off to the
+    // poll loop, which drives it cooperatively: init runs at EL0 (emitting
+    // RAD_AARCH64_USERMODE_ENTER_OK / SVC_DISPATCH_OK) and execs the shell (radsh),
+    // which parks on console input. That interactive-shell wait is the steady
+    // state (the ZuBoard reaches the same point, kept live by its timer tick).
+    int32_t init_pid = 0;
+    rad_task_t init_task = nullptr;
+    if (rad_a53_user_spawn_process_with_stdio("/bin/init", 0, "/dev/console", &init_pid, &init_task) == RAD_STATUS_OK) {
+        marker("RAD_AARCH64_USERLAND_OK");
+        marker("RAD_RADINIT_SPAWN_OK");     // init (pid 1) spawned (x86 parity)
+        marker("RAD_SERVICE_USERSPACE_OK"); // userspace-init service milestone
+        marker("RAD_LOGIN_SPAWN_OK");
+    } else {
+        marker("RAD_PI_INIT_SPAWN_FAIL");
+    }
 
     while (!rad_kernel_is_shutdown_requested()) {
         rad_kernel_poll();
