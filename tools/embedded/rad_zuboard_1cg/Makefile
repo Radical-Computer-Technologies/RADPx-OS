@@ -42,6 +42,7 @@ OBJS := \
 	radkernel_runtime.o \
 	radkernel_overlay.o \
 	radkernel_ext4.o \
+	radkernel_fat.o \
 	radkernel_hal_zynqmp.o \
 	gem_cadence.o \
 	radkernel_runtime_newlib.o
@@ -152,6 +153,9 @@ radkernel_overlay.o: $(RADPX_OS_ROOT)/RADKernel/subsystems/RADOverlayRuntime.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c -o $@ $<
 
 radkernel_ext4.o: $(RADPX_OS_ROOT)/RADKernel/fs/ext4.cpp
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -I$(RADPX_OS_ROOT)/RADKernel/fs -c -o $@ $<
+
+radkernel_fat.o: $(RADPX_OS_ROOT)/RADKernel/fs/fat.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -I$(RADPX_OS_ROOT)/RADKernel/fs -c -o $@ $<
 
 radkernel_hal_zynqmp.o: $(RADPX_OS_ROOT)/RADKernel/platforms/a53/zynqmp/radkernel_hal_zynqmp.cpp

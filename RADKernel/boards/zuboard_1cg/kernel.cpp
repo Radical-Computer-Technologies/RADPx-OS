@@ -15,6 +15,8 @@ extern "C" rad_status_t rad_zynqmp_smp_release(void);
 extern "C" uint64_t rad_hal_time_micros(void);
 extern "C" void rad_hal_worker_wake(void);
 extern "C" rad_status_t x86_ext4_mount_root(const char *block_device);
+extern "C" rad_status_t x86_fat_mount(const char *block_device, const char *mount_point);
+extern "C" int x86_fat_self_test(void);
 extern "C" int x86_ext4_self_test(void);
 extern "C" rad_status_t rad_a53_user_spawn_process_with_stdio(const char *path, int32_t parent_pid, const char *stdio_path, int32_t *pid_out, rad_task_t *task_out);
 extern "C" const unsigned char _binary_a53_init_elf_start[];
@@ -245,6 +247,13 @@ extern "C" void rad_zuboard_entry(rad_boot_handoff_t *incoming_handoff) {
     if (x86_ext4_mount_root("/dev/mmcblk0p2") == RAD_STATUS_OK) {
         marker("RAD_ZUBOARD_EXT4_ROOT_OK");
         if (x86_ext4_self_test()) marker("RAD_ZUBOARD_ROOTFS_OK");
+        // FAT parity: mount the FAT boot partition (mmcblk0p1) via the shared FAT
+        // driver and run the same read/write self-test as x86 (RAD_FAT_MOUNT_OK /
+        // RAD_FAT_RW_OK).
+        if (x86_fat_mount("/dev/mmcblk0p1", "/mnt/fat") == RAD_STATUS_OK) {
+            marker("RAD_FAT_MOUNT_OK");
+            (void)x86_fat_self_test();
+        }
         int32_t pid = 0;
         rad_task_t task = nullptr;
         // The user session owns /dev/tty0 from here: stop the kernel debug REPL
