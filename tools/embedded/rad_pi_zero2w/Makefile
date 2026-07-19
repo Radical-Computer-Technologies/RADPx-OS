@@ -10,8 +10,17 @@ CXX := $(TOOLCHAIN_PREFIX)g++
 CC := $(TOOLCHAIN_PREFIX)gcc
 OBJCOPY := $(TOOLCHAIN_PREFIX)objcopy
 
-CXXFLAGS := -std=c++20 -Os -ffreestanding -fno-pic -fno-pie -fno-rtti -fno-exceptions -fno-stack-protector -Wall -Wextra -DRADLIB_EMBEDDED_NO_CPP_WRAPPERS=1 -DRAD_KERNEL_BACKEND_bcm283x_pi=1
-CFLAGS := -Os -ffreestanding -fno-pic -fno-pie -fno-stack-protector -Wall -Wextra -DRADLIB_EMBEDDED_NO_CPP_WRAPPERS=1 -DRAD_KERNEL_BACKEND_bcm283x_pi=1
+# Kernel sizing (mirrors the ZuBoard). RAD_KERNEL_TASK_STACK_BYTES is critical:
+# load_user_program puts a ~64 KB rad_a53_address_space_t on the stack, which
+# overflows the default 8 KB task stack on the execve-reenter path (the second
+# program load runs inside the user-process task, not the large boot stack).
+# RAD_KERNEL_ARCH_CONTEXT_WORDS must be 16 to match the a53 context-switch asm.
+RAD_PI_DEFINES := -DRADLIB_EMBEDDED_NO_CPP_WRAPPERS=1 -DRAD_KERNEL_BACKEND_bcm283x_pi=1 \
+	-DRAD_KERNEL_MAX_PROCESSES=128u -DRAD_KERNEL_MAX_TASKS=128u -DRAD_KERNEL_TASK_STACK_BYTES=524288u \
+	-DRAD_A53_MAX_USER_PROCESSES=128u -DRAD_A53_MAX_TRACKED_PAGES=65536u -DRAD_KERNEL_ARCH_CONTEXT_WORDS=16u
+
+CXXFLAGS := -std=c++20 -Os -ffreestanding -fno-pic -fno-pie -fno-rtti -fno-exceptions -fno-stack-protector -Wall -Wextra $(RAD_PI_DEFINES)
+CFLAGS := -Os -ffreestanding -fno-pic -fno-pie -fno-stack-protector -Wall -Wextra $(RAD_PI_DEFINES)
 ASFLAGS := -x assembler-with-cpp
 USER_LDFLAGS := -nostdlib -static -fno-pic -fno-pie -Wl,-Ttext=0x80000000 -Wl,--build-id=none -Wl,-e,_start
 INCLUDES := -I$(RADPX_OS_ROOT)/RADKernel/headers -I$(RADPX_OS_ROOT)/RADKernel/boot -I$(RADPX_OS_ROOT)/RADKernel/platforms/a53

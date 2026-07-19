@@ -44,25 +44,27 @@ require_marker() {
 # the board sources). This is the set the bcm283x Pi Zero 2 W boots reliably from a
 # kernel-only image under QEMU raspi3b: the SoC HAL bring-up, the shared A53
 # kernel (MMU/exception/EL0/process-arch), the x86<->a53 parity self-tests
-# (kernel-infra, in-guest UDP+TCP L4, named services, base-terminal), init spawn,
-# and the framebuffer/compositor path.
+# (kernel-infra, in-guest UDP+TCP L4, named services, base-terminal), preemption
+# (QA7 local-timer + EL1 CNTP: RAD_TIMER_IRQ_OK / RAD_PREEMPT_SCHED_OK), the full
+# preemptive userland smoke (init -> radsh -> fork/COW/exec/wait/reap/shebang:
+# RAD_AARCH64_FORK/USER_FORK/COW_PAGE_FAULT/USER_ZOMBIE_REAP/USER_EXECVE/
+# USER_EXECVE_REENTER/USER_PIPE_FORK/USER_WAIT_WAKE/USER_SCRIPT_SHEBANG/
+# USERMODE_EXIT_OK), and the framebuffer/compositor path.
 GATE="$ROOT/tools/embedded/rad_pi_zero2w/expected-markers.txt"
 while IFS= read -r marker; do
     [[ -z "$marker" || "$marker" == \#* ]] && continue
     require_marker "$marker"
 done < "$GATE"
 
-# DEFERRED -- needs bcm283x preemption (QA7 local-timer + CNTP scheduler tick, the
-# Pi analogue of the ZuBoard's rad_zynqmp_preempt_init GICv2+CNTP path). Without a
-# preemptive tick the cooperative poll loop cannot drive the userland fork/exec/
-# wait smoke to completion (init reaches EL0 and its first syscall, then radsh's
-# fork->waitpid cannot schedule its child), and there is no live interactive shell.
-# These markers gate on the ZuBoard today and will gate here once preemption lands:
+# DEFERRED -- these are userland-PRINTED strings (init.S/radsh.S write them to
+# stdout), not kernel markers. They gate on the x86 image because its userland
+# stdout reaches the serial log; on the Pi the /dev/console device-write path does
+# not yet surface on the UART (kernel rad_debug_marker output does), so init/radsh
+# console text -- and a visible interactive shell (RAD_LOGIN_OK) -- do not appear.
+# Wiring the /dev/console device writes to the PL011 UART unlocks:
 #   RAD_AARCH64_USER_INIT_OK RAD_AARCH64_USER_SYSCALLS_OK
-#   RAD_AARCH64_USER_EXECVE_OK RAD_AARCH64_USER_RADSH_BOOT_OK
-#   RAD_AARCH64_USER_FORK_OK RAD_AARCH64_USER_FORK_CHILD_OK
-#   RAD_AARCH64_USER_FORK_WAIT_OK RAD_AARCH64_USER_ZOMBIE_REAP_OK
-#   RAD_AARCH64_USER_SH_SCRIPT_OK RAD_AARCH64_USERMODE_EXIT_OK
-#   RAD_AARCH64_FORK_OK RAD_AARCH64_COW_PAGE_FAULT_OK RAD_LOGIN_OK
+#   RAD_AARCH64_USER_INVALID_PTR_OK RAD_AARCH64_USER_RADSH_BOOT_OK
+#   RAD_AARCH64_USER_FORK_CHILD_OK RAD_AARCH64_USER_FORK_WAIT_OK
+#   RAD_AARCH64_USER_SH_SCRIPT_OK RAD_AARCH64_USER_RADSH_EXIT_OK RAD_LOGIN_OK
 
 echo "RADPx-OS Pi Zero 2 W payload smoke passed ($(grep -cvE '^\s*(#|$)' "$GATE") markers): $LOG"

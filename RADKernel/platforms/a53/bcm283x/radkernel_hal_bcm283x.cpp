@@ -416,6 +416,97 @@ extern "C" rad_status_t rad_hal_irq_disable(uint32_t irq) {
     return RAD_STATUS_OK;
 }
 
+// ---------------------------------------------------------------------------
+// Preemption: EL1 physical generic timer (CNTP) routed to the core IRQ line
+// through the QA7 local interrupt controller (0x40000000). The Pi Zero 2 W has
+// no GICv2, so this is the bcm283x analogue of the ZynqMP GICv2+CNTP path in
+// rad_zynqmp_preempt_init. QEMU raspi3b enters at EL2, but the kernel drops to
+// EL1 on the first user-context entry, so the EL1 physical timer (cntp_*_el0,
+// accessible at both EL1 and EL2) is the correct tick source -- the EL2 hyp
+// timer would trap once the kernel is at EL1. The shared exception vector table
+// is installed at vbar_el2 AND vbar_el1, so the timer IRQ is handled whether it
+// lands at EL2 (early boot) or EL1 (once userland is running).
+// ---------------------------------------------------------------------------
+namespace {
+constexpr uintptr_t QA7CoreTimerIrqControl0 = 0x40u; // CORE0_TIMER_INTERRUPT_CONTROL
+constexpr uintptr_t QA7CoreIrqSource0       = 0x60u; // CORE0_IRQ_SOURCE
+constexpr uint32_t  QA7CntPnsIrqRoute       = 1u << 1; // nCNTPNSIRQ -> IRQ (not FIQ)
+constexpr uint32_t  PreemptTimerHz          = 100u;
+
+uintptr_t qa7(uintptr_t offset) { return g_bcm283x.local_interrupt_base + offset; }
+
+uint64_t g_cntp_interval_ticks = 0;
+volatile uint32_t g_pi_timer_irq_seen = 0;
+
+void bcm283x_cntp_arm() {
+    if (!g_cntp_interval_ticks) {
+        uint64_t freq = 0;
+        asm volatile("mrs %0, cntfrq_el0" : "=r"(freq));
+        if (!freq) freq = 19200000u; // QEMU raspi3b fallback: 19.2 MHz
+        g_cntp_interval_ticks = freq / PreemptTimerHz;
+    }
+    asm volatile("msr cntp_tval_el0, %0" :: "r"(g_cntp_interval_ticks));
+    asm volatile("msr cntp_ctl_el0, %0" :: "r"(1ull)); // ENABLE=1, IMASK=0
+    asm volatile("isb");
+}
+} // namespace
+
+extern "C" void rad_scheduler_yield_from_irq(void);
+extern "C" void rad_a53_boot_stall_check(const void *frame);
+
+// Strong scheduler hooks -- this target preempts (mirrors the zynqmp HAL; the
+// shared runtime's weak defaults declare it cooperative).
+extern "C" int rad_arch_preemption_supported(void) { return 1; }
+extern "C" const char *rad_arch_scheduler_name(void) { return "a53-qa7-preemptive"; }
+extern "C" void rad_arch_scheduler_tick(uint32_t core) { (void)core; rad_scheduler_yield_from_irq(); }
+
+// IRQ dispatch entered from boot.S rad_a53_irq_common with the saved 288-byte
+// exception frame (interrupted SPSR at offset 264). Preempt ONLY when the tick
+// interrupted EL0 (SPSR.M[3:0]==0), matching the zynqmp/x86 ring-3 rule: a tick
+// inside the scheduler's own dispatch window must not force a context save into
+// an uninitialized task.
+extern "C" void rad_bcm283x_irq_dispatch_frame(void *frame) {
+    uint64_t interrupted_spsr = 0x9u; // default: treat as EL2h -> no preempt
+    if (frame) interrupted_spsr = *reinterpret_cast<const uint64_t *>(static_cast<const uint8_t *>(frame) + 264u);
+    const uint32_t source = read32(qa7(QA7CoreIrqSource0));
+    if (source & QA7CntPnsIrqRoute) {
+        bcm283x_cntp_arm(); // re-arm first: deasserts the level-triggered line
+        rad_timer_tick(1000000u / PreemptTimerHz);
+        if (!g_pi_timer_irq_seen) {
+            g_pi_timer_irq_seen = 1;
+            rad_debug_marker("RAD_TIMER_IRQ_OK");
+        }
+        if ((interrupted_spsr & 0xfu) == 0u) rad_arch_scheduler_tick(rad_hal_current_core());
+    }
+    if (frame) rad_a53_boot_stall_check(frame);
+}
+
+// Route the EL1 physical timer to core 0's IRQ line, arm it, and unmask IRQs.
+// Called by the Pi board entry after the MMU + exception vectors are live (still
+// at EL2). Grants EL1 access to the physical counter/timer so the re-arm in the
+// IRQ handler works once the kernel has dropped to EL1.
+extern "C" rad_status_t rad_bcm283x_preempt_init(void) {
+    uint64_t current_el = 0;
+    asm volatile("mrs %0, CurrentEL" : "=r"(current_el));
+    if (((current_el >> 2) & 0x3u) == 2u) {
+        // CNTHCTL_EL2.EL1PCEN (bit1) | EL1PCTEN (bit0): let EL1 use the timer/counter.
+        uint64_t cnthctl = 0;
+        asm volatile("mrs %0, cnthctl_el2" : "=r"(cnthctl));
+        cnthctl |= 0x3u;
+        asm volatile("msr cnthctl_el2, %0" :: "r"(cnthctl));
+        asm volatile("isb");
+    }
+    write32(qa7(QA7CoreTimerIrqControl0), QA7CntPnsIrqRoute);
+    bcm283x_cntp_arm();
+    rad_hal_interrupts_enable();
+    // Do not busy-wait for the first tick here: on QEMU raspi3b the non-secure
+    // EL1 physical timer interrupt (nCNTPNSIRQ) is not delivered while the kernel
+    // is still at EL2 (boot time) -- it starts firing once the kernel drops to EL1
+    // on the first user-context entry, which is exactly when preemption is needed.
+    // RAD_TIMER_IRQ_OK is emitted from the IRQ handler on that first real tick.
+    return RAD_STATUS_OK;
+}
+
 extern "C" rad_status_t rad_hal_register_default_devices(void) {
     bcm283x_emmc_init();
     bcm283x_usb_init();

@@ -38,31 +38,31 @@ _start:
 .global rad_a53_exception_vectors
 .type rad_a53_exception_vectors, %function
 rad_a53_exception_vectors:
-    b rad_a53_sync_common
+    b rad_a53_sync_common      // 0x000 curEL SP0 sync
     .align 7
-    b rad_a53_irq_spin
+    b rad_a53_irq_spin         // 0x080 curEL SP0 irq
     .align 7
-    b rad_a53_irq_spin
+    b rad_a53_irq_spin         // 0x100 curEL SP0 fiq
     .align 7
-    b rad_a53_irq_spin
+    b rad_a53_irq_spin         // 0x180 curEL SP0 serror
     .align 7
-    b rad_a53_sync_common
+    b rad_a53_sync_common      // 0x200 curEL SPx sync
     .align 7
-    b rad_a53_irq_spin
+    b rad_a53_irq_common       // 0x280 curEL SPx irq (kernel/task interrupted)
     .align 7
-    b rad_a53_irq_spin
+    b rad_a53_irq_spin         // 0x300 curEL SPx fiq
     .align 7
-    b rad_a53_irq_spin
+    b rad_a53_irq_spin         // 0x380 curEL SPx serror
     .align 7
-    b rad_a53_sync_common
+    b rad_a53_sync_common      // 0x400 lowerEL AArch64 sync
     .align 7
-    b rad_a53_irq_spin
+    b rad_a53_irq_common       // 0x480 lowerEL AArch64 irq (EL0 interrupted)
     .align 7
-    b rad_a53_irq_spin
+    b rad_a53_irq_spin         // 0x500 lowerEL AArch64 fiq
     .align 7
-    b rad_a53_irq_spin
+    b rad_a53_irq_spin         // 0x580 lowerEL AArch64 serror
     .align 7
-    b rad_a53_sync_common
+    b rad_a53_sync_common      // 0x600 lowerEL AArch32 sync
     .align 7
     b rad_a53_irq_spin
     .align 7
@@ -93,6 +93,16 @@ rad_a53_install_exception_vectors:
 rad_a53_enter_user_context:
     mov x10, sp
     str x10, [x0, #0]
+    // Save the kernel callee-saved state into A53UserContext.ksave (offset 832)
+    // so the syscall exit/exec path in sync_common can unwind by simply returning
+    // from this call (restoring x19..x30 + sp). Contract shared with the ZuBoard.
+    add x9, x0, #832
+    stp x19, x20, [x9, #0]
+    stp x21, x22, [x9, #16]
+    stp x23, x24, [x9, #32]
+    stp x25, x26, [x9, #48]
+    stp x27, x28, [x9, #64]
+    stp x29, x30, [x9, #80]
     mrs x12, CurrentEL
     lsr x12, x12, #2
     cmp x12, #2
@@ -218,11 +228,66 @@ rad_a53_sync_common:
 41:
     mov x0, sp
     bl rad_a53_exception_dispatch
-    ldr x1, =0x5241444152455849
-    cmp x0, x1
-    b.ne rad_a53_restore_user
-    add sp, sp, #288
+    // Contract: 0 = resume the interrupted user context from this stack frame;
+    // otherwise x0 = A53UserContext* -> unwind to the kernel caller of
+    // rad_a53_enter_user_context (restore its callee-saved regs + stack, return
+    // the exit_reason). This drives exit/execve/fault back into user_process_task.
+    cbz x0, rad_a53_restore_user
+    ldr x9, [x0, #0]          // kernel_sp
+    add x10, x0, #832         // ksave (x19..x30)
+    ldp x19, x20, [x10, #0]
+    ldp x21, x22, [x10, #16]
+    ldp x23, x24, [x10, #32]
+    ldp x25, x26, [x10, #48]
+    ldp x27, x28, [x10, #64]
+    ldp x29, x30, [x10, #80]
+    mov sp, x9
+    ldr x0, [x0, #8]          // exit_reason -> return value of enter_user_context
     ret
+
+// IRQ from EL0 (0x480) or a preempted kernel/task at SPx (0x280). Saves the same
+// 288-byte frame as sync_common (GP + sp_el0 + elr/spsr for the current EL), then
+// hands the frame to the bcm283x QA7 dispatch, which ticks the timer and -- if the
+// tick interrupted EL0 -- yields to the scheduler. Resume through the shared
+// restore path (may eret into a different task after a preemptive switch).
+rad_a53_irq_common:
+    sub sp, sp, #288
+    stp x0, x1, [sp, #0]
+    stp x2, x3, [sp, #16]
+    stp x4, x5, [sp, #32]
+    stp x6, x7, [sp, #48]
+    stp x8, x9, [sp, #64]
+    stp x10, x11, [sp, #80]
+    stp x12, x13, [sp, #96]
+    stp x14, x15, [sp, #112]
+    stp x16, x17, [sp, #128]
+    stp x18, x19, [sp, #144]
+    stp x20, x21, [sp, #160]
+    stp x22, x23, [sp, #176]
+    stp x24, x25, [sp, #192]
+    stp x26, x27, [sp, #208]
+    stp x28, x29, [sp, #224]
+    str x30, [sp, #240]
+    mrs x0, sp_el0
+    str x0, [sp, #248]
+    mrs x1, CurrentEL
+    lsr x1, x1, #2
+    cmp x1, #2
+    b.ne 50f
+    mrs x0, elr_el2
+    str x0, [sp, #256]
+    mrs x0, spsr_el2
+    str x0, [sp, #264]
+    b 51f
+50:
+    mrs x0, elr_el1
+    str x0, [sp, #256]
+    mrs x0, spsr_el1
+    str x0, [sp, #264]
+51:
+    mov x0, sp
+    bl rad_bcm283x_irq_dispatch_frame
+    b rad_a53_restore_user
 
 rad_a53_irq_spin:
     wfe

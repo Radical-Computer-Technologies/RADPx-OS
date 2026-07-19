@@ -11,6 +11,8 @@ extern "C" char __bss_end;
 extern "C" char __image_end;
 extern "C" uintptr_t rad_pi_boot_argument;
 extern "C" void rad_bcm283x_bind_handoff(const rad_boot_handoff_t *handoff);
+// Preemption bring-up: QA7 local-timer + EL1 physical generic timer scheduler tick.
+extern "C" rad_status_t rad_bcm283x_preempt_init(void);
 // Real init (pid 1) spawn -- same shared a53 entry the ZuBoard board uses.
 extern "C" rad_status_t rad_a53_user_spawn_process_with_stdio(const char *path, int32_t parent_pid, const char *stdio_path, int32_t *pid_out, rad_task_t *task_out);
 extern "C" const unsigned char _binary_a53_init_elf_start[];
@@ -193,6 +195,11 @@ extern "C" void rad_pi_entry(rad_boot_handoff_t *handoff) {
     mount_embedded_bin();
     rad_a53_note_boot_normalized(0u, static_cast<uintptr_t>(rad_pi_boot_argument), 1u);
     rad_a53_platform_init();
+
+    // Enable preemption (QA7 local-timer + EL1 CNTP) so the scheduler can drive
+    // userland concurrently -- without it radsh's fork/waitpid cannot schedule its
+    // child and there is no live interactive shell.
+    if (rad_bcm283x_preempt_init() != RAD_STATUS_OK) marker("RAD_PI_TIMER_IRQ_FAIL");
 
     marker("RAD_PI_HANDOFF_OK");
     marker("RAD_PI_PAYLOAD_ENTRY_OK");
