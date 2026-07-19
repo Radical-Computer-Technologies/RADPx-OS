@@ -179,6 +179,14 @@ uint8_t g_init_image[MaxInitImage];
 A53UserProcess g_user_processes[MaxUserProcesses];
 A53UserContext *g_active_user_contexts[MaxCores]{};
 
+// #17 boot-session stall watchdog. The residual #17 failure is a HANG (not a
+// fault) at the first user-process EL0 entry, which can't be trapped like a
+// fault. Arm a deadline when the first user process runs; if the boot has not
+// reached the zombie-reap milestone by then, the timer IRQ dumps the stuck EL0
+// context and halts loudly instead of hanging silently.
+volatile uint64_t g_a53_stall_deadline_us = 0;
+volatile int g_a53_boot_reached_reap = 0;
+
 A53UserContext *active_user_context(void) {
     return g_active_user_contexts[a53_current_core()];
 }
@@ -835,6 +843,16 @@ void bind_stdio(int32_t pid, const char *stdio_path) {
     rad_process_set_current_pid(previous);
 }
 
+bool find_substring(const char *haystack, const char *needle) {
+    if (!haystack || !needle) return false;
+    for (size_t i = 0; haystack[i]; ++i) {
+        size_t j = 0;
+        while (needle[j] && haystack[i + j] == needle[j]) ++j;
+        if (!needle[j]) return true;
+    }
+    return false;
+}
+
 void emit_markers_from_user_write(const char *buffer, size_t size) {
     size_t start = 0;
     for (size_t i = 0; i <= size; ++i) {
@@ -844,7 +862,12 @@ void emit_markers_from_user_write(const char *buffer, size_t size) {
             const size_t count = (i - start) < (sizeof(line) - 1u) ? (i - start) : (sizeof(line) - 1u);
             memcpy(line, buffer + start, count);
             line[count] = '\0';
-            if (marker_like_line(line)) rad_debug_marker(line);
+            if (marker_like_line(line)) {
+                rad_debug_marker(line);
+                // #17: the boot-session reaching zombie-reap means the first-entry
+                // hang did not occur this boot -- disarm the stall watchdog.
+                if (find_substring(line, "ZOMBIE_REAP")) g_a53_boot_reached_reap = 1;
+            }
         }
         start = i + 1u;
     }
@@ -875,6 +898,13 @@ void user_process_task(void *context) {
     if (!process || !process->used) return;
     const int32_t previous_pid = rad_process_current_pid();
     rad_process_set_current_pid(process->pid);
+
+    // #17: arm the stall watchdog on the first user process to enter EL0.
+    static bool s_stall_watchdog_armed = false;
+    if (!s_stall_watchdog_armed) {
+        s_stall_watchdog_armed = true;
+        g_a53_stall_deadline_us = rad_time_micros() + 25000000u; // 25s budget
+    }
 
     for (;;) {
         if (!process->resume_context) {
@@ -1714,6 +1744,45 @@ extern "C" void rad_arch_task_context_resumed(void *user_context) {
     rad_process_set_current_pid(context->pid);
 }
 #endif
+
+// #17 stall watchdog, invoked from the timer IRQ dispatch (which always fires,
+// since the timer re-arms every tick). If the boot passed the first user EL0
+// entry but has not reached zombie-reap within the budget, dump the stuck
+// context: the interrupted context AT THIS TICK (irq_*: if EL0-spin, irq_elr is
+// the spinning PC and irq_spsr.M==0; if the task was lost, we are idling at EL1),
+// the active user context's saved frame, and the live vs activated TTBR0.
+extern "C" void rad_a53_boot_stall_check(const void *frame_ptr) {
+    if (g_a53_stall_deadline_us == 0 || g_a53_boot_reached_reap) return;
+    if (rad_time_micros() < g_a53_stall_deadline_us) return;
+    static bool s_dumped = false;
+    if (s_dumped) return;
+    s_dumped = true;
+    const auto *frame = static_cast<const rad_a53_trap_frame_t *>(frame_ptr);
+    uint64_t live_ttbr0 = 0;
+#if defined(__aarch64__)
+    asm volatile("mrs %0, ttbr0_el1" : "=r"(live_ttbr0));
+#endif
+    A53UserContext *active = active_user_context();
+    rad_a53_address_space_t *space = active_space_slot();
+    rad_kprintk(RKERN_ERR,
+        "RAD_AARCH64_BOOT_STALL_PANIC pid=%d irq_elr=0x%llx irq_spsr=0x%llx "
+        "irq_sp_el0=0x%llx active_elr=0x%llx active_sp_el0=0x%llx active_spsr=0x%llx "
+        "live_ttbr0=0x%llx active_ttbr0=0x%llx summary_table=0x%llx\n",
+        rad_process_current_pid(),
+        static_cast<unsigned long long>(frame ? frame->elr_el1 : 0u),
+        static_cast<unsigned long long>(frame ? frame->spsr_el1 : 0u),
+        static_cast<unsigned long long>(frame ? frame->sp_el0 : 0u),
+        static_cast<unsigned long long>(active ? active->frame.elr_el1 : 0u),
+        static_cast<unsigned long long>(active ? active->frame.sp_el0 : 0u),
+        static_cast<unsigned long long>(active ? active->frame.spsr_el1 : 0u),
+        static_cast<unsigned long long>(live_ttbr0),
+        static_cast<unsigned long long>(space ? space->ttbr0 : 0u),
+        static_cast<unsigned long long>(g_a53.summary.active_table));
+    rad_debug_marker("RAD_AARCH64_BOOT_STALL_PANIC");
+#if defined(__aarch64__)
+    for (;;) asm volatile("wfe");
+#endif
+}
 
 extern "C" rad_status_t rad_a53_platform_init(void) {
     init_default_caps();

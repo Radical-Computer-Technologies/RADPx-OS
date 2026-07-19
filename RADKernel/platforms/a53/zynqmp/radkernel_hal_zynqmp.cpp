@@ -564,6 +564,8 @@ extern "C" void rad_arch_scheduler_tick(uint32_t core) {
     rad_scheduler_yield_from_irq();
 }
 
+extern "C" void rad_a53_boot_stall_check(const void *frame);
+
 // IRQ dispatch entered from boot.S's rad_a53_irq_common with the saved
 // exception frame; the frame itself is only needed by the asm resume path.
 extern "C" void rad_zynqmp_irq_dispatch_frame(void *frame) {
@@ -585,6 +587,9 @@ extern "C" void rad_zynqmp_irq_dispatch_frame(void *frame) {
             rad_arch_scheduler_tick(rad_hal_current_core());
         }
     }
+    // #17: boot-session stall watchdog (dumps + halts if the first user EL0 entry
+    // hung). Cheap deadline check; no-op once the boot reaches zombie-reap.
+    if (frame) rad_a53_boot_stall_check(frame);
 }
 
 // Distributor + core-0 CPU interface + timer registration. Called by the
