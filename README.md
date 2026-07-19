@@ -93,7 +93,7 @@ tools/embedded/rad_zuboard_1cg/qemu_smp_smoke.sh      # second A53 core (-smp 2)
 
 ## API Documentation
 
-RADPx-OS uses Doxygen for the public Crimson 0.1.0 experimental kernel API
+RADPx-OS uses Doxygen for the public Crimson 0.1.4 experimental kernel API
 docs:
 
 ```bash
@@ -101,7 +101,7 @@ RAD_SOURCE_DIR="$PWD" RAD_DOCS_OUTPUT="$PWD/build/docs" doxygen docs/Doxyfile
 ```
 
 The public Crimson docs are published through RadicalPackages under
-`docs/radpx-os/0.1.0/api/`.
+`docs/radpx-os/0.1.4/api/`.
 
 ## Filesystems
 
