@@ -1605,7 +1605,8 @@ extern "C" uintptr_t rad_a53_exception_dispatch(rad_a53_trap_frame_t *frame) {
         return 0;
 #endif
     }
-    auto *process = find_user_process(rad_process_current_pid());
+    const int32_t faulting_pid = rad_process_current_pid();
+    auto *process = find_user_process(faulting_pid);
     if (process) {
         process->exit_code = RAD_STATUS_INVALID_ARGUMENT;
         process->exiting = 1;
@@ -1617,6 +1618,31 @@ extern "C" uintptr_t rad_a53_exception_dispatch(rad_a53_trap_frame_t *frame) {
         static_cast<unsigned long long>(frame->far_el1),
         static_cast<unsigned long long>(frame->elr_el1));
     rad_debug_marker("RAD_AARCH64_USER_EXCEPTION_EXIT_OK");
+    // #17 diagnostic + robustness guard: if PID 1 (init) faults, the system
+    // cannot make progress -- silently unwinding it into exit reads as an
+    // intermittent hang. Turn that into a loud, deterministic panic that dumps
+    // the fault context AND the address-space state (live TTBR0_EL1 vs the space
+    // the scheduler last activated) so a stale-TTBR0 / corrupted-frame fault is
+    // immediately visible instead of vanishing.
+    if (faulting_pid == 1) {
+        uint64_t live_ttbr0 = 0;
+#if defined(__aarch64__)
+        asm volatile("mrs %0, ttbr0_el1" : "=r"(live_ttbr0));
+#endif
+        rad_a53_address_space_t *active = active_space_slot();
+        rad_kprintk(RKERN_ERR,
+            "RAD_AARCH64_PID1_FAULT_PANIC pid=1 spsr=0x%llx sp_el0=0x%llx "
+            "live_ttbr0=0x%llx active_space_ttbr0=0x%llx summary_table=0x%llx\n",
+            static_cast<unsigned long long>(frame->spsr_el1),
+            static_cast<unsigned long long>(frame->sp_el0),
+            static_cast<unsigned long long>(live_ttbr0),
+            static_cast<unsigned long long>(active ? active->ttbr0 : 0u),
+            static_cast<unsigned long long>(g_a53.summary.active_table));
+        rad_debug_marker("RAD_AARCH64_PID1_FAULT_PANIC");
+#if defined(__aarch64__)
+        for (;;) asm volatile("wfe");
+#endif
+    }
     return exit_to_kernel;
 }
 
