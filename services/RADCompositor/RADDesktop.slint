@@ -1,0 +1,275 @@
+
+// ---------------------------------------------------------------------------
+// RadDesktop: the multi-window desktop shell (Phase 1). Driven by a window-list
+// and app-list model so N app windows render via Repeaters, with a dock/taskbar
+// and app launcher. Used by the hosted rad_os_shell self-test; the kernel
+// SlintShell adopts the same model in a follow-up. Software-renderer-safe
+// (border-radius + clip, no GPU effects yet -- shadows/animations land in Phase 3).
+// ---------------------------------------------------------------------------
+export struct RadWinInfo {
+    id: int,
+    title: string,
+    body: string,
+    x: float,
+    y: float,
+    w: float,
+    h: float,
+    focused: bool,
+    loading: bool,
+}
+
+export struct RadApp {
+    id: string,
+    title: string,
+}
+
+export component RadDesktop inherits Window {
+    in property <string> backend: "";
+    in property <string> status: "";
+    in property <string> clock: "";
+    in property <bool> applications_open: false;
+    in property <[RadWinInfo]> windows: [];
+    in property <[RadApp]> apps: [];
+
+    callback toggle_applications();
+    callback launch_app(string);
+    callback escape_pressed();
+    callback focus_window(int);
+    callback close_window(int);
+    callback move_window(int, float, float);
+    callback resize_window(int, float, float);
+
+    title: "RAD OS";
+    width: 720px;
+    height: 420px;
+    background: #06101c;
+
+    Rectangle {
+        width: 100%;
+        height: 100%;
+        background: @linear-gradient(160deg, #0c1c33 0%, #071322 55%, #050e19 100%);
+    }
+
+    for win[idx] in root.windows : Rectangle {
+        x: win.x * 1px;
+        y: win.y * 1px;
+        width: win.w * 1px;
+        height: win.h * 1px;
+        background: #030a16;
+        border-radius: 9px;
+        border-width: 1px;
+        border-color: win.focused ? #38bdf8 : #334155;
+        clip: true;
+
+        Rectangle {
+            x: 0px;
+            y: 0px;
+            width: parent.width;
+            height: 28px;
+            background: win.focused ? #143352 : #0e2138;
+
+            Text {
+                x: 12px;
+                y: 6px;
+                width: parent.width - 44px;
+                text: win.title;
+                color: #eaf4ff;
+                font-size: 13px;
+                font-weight: 700;
+                overflow: elide;
+            }
+
+            TouchArea {
+                x: 0px;
+                y: 0px;
+                width: parent.width - 30px;
+                height: parent.height;
+                mouse-cursor: MouseCursor.grab;
+                clicked => { root.focus_window(win.id); }
+                moved => {
+                    if (self.pressed) {
+                        root.move_window(win.id,
+                            (self.mouse-x - self.pressed-x) / 1px,
+                            (self.mouse-y - self.pressed-y) / 1px);
+                    }
+                }
+            }
+
+            TouchArea {
+                x: parent.width - 26px;
+                y: 4px;
+                width: 20px;
+                height: 20px;
+                mouse-cursor: MouseCursor.pointer;
+                clicked => { root.close_window(win.id); }
+                Rectangle {
+                    width: 100%;
+                    height: 100%;
+                    border-radius: 4px;
+                    background: parent.has-hover ? #ef4444 : #24374f;
+                    Text {
+                        width: 100%;
+                        height: 100%;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        text: "x";
+                        color: #f8fafc;
+                        font-size: 13px;
+                        font-weight: 700;
+                    }
+                }
+            }
+        }
+
+        TouchArea {
+            x: 0px;
+            y: 28px;
+            width: parent.width;
+            height: parent.height - 28px;
+            clicked => { root.focus_window(win.id); }
+        }
+
+        Text {
+            x: 12px;
+            y: 36px;
+            width: parent.width - 24px;
+            height: parent.height - 46px;
+            text: win.loading ? "launching..." : win.body;
+            color: win.loading ? #fde68a : #cfe6d8;
+            font-family: "monospace";
+            font-size: 12px;
+            wrap: word-wrap;
+            overflow: clip;
+        }
+
+        TouchArea {
+            x: parent.width - 18px;
+            y: parent.height - 18px;
+            width: 18px;
+            height: 18px;
+            mouse-cursor: MouseCursor.nwse-resize;
+            moved => {
+                if (self.pressed) {
+                    root.resize_window(win.id,
+                        (self.mouse-x - self.pressed-x) / 1px,
+                        (self.mouse-y - self.pressed-y) / 1px);
+                }
+            }
+        }
+    }
+
+    Rectangle {
+        x: 0px;
+        y: 0px;
+        width: parent.width;
+        height: 34px;
+        background: #0e2038;
+        Image {
+            x: 10px;
+            y: 4px;
+            width: 62px;
+            height: 26px;
+            source: @image-url("assets/RadLogoWhiteHeader.png");
+            image-fit: contain;
+        }
+        Text { x: 80px; y: 8px; text: "OS"; color: #f8fafc; font-size: 15px; font-weight: 700; }
+        Text {
+            x: 120px;
+            y: 10px;
+            width: parent.width - 220px;
+            text: root.status;
+            color: #93c5fd;
+            font-size: 11px;
+            overflow: elide;
+        }
+        Text {
+            x: parent.width - 96px;
+            y: 9px;
+            width: 86px;
+            horizontal-alignment: right;
+            text: root.clock;
+            color: #cbd5e1;
+            font-size: 12px;
+        }
+    }
+
+    Rectangle {
+        x: 0px;
+        y: 34px;
+        width: 76px;
+        height: 26px;
+        background: root.applications_open ? #1d4ed8 : #0b1729;
+        Text {
+            x: 0px;
+            y: 5px;
+            width: parent.width;
+            horizontal-alignment: center;
+            text: "Apps";
+            color: #f8fafc;
+            font-size: 13px;
+            font-weight: 600;
+        }
+        TouchArea { clicked => { root.toggle_applications(); } }
+    }
+
+    if root.applications_open : Rectangle {
+        x: 0px;
+        y: 60px;
+        width: 210px;
+        height: root.apps.length * 34px + 12px;
+        background: #0d1a2e;
+        border-color: #38bdf8;
+        border-width: 1px;
+        border-radius: 7px;
+        for app[i] in root.apps : Rectangle {
+            x: 6px;
+            y: 6px + i * 34px;
+            width: parent.width - 12px;
+            height: 30px;
+            border-radius: 5px;
+            background: touch.has-hover ? #1e3350 : #111f33;
+            Text { x: 12px; y: 8px; text: app.title; color: #d1fae5; font-size: 13px; }
+            touch := TouchArea { clicked => { root.launch_app(app.id); } }
+        }
+    }
+
+    Rectangle {
+        x: 0px;
+        y: parent.height - 32px;
+        width: parent.width;
+        height: 32px;
+        background: #091524;
+        HorizontalLayout {
+            padding: 5px;
+            spacing: 5px;
+            alignment: start;
+            for win[i] in root.windows : Rectangle {
+                width: 130px;
+                height: 22px;
+                border-radius: 5px;
+                background: win.focused ? #1d4ed8 : #16273e;
+                Text {
+                    x: 9px;
+                    y: 3px;
+                    width: parent.width - 16px;
+                    text: win.title;
+                    color: #eaf4ff;
+                    font-size: 12px;
+                    overflow: elide;
+                }
+                TouchArea { clicked => { root.focus_window(win.id); } }
+            }
+        }
+    }
+
+    FocusScope {
+        key-pressed(event) => {
+            if (event.text == Key.Escape) {
+                root.escape_pressed();
+                accept
+            } else {
+                reject
+            }
+        }
+    }
+}

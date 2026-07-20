@@ -55,7 +55,9 @@ target_link_libraries(rad_os_shell PRIVATE RADKernel RADCore RADUi Slint::Slint)
 
 target_compile_definitions(rad_os_shell PRIVATE SLINT_BACKEND=1)
 
-SLINT_TARGET_SOURCES(rad_os_shell "${RADPX_OS_ROOT}/services/RADCompositor/RADCompositor.slint")
+SLINT_TARGET_SOURCES(rad_os_shell
+    "${RADPX_OS_ROOT}/services/RADCompositor/RADCompositor.slint"
+    "${RADPX_OS_ROOT}/services/RADCompositor/RADDesktop.slint")
 
 
 if(DEFINED SLINT_SDK_DIR)

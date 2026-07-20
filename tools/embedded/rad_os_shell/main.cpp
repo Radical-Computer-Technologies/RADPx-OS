@@ -4,12 +4,14 @@
 
 #include "RADCompositorModel.h"
 #include "RADCompositorCore.h"
-#include "RADCompositor.h"
+#include "RADDesktop.h"
 
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <memory>
 #include <string>
+#include <vector>
 
 namespace {
 uint32_t framebuffer[640u * 360u];
@@ -264,33 +266,75 @@ int main(int argc, char **argv) {
     bool terminalRelaunchObserved = false;
     bool secondWindowObserved = false;
     bool focusSwitchObserved = false;
+    bool launcherObserved = false;
+    bool taskbarObserved = false;
+    bool windowCloseObserved = false;
     CompositorSelfTestResult compositorSelfTest{};
     if (self_test) compositorSelfTest = run_compositor_self_test();
 
-    auto ui = RadOsShell::create();
+    auto ui = RadDesktop::create();
     RADCompositor::Model desktop;
+    // A second app so the launcher and taskbar are genuinely multi-app, not
+    // Terminal-only. Idempotent with the self-test's own registration.
+    desktop.registerApp("rad.sysinfo", "System");
+
+    auto sysinfoBody = [&]() -> std::string {
+        std::string s;
+        s += "RAD OS \xE2\x80\x94 System\n\n";
+        s += "backend : "; s += rad_kernel_backend_name(); s += "\n";
+        s += "version : "; s += rad_kernel_version_string(); s += "\n";
+        s += "shell   : radlib compositor\n";
+        s += "display : primary framebuffer\n";
+        s += "windows : multi-window desktop\n";
+        return s;
+    };
+    auto bodyFor = [&](const RADCompositor::Window *w) -> std::string {
+        if (!w) return {};
+        if (std::strcmp(w->appId, "rad.terminal") == 0) return terminal;
+        if (std::strcmp(w->appId, "rad.sysinfo") == 0) return sysinfoBody();
+        return {};
+    };
     auto refreshShell = [&]() {
-        const RADCompositor::Window *terminalWindow = desktop.terminalWindow();
         ui->set_backend(ss(std::string(rad_kernel_backend_name()) + " / " + rad_kernel_version_string()));
         ui->set_status(ss(std::string("framebuffer=primary shell=radlib state=") + desktop.statusText()));
-        ui->set_terminal(ss(terminal));
+        ui->set_clock(ss("online"));
         ui->set_applications_open(desktop.applicationsMenuOpen());
-        ui->set_terminal_open(desktop.terminalOpen());
-        ui->set_terminal_loading(desktop.terminalLaunching());
-        if (terminalWindow) {
-            ui->set_terminal_window_id(static_cast<int32_t>(terminalWindow->id));
-            ui->set_terminal_window_title(ss(terminalWindow->title));
-            ui->set_terminal_window_x(static_cast<float>(terminalWindow->bounds.x));
-            ui->set_terminal_window_y(static_cast<float>(terminalWindow->bounds.y));
-            ui->set_terminal_window_width(static_cast<float>(terminalWindow->bounds.width));
-            ui->set_terminal_window_height(static_cast<float>(terminalWindow->bounds.height));
-            ui->set_terminal_window_focused(terminalWindow->focused);
-            if (terminalWindow->state != RADCompositor::WindowState::Closed) terminalWindowObserved = true;
+
+        std::vector<RadWinInfo> wins;
+        for (size_t i = 0; i < desktop.windowCount(); ++i) {
+            const RADCompositor::Window *w = desktop.window(i);
+            if (!w || w->state == RADCompositor::WindowState::Closed) continue;
+            RadWinInfo info;
+            info.id = static_cast<int>(w->id);
+            info.title = ss(w->title);
+            info.body = ss(bodyFor(w));
+            info.x = static_cast<float>(w->bounds.x);
+            info.y = static_cast<float>(w->bounds.y);
+            info.w = static_cast<float>(w->bounds.width);
+            info.h = static_cast<float>(w->bounds.height);
+            info.focused = w->focused;
+            info.loading = w->state == RADCompositor::WindowState::Loading;
+            wins.push_back(info);
         }
+        ui->set_windows(std::make_shared<slint::VectorModel<RadWinInfo>>(std::move(wins)));
+
+        std::vector<RadApp> apps;
+        for (size_t i = 0; i < desktop.appCount(); ++i) {
+            const RADCompositor::AppDescriptor *a = desktop.app(i);
+            if (!a) continue;
+            RadApp ra;
+            ra.id = ss(a->id);
+            ra.title = ss(a->title);
+            apps.push_back(ra);
+        }
+        ui->set_apps(std::make_shared<slint::VectorModel<RadApp>>(std::move(apps)));
+
         if (desktop.terminalLaunching()) terminalLoadingObserved = true;
         if (desktop.terminalState() == RADCompositor::TerminalAppState::Running) terminalReadyObserved = true;
         if (desktop.windowCount() != 0 && desktop.appCount() != 0) windowManagerObserved = true;
         if (desktop.applicationsMenuOpen()) menuOpenObserved = true;
+        const RADCompositor::Window *tw = desktop.terminalWindow();
+        if (tw && tw->state != RADCompositor::WindowState::Closed) terminalWindowObserved = true;
     };
     auto launchTerminal = [&]() {
         desktop.beginTerminalLaunch();
@@ -318,39 +362,40 @@ int main(int argc, char **argv) {
         desktop.terminalReady();
         refreshShell();
     };
+    auto launchAppById = [&](const std::string& appId) {
+        if (appId == "rad.terminal") {
+            launchTerminal();
+        } else {
+            const uint32_t id = desktop.launchApp(appId.c_str());
+            if (id) desktop.setWindowState(id, RADCompositor::WindowState::Running);
+            refreshShell();
+        }
+    };
     ui->on_toggle_applications([&]() {
         desktop.toggleApplicationsMenu();
         refreshShell();
     });
-    ui->on_launch_terminal([&]() {
-        launchTerminal();
+    ui->on_launch_app([&](slint::SharedString id) {
+        launchAppById(std::string(id));
     });
     ui->on_escape_pressed([&]() {
         desktop.handleEscape();
         refreshShell();
     });
-    ui->on_focus_terminal_window([&]() {
-        if (const RADCompositor::Window *window = desktop.terminalWindow()) {
-            desktop.focusWindow(window->id);
-        }
+    ui->on_focus_window([&](int id) {
+        desktop.focusWindow(static_cast<uint32_t>(id));
         refreshShell();
     });
-    ui->on_close_terminal_window([&]() {
-        if (const RADCompositor::Window *window = desktop.terminalWindow()) {
-            desktop.closeWindow(window->id);
-        }
+    ui->on_close_window([&](int id) {
+        desktop.closeWindow(static_cast<uint32_t>(id));
         refreshShell();
     });
-    ui->on_move_terminal_window([&](float dx, float dy) {
-        if (const RADCompositor::Window *window = desktop.terminalWindow()) {
-            desktop.moveWindow(window->id, static_cast<int32_t>(dx), static_cast<int32_t>(dy));
-        }
+    ui->on_move_window([&](int id, float dx, float dy) {
+        desktop.moveWindow(static_cast<uint32_t>(id), static_cast<int32_t>(dx), static_cast<int32_t>(dy));
         refreshShell();
     });
-    ui->on_resize_terminal_window([&](float dx, float dy) {
-        if (const RADCompositor::Window *window = desktop.terminalWindow()) {
-            desktop.resizeWindow(window->id, static_cast<int32_t>(dx), static_cast<int32_t>(dy));
-        }
+    ui->on_resize_window([&](int id, float dx, float dy) {
+        desktop.resizeWindow(static_cast<uint32_t>(id), static_cast<int32_t>(dx), static_cast<int32_t>(dy));
         refreshShell();
     });
     launchTerminal();
@@ -398,6 +443,20 @@ int main(int argc, char **argv) {
         sysFocused = f2 && f2->id == sysId && f2->focused;
         focusSwitchObserved = secondWindowObserved && termFocused && sysFocused;
         refreshShell();
+
+        // Launcher lists >=2 apps (Terminal + System); taskbar/dock lists both
+        // open windows. Both are rendered by the RadDesktop Repeaters bound to
+        // the apps / windows models refreshShell() just populated.
+        launcherObserved = desktop.appCount() >= 2;
+        taskbarObserved = desktop.openWindowCount() >= 2;
+
+        // Generalized close on a non-terminal window: closing System drops the
+        // open-window count and focus falls back to a surviving window.
+        const size_t beforeClose = desktop.openWindowCount();
+        desktop.closeWindow(sysId);
+        windowCloseObserved = desktop.openWindowCount() == beforeClose - 1
+            && desktop.focusedWindow() != nullptr;
+        refreshShell();
     }
     ui->show();
     RADUi::run();
@@ -421,6 +480,9 @@ int main(int argc, char **argv) {
         if (terminalRelaunchObserved) std::cout << "RAD_SLINT_TERMINAL_RELAUNCH_OK\n";
         if (secondWindowObserved) std::cout << "RAD_SLINT_WINDOW_OPEN_OK\n";
         if (focusSwitchObserved) std::cout << "RAD_SLINT_FOCUS_SWITCH_OK\n";
+        if (launcherObserved) std::cout << "RAD_SLINT_LAUNCHER_OK\n";
+        if (taskbarObserved) std::cout << "RAD_SLINT_TASKBAR_OK\n";
+        if (windowCloseObserved) std::cout << "RAD_SLINT_CLOSE_OK\n";
         if (compositorSelfTest.surfaceCreate) std::cout << "RAD_COMPOSITOR_SURFACE_CREATE_OK\n";
         if (compositorSelfTest.offscreenRender) std::cout << "RAD_COMPOSITOR_OFFSCREEN_RENDER_OK\n";
         if (compositorSelfTest.blit) std::cout << "RAD_COMPOSITOR_BLIT_OK\n";
