@@ -161,9 +161,39 @@ void mailbox_push(size_t& index, uint32_t tag, uint32_t value_size, uint32_t val
     if (value_size >= 8u) g_mailbox[index++] = value1;
 }
 
+#if defined(RAD_PI_JTAG_CONSOLE)
+// Console-over-JTAG rings (opt-in: -DRAD_PI_JTAG_CONSOLE). A debugger drains the
+// output ring and fills the input ring over the JTAG memory port (OpenOCD reads/
+// writes these symbols while the core runs), so the console needs NO UART wire --
+// only the Pico DirtyJTAG. Off by default so the shipped image's memory layout is
+// untouched (the WiFi-object link exposes a layout-sensitivity bug; keep this out
+// of the default build until that is fixed). See tools/embedded/rad_pi_zero2w_hw.
+struct RadJtagRing { volatile uint32_t magic, head, tail, size; char buf[8192]; };
+extern "C" RadJtagRing g_rad_jtag_console = {0x524a5443u /*'RJTC'*/, 0, 0, 8192u, {0}};
+extern "C" RadJtagRing g_rad_jtag_input   = {0x524a5449u /*'RJTI'*/, 0, 0,  256u, {0}};
+void jtag_console_emit(const uint8_t *b, size_t n) {
+    for (size_t i = 0; i < n; ++i) {
+        const uint32_t h = g_rad_jtag_console.head;
+        g_rad_jtag_console.buf[h % 8192u] = static_cast<char>(b[i]);
+        g_rad_jtag_console.head = h + 1u;
+    }
+}
+size_t jtag_input_drain(uint8_t *out, size_t max) {
+    size_t n = 0;
+    while (n < max && g_rad_jtag_input.tail != g_rad_jtag_input.head) {
+        out[n++] = static_cast<uint8_t>(g_rad_jtag_input.buf[g_rad_jtag_input.tail % 256u]);
+        g_rad_jtag_input.tail++;
+    }
+    return n;
+}
+#endif
+
 rad_status_t bcm_serial_read(void*, void *buffer, size_t size, size_t *bytes_read) {
     if (!buffer) return RAD_STATUS_INVALID_ARGUMENT;
     size_t count = 0;
+#if defined(RAD_PI_JTAG_CONSOLE)
+    count += jtag_input_drain(static_cast<uint8_t*>(buffer), size); // debugger-injected input first
+#endif
     while (count < size && (read32(uart0(0x18u)) & (1u << 4u)) == 0) {
         static_cast<uint8_t*>(buffer)[count++] = static_cast<uint8_t>(read32(uart0(0x00u)) & 0xffu);
     }
@@ -174,6 +204,9 @@ rad_status_t bcm_serial_read(void*, void *buffer, size_t size, size_t *bytes_rea
 rad_status_t bcm_serial_write(void*, const void *buffer, size_t size, size_t *bytes_written) {
     if (!buffer) return RAD_STATUS_INVALID_ARGUMENT;
     const auto *bytes = static_cast<const uint8_t*>(buffer);
+#if defined(RAD_PI_JTAG_CONSOLE)
+    jtag_console_emit(bytes, size); // mirror all console output to the JTAG ring
+#endif
     for (size_t i = 0; i < size; ++i) {
         if (bytes[i] == '\n') {
             while (read32(uart0(0x18u)) & (1u << 5u)) {}

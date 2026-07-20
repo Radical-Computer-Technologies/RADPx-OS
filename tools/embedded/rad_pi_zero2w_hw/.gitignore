@@ -1,0 +1,4 @@
+# Fetched firmware blobs + assembled boot dirs (not vendored).
+firmware/
+bootdir/
+__pycache__/

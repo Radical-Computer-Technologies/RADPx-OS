@@ -1,0 +1,27 @@
+# RADPx-OS — Raspberry Pi Zero 2 W boot config (goes on the FAT boot partition).
+#
+# The Zero 2 W GPU firmware (bootcode.bin/start.elf, from fetch_firmware.sh) reads
+# this, then loads kernel8.img (= our RADKRN.IMG) at 0x80000 in 64-bit mode.
+
+arm_64bit=1
+kernel=kernel8.img
+
+# RADPx-OS drives the PL011 UART (0x3f201000). On the Pi 3 / Zero 2 W the PL011 is
+# wired to the Bluetooth modem by default and the console pins carry the weaker
+# mini-UART. Turning BT off re-routes PL011 to GPIO14 (TXD, pin 8) / GPIO15 (RXD,
+# pin 10) — the UART our kernel + serial_console.py expect. (BT off is fine; WiFi
+# is a separate function of the CYW43438.)
+dtoverlay=disable-bt
+enable_uart=1
+
+# Expose the Cortex-A53 JTAG on GPIO22-27 (alt4) for the Pico DirtyJTAG probe:
+#   GPIO22=TRST  GPIO23=RTCK  GPIO24=TDO  GPIO25=TCK  GPIO26=TDI  GPIO27=TMS
+enable_jtag_gpio=1
+
+# Pin the core clock so UART baud + JTAG timing stay stable across the boot.
+core_freq=250
+
+# We synthesize our own boot handoff and read the mailbox for the framebuffer, so
+# no device tree / initramfs is needed. Keep the boot minimal.
+disable_splash=1
+boot_delay=0

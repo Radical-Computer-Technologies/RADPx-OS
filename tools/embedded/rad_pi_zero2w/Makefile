@@ -23,7 +23,9 @@ OBJCOPY := $(TOOLCHAIN_PREFIX)objcopy
 RAD_PI_DEFINES := -DRADLIB_EMBEDDED_NO_CPP_WRAPPERS=1 -DRAD_KERNEL_BACKEND_bcm283x_pi=1 \
 	-DRAD_KERNEL_MAX_PROCESSES=128u -DRAD_KERNEL_MAX_TASKS=128u -DRAD_KERNEL_TASK_STACK_BYTES=524288u \
 	-DRAD_A53_MAX_USER_PROCESSES=128u -DRAD_A53_MAX_TRACKED_PAGES=65536u -DRAD_KERNEL_ARCH_CONTEXT_WORDS=16u \
-	-DRAD_A53_USABLE_FLOOR=0x08000000u
+	-DRAD_A53_USABLE_FLOOR=0x08000000u $(RAD_PI_EXTRA_DEFINES)
+# Opt-in extras, e.g. console-over-JTAG for the DirtyJTAG-only debug rig:
+#   make RAD_PI_EXTRA_DEFINES=-DRAD_PI_JTAG_CONSOLE
 
 CXXFLAGS := -std=c++20 -Os -ffreestanding -fno-pic -fno-pie -fno-rtti -fno-exceptions -fno-stack-protector -Wall -Wextra $(RAD_PI_DEFINES)
 CFLAGS := -Os -ffreestanding -fno-pic -fno-pie -fno-stack-protector -Wall -Wextra $(RAD_PI_DEFINES)
