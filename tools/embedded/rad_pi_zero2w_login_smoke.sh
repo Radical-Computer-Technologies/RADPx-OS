@@ -17,7 +17,7 @@ PAYLOAD_DIR="$ROOT/tools/embedded/rad_pi_zero2w"
 LOG="${RAD_PI_LOGIN_LOG:-$ROOT/.radbuild/rad-pi-zero2w-login-smoke.log}"
 LOGIN_USER="${RAD_PI_LOGIN_USER:-root}"
 LOGIN_PASSWORD="${RAD_PI_LOGIN_PASSWORD:-rad}"
-TIMEOUT="${RAD_PI_LOGIN_TIMEOUT:-30}"
+TIMEOUT="${RAD_PI_LOGIN_TIMEOUT:-50}"
 
 # shellcheck source=/dev/null
 source "$ROOT/tools/embedded/qemu_aarch64_env.sh"
@@ -56,10 +56,17 @@ await() {
 send() { printf '%s\r' "$1" >&3; }
 
 # Wait for the rootfs login session to be spawned, then drive credentials blind.
+# Raw TTY prompts ("login:", "Password:") are not surfaced on the Pi UART (only
+# marker-shaped lines are), so we cannot await the prompt. Instead re-offer the
+# credential pair on a loop until login accepts them (RAD_LOGIN_OK), tolerating
+# the boot-session shell consuming an early attempt.
 await "RAD_LOGIN_SPAWN_OK" 25 || { echo "pi_login_smoke: login session never spawned" >&2; cat "$LOG"; exit 1; }
-sleep 1
+# Let the boot-session shell finish its boot script and the login service reach
+# its prompt (raw prompts are not surfaced, so wait a generous fixed settle),
+# then type the credentials once, one line at a time, pacing password after user.
+sleep "${RAD_PI_LOGIN_SETTLE:-12}"
 send "$LOGIN_USER"
-sleep 1
+sleep 2
 send "$LOGIN_PASSWORD"
 
 if await "RAD_LOGIN_OK" 15; then

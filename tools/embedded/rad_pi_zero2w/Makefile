@@ -15,9 +15,15 @@ OBJCOPY := $(TOOLCHAIN_PREFIX)objcopy
 # overflows the default 8 KB task stack on the execve-reenter path (the second
 # program load runs inside the user-process task, not the large boot stack).
 # RAD_KERNEL_ARCH_CONTEXT_WORDS must be 16 to match the a53 context-switch asm.
+# RAD_A53_USABLE_FLOOR moves the page allocator ABOVE the kernel image: with 128
+# 512 KB task stacks the .bss (and __image_end) reaches ~78 MB, but the default
+# usable base is only 16 MB -- so page allocations would corrupt the kernel's own
+# .bss (a latent, layout-sensitive memory corruption). 0x08000000 (128 MB) clears
+# the image; the 256 MB page pool then fits under the Zero 2 W's 512 MB.
 RAD_PI_DEFINES := -DRADLIB_EMBEDDED_NO_CPP_WRAPPERS=1 -DRAD_KERNEL_BACKEND_bcm283x_pi=1 \
 	-DRAD_KERNEL_MAX_PROCESSES=128u -DRAD_KERNEL_MAX_TASKS=128u -DRAD_KERNEL_TASK_STACK_BYTES=524288u \
-	-DRAD_A53_MAX_USER_PROCESSES=128u -DRAD_A53_MAX_TRACKED_PAGES=65536u -DRAD_KERNEL_ARCH_CONTEXT_WORDS=16u
+	-DRAD_A53_MAX_USER_PROCESSES=128u -DRAD_A53_MAX_TRACKED_PAGES=65536u -DRAD_KERNEL_ARCH_CONTEXT_WORDS=16u \
+	-DRAD_A53_USABLE_FLOOR=0x08000000u
 
 CXXFLAGS := -std=c++20 -Os -ffreestanding -fno-pic -fno-pie -fno-rtti -fno-exceptions -fno-stack-protector -Wall -Wextra $(RAD_PI_DEFINES)
 CFLAGS := -Os -ffreestanding -fno-pic -fno-pie -fno-stack-protector -Wall -Wextra $(RAD_PI_DEFINES)
@@ -41,6 +47,11 @@ OBJS := \
 	radkernel_fat.o \
 	radkernel_hal_bcm283x.o \
 	radkernel_runtime_newlib.o
+# HELD (not linked yet): bcm283x_wifi.o -- the CYW43438 SDIO WiFi driver builds,
+# but linking it deterministically breaks the interactive login via a latent
+# kernel layout-sensitivity bug (see the note in radkernel_hal_bcm283x.cpp). Add
+# it back to OBJS above once that is root-caused. It has no effect in QEMU anyway
+# (raspi3ap does not emulate the CYW43438).
 
 all: RADKRN.ELF RADKRN.IMG
 
@@ -96,6 +107,9 @@ radkernel_fat.o: $(RADPX_OS_ROOT)/RADKernel/fs/fat.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -I$(RADPX_OS_ROOT)/RADKernel/fs -c -o $@ $<
 
 radkernel_hal_bcm283x.o: $(RADPX_OS_ROOT)/RADKernel/platforms/a53/bcm283x/radkernel_hal_bcm283x.cpp
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c -o $@ $<
+
+bcm283x_wifi.o: $(RADPX_OS_ROOT)/RADKernel/platforms/a53/bcm283x/bcm283x_wifi.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c -o $@ $<
 
 radkernel_runtime_newlib.o: $(RADPX_OS_ROOT)/RADKernel/hal/circle/radkernel_runtime_newlib.cpp

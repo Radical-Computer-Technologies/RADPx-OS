@@ -96,6 +96,15 @@ void write16(uintptr_t address, uint16_t value) { *reinterpret_cast<volatile uin
 } // anonymous namespace (helpers below need rad_hal_time_micros, declared next)
 
 extern "C" uint64_t rad_hal_time_micros(void);
+// CYW43438 SDIO WiFi probe (bcm283x_wifi.cpp), driven on the Arasan EMMC.
+// HELD: the driver is written and builds, but simply LINKING bcm283x_wifi.o
+// deterministically breaks the interactive login (a latent layout-sensitivity
+// bug in the kernel that ~4 KB of extra code exposes -- one such bug, the page
+// allocator/image overlap, is already fixed via RAD_A53_USABLE_FLOOR; a second
+// remains). Until that is root-caused, the WiFi probe is not wired in so the
+// QEMU image stays login-clean. Re-enable the extern + the call in
+// bcm283x_emmc_init together with adding bcm283x_wifi.o back to the Makefile.
+// extern "C" rad_status_t rad_bcm283x_wifi_init(uintptr_t peripheral_base);
 
 namespace {
 void udelay(uint32_t us) {
@@ -661,6 +670,12 @@ void bcm283x_emmc_init() {
     }
     g_bcm283x.emmc_ready = 1;
     rad_debug_marker("RAD_PI_EMMC_INIT_OK");
+
+    // With the microSD on SDHOST, the Arasan EMMC is free for the on-board WiFi
+    // SDIO (real Pi Zero 2 W wiring). The CYW43438 probe (bcm283x_wifi.cpp) is
+    // written and ready, but is HELD until the WiFi-object link layout bug is
+    // fixed (see the note at the rad_bcm283x_wifi_init declaration above):
+    //   if (g_bcm283x.sd_controller != 1) rad_bcm283x_wifi_init(g_bcm283x.peripheral_base);
 }
 
 void push_boot_input_events() {
