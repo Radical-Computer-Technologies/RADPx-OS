@@ -740,11 +740,20 @@ void unlock_runtime() {
 // unsynchronised master_size updates corrupt the ring (and can write past it). Kept
 // separate from runtime_lock so it never nests with it in a conflicting order.
 volatile int g_pty_master_lock = 0;
+volatile int g_pty_master_saved_irq = 0;
 void lock_pty_master() {
+    // Interrupt-safe: this lock is taken from both the shell's pty drain and the tty
+    // output path, so on a single core an interrupt landing on the holder must not be
+    // able to re-enter and self-deadlock. Disable interrupts while held.
+    const int was_enabled = rad_cpu_interrupts_enabled();
+    rad_cpu_interrupts_disable();
     while (__atomic_test_and_set(&g_pty_master_lock, __ATOMIC_ACQUIRE)) { /* spin */ }
+    g_pty_master_saved_irq = was_enabled;
 }
 void unlock_pty_master() {
+    const int was_enabled = g_pty_master_saved_irq;
     __atomic_clear(&g_pty_master_lock, __ATOMIC_RELEASE);
+    if (was_enabled) rad_cpu_interrupts_enable();
 }
 
 void lock_provider(VfsProviderRecord *provider) {

@@ -1381,7 +1381,15 @@ extern "C" rad_status_t rad_slint_shell_start(rad_framebuffer_t framebuffer, con
     g_slint_started = 1;
     render_ticks(2);
     launch_terminal(terminal_text);
+#if defined(RAD_SLINT_SHELL_SELFTEST)
+    // Self-test scaffolding only: drives the shell through menu/move/resize/close/
+    // relaunch to emit the RAD_SLINT_* markers. It is destabilising in a live boot
+    // (extra re-renders, a terminal relaunch, an input smoke) and the smoke validates
+    // those markers via the hosted rad_os_shell self-test instead, so it is off by
+    // default. The live shell must render, spawn the terminal, and return promptly so
+    // the kernel main loop can start driving tick() (input + pty drain + present).
     run_shell_smoke_actions();
+#endif
     render_ticks(2);
     return RAD_STATUS_OK;
 }
