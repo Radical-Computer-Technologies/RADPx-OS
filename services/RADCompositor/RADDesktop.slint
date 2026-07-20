@@ -55,11 +55,29 @@ export component RadDesktop inherits Window {
         y: win.y * 1px;
         width: win.w * 1px;
         height: win.h * 1px;
-        background: @linear-gradient(180deg, #0a1626 0%, #040d1a 100%);
-        border-radius: 10px;
-        border-width: win.focused ? 1.5px : 1px;
-        border-color: win.focused ? #38bdf8 : #2a3a4f;
-        clip: true;
+
+        // Faux drop shadow: a soft, offset dark rounded rect behind the window
+        // gives depth with no GPU effect (software-renderer safe and frugal --
+        // it recomposites only inside the window's damage rect).
+        Rectangle {
+            x: 3px;
+            y: 5px;
+            width: parent.width;
+            height: parent.height;
+            border-radius: 13px;
+            background: win.focused ? #00000070 : #00000045;
+        }
+
+        Rectangle {
+            x: 0px;
+            y: 0px;
+            width: parent.width;
+            height: parent.height;
+            background: @linear-gradient(180deg, #0a1626 0%, #040d1a 100%);
+            border-radius: 10px;
+            border-width: win.focused ? 1.5px : 1px;
+            border-color: win.focused ? #38bdf8 : #2a3a4f;
+            clip: true;
 
         Rectangle {
             x: 0px;
@@ -166,6 +184,7 @@ export component RadDesktop inherits Window {
                         (self.mouse-y - self.pressed-y) / 1px);
                 }
             }
+        }
         }
     }
 
