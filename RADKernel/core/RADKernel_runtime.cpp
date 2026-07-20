@@ -226,6 +226,12 @@ struct rad_task_handle {
     rad_task_entry_t entry;
     void *context;
     int running;
+    // Non-zero from the moment this task is dispatched on a core until its context
+    // has been fully saved back on the next yield/sleep. Another core must NOT select
+    // a task whose context save is still in flight (running is cleared before the
+    // context switch actually saves it), or it would restore a stale stack pointer and
+    // scribble on the task's kernel stack -- an SMP-only corruption.
+    volatile int on_cpu;
     int finished;
     int detached;
     rad_task_state_t state;
@@ -2932,6 +2938,8 @@ rad_status_t cmd_run(int argc, const char **argv, rad_terminal_write_t write, vo
 
 bool task_matches_core(const rad_task_handle& task, uint32_t core) {
     if (!task.entry || task.finished || task.running) return false;
+    // Its context save from the last run may still be in flight on another core.
+    if (__atomic_load_n(&task.on_cpu, __ATOMIC_ACQUIRE)) return false;
     if (task.state == RAD_TASK_SLEEPING && task.wake_micros > hal_now()) return false;
     if (task.target_core == RAD_TASK_CORE_ANY) {
         return g_state.worker_running_mask ? core != RAD_TASK_CORE_SERVICE : true;
@@ -3092,6 +3100,10 @@ bool run_one_task_on_core(uint32_t core) {
         if (!__atomic_exchange_n(&g_context_dispatch_seen, 1, __ATOMIC_ACQ_REL)) {
             rad_debug_marker("RAD_CONTEXT_DISPATCH_OK");
         }
+        // Mark the task as owned by this core across the switch. It is cleared only
+        // after control returns here -- i.e. after the task has yielded/slept and its
+        // context is fully saved -- so no other core can select it mid-save.
+        __atomic_store_n(&selected->on_cpu, 1, __ATOMIC_RELEASE);
         rad_arch_task_context_switch(g_scheduler_context[core], selected->arch_context);
         check_task_stack_guard(*selected);
         if (selected->finished && selected->running) {
@@ -3102,6 +3114,10 @@ bool run_one_task_on_core(uint32_t core) {
             }
             unlock_tasks();
         }
+        // Release ownership only after this core is completely finished touching the
+        // task (context saved above, plus the post-run bookkeeping), so no other core
+        // can select it and restore a stale stack while we are still using it.
+        __atomic_store_n(&selected->on_cpu, 0, __ATOMIC_RELEASE);
         return true;
     }
 
