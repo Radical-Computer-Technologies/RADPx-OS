@@ -55,10 +55,10 @@ export component RadDesktop inherits Window {
         y: win.y * 1px;
         width: win.w * 1px;
         height: win.h * 1px;
-        background: #030a16;
-        border-radius: 9px;
-        border-width: 1px;
-        border-color: win.focused ? #38bdf8 : #334155;
+        background: @linear-gradient(180deg, #0a1626 0%, #040d1a 100%);
+        border-radius: 10px;
+        border-width: win.focused ? 1.5px : 1px;
+        border-color: win.focused ? #38bdf8 : #2a3a4f;
         clip: true;
 
         Rectangle {
@@ -66,14 +66,25 @@ export component RadDesktop inherits Window {
             y: 0px;
             width: parent.width;
             height: 28px;
-            background: win.focused ? #143352 : #0e2138;
+            background: win.focused
+                ? @linear-gradient(180deg, #1b3e64 0%, #0f2942 100%)
+                : @linear-gradient(180deg, #132a41 0%, #0a1c30 100%);
+
+            // Focus accent underline along the base of the title bar.
+            Rectangle {
+                x: 0px;
+                y: parent.height - 1px;
+                width: parent.width;
+                height: 1px;
+                background: win.focused ? #38bdf8 : #1e2f45;
+            }
 
             Text {
                 x: 12px;
                 y: 6px;
                 width: parent.width - 44px;
                 text: win.title;
-                color: #eaf4ff;
+                color: win.focused ? #eaf4ff : #b8c7da;
                 font-size: 13px;
                 font-weight: 700;
                 overflow: elide;
@@ -163,7 +174,7 @@ export component RadDesktop inherits Window {
         y: 0px;
         width: parent.width;
         height: 34px;
-        background: #0e2038;
+        background: @linear-gradient(180deg, #12263f 0%, #0a1a2e 100%);
         Image {
             x: 10px;
             y: 4px;
@@ -238,7 +249,7 @@ export component RadDesktop inherits Window {
         y: parent.height - 32px;
         width: parent.width;
         height: 32px;
-        background: #091524;
+        background: @linear-gradient(180deg, #0c1a2c 0%, #06101d 100%);
         HorizontalLayout {
             padding: 5px;
             spacing: 5px;
