@@ -37,7 +37,7 @@ trap 'rm -rf "$WORK"; [[ -n "${QPID:-}" ]] && kill "$QPID" 2>/dev/null || true' 
 # Launch QEMU first (it opens the FIFO read end), then open the write end on fd 3
 # so QEMU's stdin never sees EOF. Opening the two ends in the other order
 # deadlocks (a FIFO open blocks until the opposite end is opened).
-timeout "$TIMEOUT" "$QEMU" -M raspi3b -cpu cortex-a53 -m 1G \
+timeout "$TIMEOUT" "$QEMU" -M raspi3ap -cpu cortex-a53 -m 512M \
     -kernel "$PAYLOAD_DIR/RADKRN.IMG" \
     -drive "file=$SD_IMG,if=sd,format=raw" \
     -serial stdio -display none -no-reboot < "$FIFO" > "$LOG" 2>&1 &

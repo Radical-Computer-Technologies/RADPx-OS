@@ -47,6 +47,7 @@ struct Bcm283xState {
     // Real SD card (Arasan SDHCI EMMC) state; sd_ready=0 falls back to the
     // in-RAM g_emmc_storage stub so a kernel-only boot (no -sd image) still works.
     int sd_ready = 0;
+    int sd_controller = 0; // 0=none/RAM stub, 1=Arasan SDHCI, 2=SDHOST (real HW)
     uint32_t sd_high_capacity = 1;
     uint32_t sd_rca = 0;
     uint64_t sd_sector_count = 0;
@@ -108,6 +109,18 @@ int wait_mask(uintptr_t reg, uint32_t mask, uint32_t value, uint32_t timeout_us)
         if ((i & 0xffu) == 0) udelay(1);
     }
     return 0;
+}
+
+// GPIO alternate-function select (GPFSEL, 3 bits/pin at GPIO base 0x200000).
+// alt0=4, alt3=7 in the function-select encoding.
+constexpr uintptr_t GpioOffset = 0x200000u;
+void gpio_set_alt(uint32_t pin, uint32_t alt) {
+    const uintptr_t reg = peripheral(GpioOffset + (pin / 10u) * 4u);
+    const uint32_t shift = (pin % 10u) * 3u;
+    uint32_t v = read32(reg);
+    v &= ~(0x7u << shift);
+    v |= (alt & 0x7u) << shift;
+    write32(reg, v);
 }
 
 uint32_t arm_to_vc_bus(uintptr_t address) {
@@ -268,8 +281,9 @@ rad_status_t register_mailbox_framebuffer() {
     return status;
 }
 
-// Defined further below with the SDHCI driver; used by the block ioctl here.
-rad_status_t sd_read_single(uint64_t sector, void *buffer);
+// Defined further below; dispatches the read to the active SD controller
+// (SDHOST on real HW / Arasan in QEMU default wiring).
+rad_status_t sd_read_block(uint64_t sector, void *buffer);
 
 rad_status_t bcm_block_info(void*, uint32_t request, void *argument) {
     // A real SD card reports a large sector count so ext4/FAT can read anywhere
@@ -297,7 +311,7 @@ rad_status_t bcm_block_info(void*, uint32_t request, void *argument) {
             if (request == RAD_DEVICE_IOCTL_BLOCK_WRITE) return RAD_STATUS_NOT_SUPPORTED;
             auto *bytes = static_cast<uint8_t*>(block->buffer);
             for (uint32_t i = 0; i < block->sector_count; ++i) {
-                const rad_status_t st = sd_read_single(block->sector + i, bytes + static_cast<size_t>(i) * EmmcSectorSize);
+                const rad_status_t st = sd_read_block(block->sector + i, bytes + static_cast<size_t>(i) * EmmcSectorSize);
                 if (st != RAD_STATUS_OK) return st;
             }
             rad_debug_marker("RAD_PI_BLOCK_READ_OK");
@@ -332,10 +346,12 @@ rad_status_t bcm_usb_ioctl(void*, uint32_t request, void *argument) {
     return RAD_STATUS_OK;
 }
 
-// --- Arasan SDHCI (BCM2835 "EMMC") real block driver ------------------------
-// The BCM2835 EMMC is an SD-spec SDHCI controller at peripheral+0x300000 (the
-// standard register map, same as the ZynqMP SD). QEMU raspi3b connects the SD
-// card here, so this reads a real -sd image. PIO single-block transfers.
+// --- Arasan SDHCI (BCM2835 "EMMC") block driver -----------------------------
+// The BCM2835 EMMC is an SD-spec SDHCI controller at peripheral+0x300000. On a
+// real Pi Zero 2 W this controller is wired to the on-board CYW43438 WiFi (SDIO),
+// NOT the SD card -- so this SD-card path is only a QEMU fallback (used when the
+// GPIO48-53 alt is left at the default and QEMU keeps the card parented to the
+// Arasan bus). The real microSD path is the SDHOST driver below. PIO single-block.
 // (Already inside the file's anonymous namespace -- no nested namespace here, so
 // sd_read_single matches its forward declaration above bcm_block_info.)
 constexpr uint32_t SdSectorSize = 512u;
@@ -440,6 +456,126 @@ rad_status_t sd_init_card() {
     return RAD_STATUS_OK;
 }
 
+// --- BCM2835 SDHOST controller (real-hardware microSD path) -----------------
+// On a real Pi Zero 2 W the microSD card is wired to the SDHOST controller
+// (peripheral+0x202000) via GPIO48-53 alt0, while the Arasan SDHCI EMMC
+// (0x300000) carries the on-board CYW43438 WiFi over SDIO. QEMU raspi3 models
+// both and reparents the SD card to whichever controller GPIO48-53's alt selects,
+// so driving SDHOST here makes QEMU match real silicon AND frees the Arasan EMMC
+// for the WiFi driver. SDHOST is the Broadcom-custom controller (not SDHCI):
+// write SDARG then SDCMD|NEW_FLAG, poll NEW_FLAG, read SDRSP0; data drains from
+// the SDDATA FIFO (word count in SDEDM[8:4]). Ported from Circle addon/SDCard.
+constexpr uintptr_t SdhostOffset = 0x202000u;
+constexpr uint32_t SdhostCmdNewFlag = 0x8000u;
+constexpr uint32_t SdhostCmdFailFlag = 0x4000u;
+constexpr uint32_t SdhostCmdBusywait = 0x800u;
+constexpr uint32_t SdhostCmdNoResponse = 0x400u;
+constexpr uint32_t SdhostCmdLongResponse = 0x200u;
+constexpr uint32_t SdhostCmdReadCmd = 0x40u;
+constexpr uint32_t SdhostHstsErrorMask = 0xf8u; // CMD/REW timeout + CRC + FIFO error
+constexpr uint32_t SdhostCfgWideIntBus = (1u << 1);
+constexpr uint32_t SdhostCfgSlowCard = (1u << 3);
+constexpr uint32_t SdhostCfgBusyIrptEn = (1u << 10);
+
+uintptr_t sdhost(uintptr_t offset) { return peripheral(SdhostOffset + offset); }
+
+rad_status_t sdhost_command(uint32_t cmd, uint32_t arg, uint32_t flags, uint32_t *resp) {
+    for (uint32_t i = 0; (read32(sdhost(0x00u)) & SdhostCmdNewFlag); ++i) {
+        if (i > 100000u) return RAD_STATUS_TIMEOUT;
+        udelay(10);
+    }
+    write32(sdhost(0x20u), 0x7f8u);                                        // clear SDHSTS
+    write32(sdhost(0x04u), arg);                                           // SDARG
+    write32(sdhost(0x00u), (cmd & 0x3fu) | flags | SdhostCmdNewFlag);      // SDCMD
+    uint32_t sdcmd = 0;
+    for (uint32_t i = 0; i < 100000u; ++i) {
+        sdcmd = read32(sdhost(0x00u));
+        if (!(sdcmd & SdhostCmdNewFlag)) break;
+        udelay(10);
+    }
+    if (sdcmd & SdhostCmdNewFlag) return RAD_STATUS_TIMEOUT;
+    if (sdcmd & SdhostCmdFailFlag) return RAD_STATUS_ERROR;
+    if (resp) *resp = read32(sdhost(0x10u));                               // SDRSP0
+    return RAD_STATUS_OK;
+}
+
+void sdhost_reset() {
+    write32(sdhost(0x30u), 0);        // SDVDD off
+    write32(sdhost(0x00u), 0);        // SDCMD
+    write32(sdhost(0x04u), 0);        // SDARG
+    write32(sdhost(0x08u), 0xf00000u);// SDTOUT
+    write32(sdhost(0x0cu), 0);        // SDCDIV
+    write32(sdhost(0x20u), 0x7f8u);   // SDHSTS clear
+    write32(sdhost(0x38u), 0);        // SDHCFG
+    write32(sdhost(0x3cu), 0);        // SDHBCT
+    write32(sdhost(0x50u), 0);        // SDHBLC
+    uint32_t edm = read32(sdhost(0x34u)); // SDEDM: cap FIFO thresholds (silicon bug)
+    edm &= ~((0x1fu << 14) | (0x1fu << 9));
+    edm |= (4u << 14) | (4u << 9);
+    write32(sdhost(0x34u), edm);
+    udelay(10000);
+    write32(sdhost(0x30u), 1);        // SDVDD on
+    udelay(10000);
+    write32(sdhost(0x38u), SdhostCfgWideIntBus | SdhostCfgSlowCard | SdhostCfgBusyIrptEn);
+    write32(sdhost(0x0cu), 0x7ffu);   // SDCDIV: slowest (ident) clock
+}
+
+rad_status_t sdhost_read_single(uint64_t sector, void *buffer) {
+    if (!buffer) return RAD_STATUS_INVALID_ARGUMENT;
+    write32(sdhost(0x3cu), SdSectorSize); // SDHBCT block size
+    write32(sdhost(0x50u), 1u);           // SDHBLC block count
+    const uint32_t arg = g_bcm283x.sd_high_capacity ? static_cast<uint32_t>(sector)
+                                                    : static_cast<uint32_t>(sector * SdSectorSize);
+    const rad_status_t st = sdhost_command(17u, arg, SdhostCmdReadCmd, nullptr); // CMD17
+    if (st != RAD_STATUS_OK) return st;
+    auto *words = static_cast<uint32_t*>(buffer);
+    uint32_t got = 0;
+    const uint32_t total = SdSectorSize / sizeof(uint32_t);
+    for (uint32_t spin = 0; spin < 1000000u && got < total; ++spin) {
+        uint32_t avail = (read32(sdhost(0x34u)) >> 4) & 0x1fu; // SDEDM[8:4] = FIFO words
+        if (avail == 0) {
+            if (read32(sdhost(0x20u)) & SdhostHstsErrorMask) return RAD_STATUS_ERROR;
+            udelay(1);
+            continue;
+        }
+        while (avail-- && got < total) words[got++] = read32(sdhost(0x40u)); // SDDATA
+    }
+    if (got < total) return RAD_STATUS_TIMEOUT;
+    write32(sdhost(0x20u), 0x7f8u);
+    return RAD_STATUS_OK;
+}
+
+rad_status_t sdhost_init_card() {
+    sdhost_reset();
+    uint32_t resp = 0;
+    (void)sdhost_command(0u, 0u, SdhostCmdNoResponse, nullptr);   // CMD0 GO_IDLE
+    (void)sdhost_command(8u, 0x1aau, 0, &resp);                   // CMD8 SEND_IF_COND
+    rad_status_t st = RAD_STATUS_TIMEOUT;
+    for (uint32_t retry = 0; retry < 1000u; ++retry) {
+        (void)sdhost_command(55u, 0u, 0, nullptr);               // CMD55 APP_CMD
+        st = sdhost_command(41u, 0x40300000u, 0, &resp);         // ACMD41
+        if (st == RAD_STATUS_OK && (resp & 0x80000000u)) break;
+        udelay(1000);
+    }
+    if (!(resp & 0x80000000u)) return RAD_STATUS_TIMEOUT;
+    g_bcm283x.sd_high_capacity = (resp & 0x40000000u) ? 1u : 0u;
+    if (sdhost_command(2u, 0u, SdhostCmdLongResponse, nullptr) != RAD_STATUS_OK) return RAD_STATUS_ERROR; // CMD2 CID
+    if (sdhost_command(3u, 0u, 0, &resp) != RAD_STATUS_OK) return RAD_STATUS_ERROR;                       // CMD3 RCA
+    g_bcm283x.sd_rca = resp & 0xffff0000u;
+    if (sdhost_command(7u, g_bcm283x.sd_rca, SdhostCmdBusywait, nullptr) != RAD_STATUS_OK) return RAD_STATUS_ERROR; // CMD7
+    if (!g_bcm283x.sd_high_capacity) (void)sdhost_command(16u, SdSectorSize, 0, nullptr);                 // CMD16
+    return RAD_STATUS_OK;
+}
+
+// Read a 512-byte sector through whichever storage controller is active.
+rad_status_t sd_read_block(uint64_t sector, void *buffer) {
+    switch (g_bcm283x.sd_controller) {
+    case 2: return sdhost_read_single(sector, buffer);
+    case 1: return sd_read_single(sector, buffer);
+    default: return RAD_STATUS_NOT_FOUND;
+    }
+}
+
 // Partition block device: offsets requests into the parent SD by start_sector.
 rad_status_t bcm_partition_ioctl(void *context, uint32_t request, void *argument) {
     auto *partition = static_cast<PartitionDevice*>(context);
@@ -461,7 +597,7 @@ rad_status_t bcm_partition_ioctl(void *context, uint32_t request, void *argument
         if (request == RAD_DEVICE_IOCTL_BLOCK_WRITE) return RAD_STATUS_NOT_SUPPORTED;
         auto *bytes = static_cast<uint8_t*>(block->buffer);
         for (uint32_t i = 0; i < block->sector_count; ++i) {
-            const rad_status_t st = sd_read_single(partition->start_sector + block->sector + i, bytes + static_cast<size_t>(i) * SdSectorSize);
+            const rad_status_t st = sd_read_block(partition->start_sector + block->sector + i, bytes + static_cast<size_t>(i) * SdSectorSize);
             if (st != RAD_STATUS_OK) return st;
         }
         return RAD_STATUS_OK;
@@ -476,7 +612,7 @@ uint32_t le32(const uint8_t *p) {
 
 void register_mbr_partitions() {
     uint8_t mbr[SdSectorSize]{};
-    if (sd_read_single(0, mbr) != RAD_STATUS_OK || mbr[510] != 0x55u || mbr[511] != 0xaau) return;
+    if (sd_read_block(0, mbr) != RAD_STATUS_OK || mbr[510] != 0x55u || mbr[511] != 0xaau) return;
     for (uint32_t i = 0; i < 2u; ++i) {
         const uint8_t *entry = mbr + 446u + i * 16u;
         const uint32_t start = le32(entry + 8u);
@@ -496,14 +632,29 @@ void register_mbr_partitions() {
 
 void bcm283x_emmc_init() {
     if (g_bcm283x.emmc_ready) return;
-    // Try the real SDHCI card first (QEMU -sd image / hardware SD). If none is
-    // present, fall back to the in-RAM stub so a kernel-only boot still works.
-    if (sd_init_card() == RAD_STATUS_OK) {
+    // Real Pi Zero 2 W wiring: route the microSD to SDHOST (GPIO48-53 alt0) and
+    // the Arasan EMMC pins to the on-board WiFi SDIO (GPIO34-39 alt3). In QEMU
+    // this reparents the SD card to SDHOST, so the SDHOST path we take here is the
+    // same one that runs on real silicon -- and it leaves the Arasan EMMC free for
+    // the CYW43438 WiFi driver.
+    for (uint32_t p = 48; p <= 53; ++p) gpio_set_alt(p, 4u); // alt0 = SDHOST (SD card)
+    for (uint32_t p = 34; p <= 39; ++p) gpio_set_alt(p, 7u); // alt3 = EMMC  (WiFi SDIO)
+
+    if (sdhost_init_card() == RAD_STATUS_OK) {
         g_bcm283x.sd_ready = 1;
+        g_bcm283x.sd_controller = 2; // SDHOST
+        rad_debug_marker("RAD_PI_SDHOST_CARD_OK");
+    } else if (sd_init_card() == RAD_STATUS_OK) {
+        // Fallback: Arasan SDHCI still holds the card (QEMU without GPIO reparent).
+        g_bcm283x.sd_ready = 1;
+        g_bcm283x.sd_controller = 1; // Arasan SDHCI
+    }
+    if (g_bcm283x.sd_ready) {
         g_bcm283x.sd_sector_count = 0; // unknown exact size; reads are bounds-free
         rad_debug_marker("RAD_PI_SD_CARD_OK");
         register_mbr_partitions();
     } else {
+        g_bcm283x.sd_controller = 0; // RAM stub
         memset(g_emmc_storage, 0, sizeof(g_emmc_storage));
         const char signature[] = "RAD_PI_EMMC_BACKING";
         memcpy(g_emmc_storage, signature, sizeof(signature));

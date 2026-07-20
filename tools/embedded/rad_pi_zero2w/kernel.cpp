@@ -259,7 +259,7 @@ extern "C" void rad_pi_entry(rad_boot_handoff_t *handoff) {
     // ---- x86<->a53 parity: run the shared self-tests, start the base-terminal +
     // named services, and spawn real init. The bcm283x A53 core shares the ZynqMP
     // kernel, so the same parity markers gate here as on the ZuBoard. Networking
-    // is in-guest loopback only (raspi3b has no GEM-equivalent NIC), so the L4
+    // is in-guest loopback only (raspi3ap has no GEM-equivalent NIC), so the L4
     // stack markers gate but the host-echo/NTP legs do not apply on this target.
     //
     // NOTE: we do NOT call rad_a53_process_self_test() here. On a target where
