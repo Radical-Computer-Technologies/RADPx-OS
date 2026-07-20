@@ -21,14 +21,18 @@ mb2_header_start:
 mb2_header_end:
 
 .section .bss
-.align 16
+// Guard page directly below the kernel boot stack. It is page-aligned and marked
+// non-present at runtime (x86_install_stack_guard), so a stack overflow faults
+// precisely on the guard instead of silently corrupting adjacent .bss. The stack
+// itself is sized generously for the graphical shell (rad_slint_shell_start runs on
+// it during init and Slint's software renderer recurses through the item tree), but
+// the guard -- not the size -- is what makes overflow safe and diagnosable.
+.align 4096
+.global x86_boot_stack_guard
+x86_boot_stack_guard:
+    .skip 4096
 stack_bottom:
-    // 512 KiB kernel boot stack. The graphical shell (rad_slint_shell_start) runs
-    // on this stack directly during init, and Slint's freestanding software
-    // renderer recurses deeply through the item tree; 32 KiB overflowed into
-    // adjacent .bss (page tables) with no guard page, corrupting a return address
-    // and faulting wild in the Slint trampolines. 512 KiB gives ample headroom.
-    .skip 524288
+    .skip 262144
 .global x86_boot_stack_top
 x86_boot_stack_top:
 stack_top:

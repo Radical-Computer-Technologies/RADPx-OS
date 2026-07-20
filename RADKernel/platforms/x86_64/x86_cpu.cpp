@@ -42,6 +42,7 @@ extern "C" void x86_segment_not_present_entry(void);
 extern "C" void x86_stack_segment_entry(void);
 extern "C" void x86_general_protection_entry(void);
 extern "C" void x86_page_fault_entry(void);
+extern "C" char x86_boot_stack_guard[]; // page below the boot stack, made non-present
 extern "C" void x86_syscall_entry(void);
 extern "C" intptr_t x86_test_int80_getpid(void);
 extern "C" void x86_context_switch(void *old_context, const void *new_context);
@@ -139,6 +140,13 @@ X86Context g_context_probe_task{};
 alignas(16) uint8_t g_context_probe_stack[4096];
 volatile uint32_t g_context_probe_stage = 0;
 alignas(16) uint8_t g_ap_stacks[MaxX86Cores][ApStackSize];
+// Per-core stacks for the fatal-exception vectors (#DF/#GP), reached via the TSS
+// IST so they run even when the main kernel stack is exhausted -- e.g. when a
+// stack overflow hits the boot-stack guard page.
+alignas(16) uint8_t g_ist_stacks[MaxX86Cores][ApStackSize];
+// A 4 KiB page table that splits the 2 MiB identity page covering the boot-stack
+// guard, so the single guard page can be made non-present (x86_install_stack_guard).
+alignas(4096) uint64_t g_stack_guard_pt[512];
 void (*g_ap_worker_entries[MaxX86Cores])(uint32_t core){};
 volatile uint32_t g_ap_started_mask = 1u;
 volatile uint32_t g_ap_starting_core = 0;
@@ -214,6 +222,16 @@ uint64_t read_cr2(void) {
     uint64_t value = 0;
     asm volatile("mov %%cr2, %0" : "=r"(value));
     return value;
+}
+
+uint64_t read_cr3(void) {
+    uint64_t value = 0;
+    asm volatile("mov %%cr3, %0" : "=r"(value));
+    return value;
+}
+
+void write_cr3(uint64_t value) {
+    asm volatile("mov %0, %%cr3" : : "r"(value) : "memory");
 }
 
 void outb(uint16_t port, uint8_t value) {
@@ -300,6 +318,9 @@ void prepare_gdt_tss_for_core(uint32_t core, uint64_t kernel_stack_top) {
     g_gdt[core][3] = make_code_data_descriptor(0xf2u, 0x0au);
     g_gdt[core][4] = make_code_data_descriptor(0xfau, 0x0au);
     g_tss[core].rsp0 = kernel_stack_top;
+    // IST slot 1 (TSS.ist[0]) is a dedicated stack for the fatal traps wired to it
+    // in the IDT, so they can be delivered and reported even after a stack overflow.
+    g_tss[core].ist[0] = reinterpret_cast<uint64_t>(&g_ist_stacks[core][ApStackSize]);
     g_tss[core].iomap_base = sizeof(Tss);
     set_tss_descriptor(core, TssSelector, reinterpret_cast<uintptr_t>(&g_tss[core]), sizeof(Tss) - 1u);
 }
@@ -389,6 +410,16 @@ extern "C" void x86_exception_report(uint64_t vector, uint64_t error, uint64_t r
             static_cast<unsigned long long>(rsp0),
             static_cast<unsigned>(core));
         x86_serial_write(buffer);
+    }
+    // A #PF or #DF whose faulting address lands in the boot-stack guard page is a
+    // kernel stack overflow -- name it explicitly rather than leaving a bare trap.
+    if (vector == 8u || vector == 14u) {
+        const uint64_t cr2 = read_cr2();
+        const uint64_t guard = reinterpret_cast<uint64_t>(x86_boot_stack_guard);
+        if (cr2 >= guard && cr2 < guard + 4096u) {
+            x86_serial_write("RAD_X86_STACK_GUARD_OVERFLOW kernel boot stack overflowed into the guard page\n");
+            rad_debug_marker("RAD_X86_STACK_GUARD_OVERFLOW");
+        }
     }
     rad_cpu_halt_forever();
 }
@@ -535,6 +566,45 @@ extern "C" rad_status_t x86_cpu_start_worker_core(uint32_t core, void (*entry)(u
     return RAD_STATUS_TIMEOUT;
 }
 
+// Arm the boot-stack guard page. The boot page tables (boot.S) map memory with 2 MiB
+// pages, so we split the 2 MiB page covering the guard into 4 KiB pages via
+// g_stack_guard_pt and leave only the guard page non-present. A stack overflow then
+// takes a page fault on the guard (escalating to #DF, which is delivered on the IST
+// stack) instead of silently scribbling over adjacent .bss. Must run after long mode
+// is active and before the stack is used heavily.
+extern "C" void x86_install_stack_guard(void) {
+    const uint64_t guard = reinterpret_cast<uint64_t>(x86_boot_stack_guard);
+    const uint64_t region = guard & ~0x1fffffull;           // 2 MiB-aligned base
+    const uint64_t addr_mask = 0x000ffffffffff000ull;
+    uint64_t *pml4 = reinterpret_cast<uint64_t*>(read_cr3() & addr_mask);
+    uint64_t *pdpt = reinterpret_cast<uint64_t*>(pml4[(guard >> 39) & 0x1ffu] & addr_mask);
+    uint64_t *pd = reinterpret_cast<uint64_t*>(pdpt[(guard >> 30) & 0x1ffu] & addr_mask);
+    const uint32_t pd_index = (guard >> 21) & 0x1ffu;
+    for (uint32_t i = 0; i < 512u; ++i) {
+        const uint64_t page = region + static_cast<uint64_t>(i) * 4096u;
+        g_stack_guard_pt[i] = (page == guard) ? 0ull : (page | 0x3ull); // present|write
+    }
+    pd[pd_index] = (reinterpret_cast<uint64_t>(g_stack_guard_pt) & addr_mask) | 0x3ull;
+    write_cr3(read_cr3()); // flush the TLB for the remapped region
+    rad_debug_marker("RAD_X86_STACK_GUARD_OK");
+}
+
+#if defined(RAD_X86_STACK_GUARD_SELFTEST)
+// Opt-in validation of the guard page + IST report path: unbounded recursion that
+// touches an 8 KiB frame each level until it overflows the boot stack into the guard
+// page. Expected result: a #DF on the IST stack reporting RAD_X86_STACK_GUARD_OVERFLOW,
+// then a clean halt -- never silent corruption or a triple fault. Build with
+// -DRAD_X86_STACK_GUARD_SELFTEST to exercise it.
+volatile uint64_t g_guard_selftest_sink = 0;
+extern "C" void x86_stack_guard_selftest(void) {
+    volatile char buf[8192];
+    buf[0] = 1;
+    buf[sizeof(buf) - 1] = 1;
+    x86_stack_guard_selftest();
+    g_guard_selftest_sink += static_cast<uint64_t>(buf[0]); // use after call: no tail-call
+}
+#endif
+
 extern "C" void x86_cpu_init(uint64_t kernel_stack_top) {
     memset(g_gdt, 0, sizeof(g_gdt));
     memset(g_tss, 0, sizeof(g_tss));
@@ -556,6 +626,12 @@ extern "C" void x86_cpu_init(uint64_t kernel_stack_top) {
     set_idt_gate(17, x86_alignment_check_entry, 0x8eu);
     set_idt_gate(19, x86_simd_floating_point_entry, 0x8eu);
     set_idt_gate(21, x86_control_protection_entry, 0x8eu);
+    // Deliver the fatal, stack-sensitive traps on the IST stack (TSS.ist[0]) so they
+    // survive a boot-stack overflow: a guard-page hit faults (#PF) while the stack is
+    // exhausted, which escalates to #DF -- and #DF/#GP must land on a known-good stack
+    // to be reported instead of triple-faulting the machine.
+    g_idt[8].ist = 1;   // #DF
+    g_idt[13].ist = 1;  // #GP
     set_idt_gate(0x80, x86_int80_entry, 0xeeu);
     set_idt_gate(LapicTimerVector, x86_lapic_timer_entry, 0x8eu);
     for (uint8_t i = 0; i < 16; ++i) {
@@ -564,6 +640,10 @@ extern "C" void x86_cpu_init(uint64_t kernel_stack_top) {
 
     load_gdt_tss_for_core(0);
     load_shared_idt();
+    x86_install_stack_guard();
+#if defined(RAD_X86_STACK_GUARD_SELFTEST)
+    x86_stack_guard_selftest(); // opt-in: prove the guard catches overflow (see above)
+#endif
     enable_sse();
     pic_remap_and_mask();
     configure_syscall_msrs();
