@@ -23,7 +23,12 @@ mb2_header_end:
 .section .bss
 .align 16
 stack_bottom:
-    .skip 32768
+    // 512 KiB kernel boot stack. The graphical shell (rad_slint_shell_start) runs
+    // on this stack directly during init, and Slint's freestanding software
+    // renderer recurses deeply through the item tree; 32 KiB overflowed into
+    // adjacent .bss (page tables) with no guard page, corrupting a return address
+    // and faulting wild in the Slint trampolines. 512 KiB gives ample headroom.
+    .skip 524288
 .global x86_boot_stack_top
 x86_boot_stack_top:
 stack_top:
