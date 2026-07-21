@@ -246,11 +246,32 @@ rad_status_t rad_compositor_destroy_surface(rad_compositor_t *compositor, uint32
 rad_status_t rad_compositor_set_surface_bounds(rad_compositor_t *compositor, uint32_t surface_id, const rad_compositor_rect_t *bounds) {
     rad_compositor_surface_info_t *surface = find_surface(compositor, surface_id);
     if (!surface || !bounds || bounds->width <= 0 || bounds->height <= 0) return RAD_STATUS_INVALID_ARGUMENT;
-    rad_compositor_rect_t old_bounds = surface->bounds;
-    rad_compositor_queue_damage(compositor, surface_id, &old_bounds, RAD_COMPOSITOR_DAMAGE_EXPOSED);
+    const rad_compositor_rect_t old_bounds = surface->bounds;
     surface->bounds = *bounds;
     surface->dirty = 1;
-    queue_surface_full_damage(compositor, *surface, 0);
+    if (rect_intersect(old_bounds, *bounds, nullptr)) {
+        // Overlapping old/new footprints (a drag or small move/resize): damage their union
+        // as a single rect instead of the full old rect plus the full new rect. Those two
+        // overlap ~99% during a drag, so composing and presenting them separately doubles
+        // the per-frame work; the union is one contiguous rect -- composed and presented
+        // once, with the exposed area restored as part of the same pass. Queued as an
+        // absolute rect (EXPOSED = stored as-is rather than offset by the new bounds).
+        const int32_t x0 = old_bounds.x < bounds->x ? old_bounds.x : bounds->x;
+        const int32_t y0 = old_bounds.y < bounds->y ? old_bounds.y : bounds->y;
+        const int32_t ox1 = old_bounds.x + old_bounds.width, nx1 = bounds->x + bounds->width;
+        const int32_t oy1 = old_bounds.y + old_bounds.height, ny1 = bounds->y + bounds->height;
+        rad_compositor_rect_t u{};
+        u.x = x0;
+        u.y = y0;
+        u.width = (ox1 > nx1 ? ox1 : nx1) - x0;
+        u.height = (oy1 > ny1 ? oy1 : ny1) - y0;
+        rad_compositor_queue_damage(compositor, surface_id, &u, RAD_COMPOSITOR_DAMAGE_EXPOSED);
+    } else {
+        // Disjoint footprints (a teleport): keep two tight rects so the empty gap between
+        // the old and new positions is never needlessly composited.
+        rad_compositor_queue_damage(compositor, surface_id, &old_bounds, RAD_COMPOSITOR_DAMAGE_EXPOSED);
+        queue_surface_full_damage(compositor, *surface, 0);
+    }
     return RAD_STATUS_OK;
 }
 
