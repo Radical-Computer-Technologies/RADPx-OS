@@ -249,28 +249,35 @@ rad_status_t rad_compositor_set_surface_bounds(rad_compositor_t *compositor, uin
     const rad_compositor_rect_t old_bounds = surface->bounds;
     surface->bounds = *bounds;
     surface->dirty = 1;
-    if (rect_intersect(old_bounds, *bounds, nullptr)) {
-        // Overlapping old/new footprints (a drag or small move/resize): damage their union
-        // as a single rect instead of the full old rect plus the full new rect. Those two
-        // overlap ~99% during a drag, so composing and presenting them separately doubles
-        // the per-frame work; the union is one contiguous rect -- composed and presented
-        // once, with the exposed area restored as part of the same pass. Queued as an
-        // absolute rect (EXPOSED = stored as-is rather than offset by the new bounds).
-        const int32_t x0 = old_bounds.x < bounds->x ? old_bounds.x : bounds->x;
-        const int32_t y0 = old_bounds.y < bounds->y ? old_bounds.y : bounds->y;
-        const int32_t ox1 = old_bounds.x + old_bounds.width, nx1 = bounds->x + bounds->width;
-        const int32_t oy1 = old_bounds.y + old_bounds.height, ny1 = bounds->y + bounds->height;
-        rad_compositor_rect_t u{};
-        u.x = x0;
-        u.y = y0;
-        u.width = (ox1 > nx1 ? ox1 : nx1) - x0;
-        u.height = (oy1 > ny1 ? oy1 : ny1) - y0;
-        rad_compositor_queue_damage(compositor, surface_id, &u, RAD_COMPOSITOR_DAMAGE_EXPOSED);
-    } else {
-        // Disjoint footprints (a teleport): keep two tight rects so the empty gap between
-        // the old and new positions is never needlessly composited.
+    // Damage the new footprint in full: the moved/resized surface repaints there, and if it
+    // is opaque the occlusion skip means only it is blitted -- not the desktop underneath.
+    queue_surface_full_damage(compositor, *surface, 0);
+    // Plus only the region the surface EXPOSED by moving -- old_bounds minus new_bounds --
+    // so the content behind it is restored there. Compositing the full old+new union instead
+    // would refill the desktop across the whole new position under the (opaque) window that
+    // overdraws it, which is the bulk of the per-frame cost and scales with window size. The
+    // exposed region is old \ new decomposed into up to four non-overlapping edge strips.
+    const int32_t ox0 = old_bounds.x, oy0 = old_bounds.y;
+    const int32_t ox1 = old_bounds.x + old_bounds.width, oy1 = old_bounds.y + old_bounds.height;
+    const int32_t ix0 = ox0 > bounds->x ? ox0 : bounds->x;
+    const int32_t iy0 = oy0 > bounds->y ? oy0 : bounds->y;
+    const int32_t ix1 = ox1 < (bounds->x + bounds->width) ? ox1 : (bounds->x + bounds->width);
+    const int32_t iy1 = oy1 < (bounds->y + bounds->height) ? oy1 : (bounds->y + bounds->height);
+    if (ix0 >= ix1 || iy0 >= iy1) {
+        // Disjoint footprints (a teleport): the whole old rect is exposed.
         rad_compositor_queue_damage(compositor, surface_id, &old_bounds, RAD_COMPOSITOR_DAMAGE_EXPOSED);
-        queue_surface_full_damage(compositor, *surface, 0);
+    } else {
+        const rad_compositor_rect_t strips[4] = {
+            { ox0, oy0, old_bounds.width, iy0 - oy0 },   // top strip, above the overlap
+            { ox0, iy1, old_bounds.width, oy1 - iy1 },   // bottom strip, below the overlap
+            { ox0, iy0, ix0 - ox0, iy1 - iy0 },          // left strip, within the overlap band
+            { ix1, iy0, ox1 - ix1, iy1 - iy0 },          // right strip, within the overlap band
+        };
+        for (size_t i = 0; i < 4; ++i) {
+            if (strips[i].width > 0 && strips[i].height > 0) {
+                rad_compositor_queue_damage(compositor, surface_id, &strips[i], RAD_COMPOSITOR_DAMAGE_EXPOSED);
+            }
+        }
     }
     return RAD_STATUS_OK;
 }
