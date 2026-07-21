@@ -68,7 +68,16 @@ x86_lapic_timer_entry:
     pushq %r14
     pushq %r15
     mov 128(%rsp), %rdi
+    # Preserve the interrupted FPU/SSE (XMM) state across the handler. The kernel and the
+    # Slint software renderer use SSE heavily; without this, an interrupt landing mid-SSE
+    # computation would let the handler clobber XMM and corrupt the interrupted code.
+    mov %rsp, %rbp
+    sub $512, %rsp
+    and $-16, %rsp
+    fxsave (%rsp)
     call x86_lapic_timer_dispatch
+    fxrstor (%rsp)
+    mov %rbp, %rsp
     popq %r15
     popq %r14
     popq %r13
@@ -103,7 +112,16 @@ x86_irq_common:
     pushq %r14
     pushq %r15
     mov 120(%rsp), %rdi
+    # Preserve the interrupted FPU/SSE (XMM) state across the handler (see note in the
+    # LAPIC timer entry). PS/2 keyboard/mouse and PIT IRQs arrive here and must not clobber
+    # the XMM registers of interrupted SSE code (e.g. the Slint renderer / layout math).
+    mov %rsp, %rbp
+    sub $512, %rsp
+    and $-16, %rsp
+    fxsave (%rsp)
     call x86_irq_dispatch
+    fxrstor (%rsp)
+    mov %rbp, %rsp
     popq %r15
     popq %r14
     popq %r13
@@ -281,7 +299,16 @@ x86_exception_common:
     pushq %r14
     pushq %r15
     mov 128(%rsp), %rdi
+    # Preserve FPU/SSE (XMM) across the page-fault handler: a #PF taken inside SSE code
+    # (e.g. the Slint renderer touching a COW/demand page) returns to that code, so the
+    # handler must not leave XMM clobbered.
+    mov %rsp, %rbp
+    sub $512, %rsp
+    and $-16, %rsp
+    fxsave (%rsp)
     call x86_page_fault_dispatch
+    fxrstor (%rsp)
+    mov %rbp, %rsp
     test %rax, %rax
     jz 3f
     popq %r15

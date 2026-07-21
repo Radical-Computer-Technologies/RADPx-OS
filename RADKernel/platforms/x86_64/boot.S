@@ -30,7 +30,11 @@ mb2_header_end:
 .align 4096
 .global x86_boot_stack_guard
 x86_boot_stack_guard:
-    .skip 4096
+    // 8-page (32 KiB) guard, not just one page: a large stack frame can decrement %rsp by
+    // more than 4 KiB in a single step and *skip over* a one-page guard, silently corrupting
+    // memory below it. A multi-page guard catches such frame-skips. Keep the size in sync
+    // with kBootStackGuardBytes in x86_cpu.cpp.
+    .skip 32768
 stack_bottom:
     .skip 262144
 .global x86_boot_stack_top

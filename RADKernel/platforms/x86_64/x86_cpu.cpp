@@ -42,7 +42,10 @@ extern "C" void x86_segment_not_present_entry(void);
 extern "C" void x86_stack_segment_entry(void);
 extern "C" void x86_general_protection_entry(void);
 extern "C" void x86_page_fault_entry(void);
-extern "C" char x86_boot_stack_guard[]; // page below the boot stack, made non-present
+extern "C" char x86_boot_stack_guard[]; // guard region below the boot stack, made non-present
+// Size of the boot-stack guard region. Must match the `.skip` after x86_boot_stack_guard in
+// boot.S. Multiple pages so a single large stack frame cannot step over the guard.
+static constexpr uint64_t kBootStackGuardBytes = 32768u; // 8 pages
 extern "C" void x86_syscall_entry(void);
 extern "C" intptr_t x86_test_int80_getpid(void);
 extern "C" void x86_context_switch(void *old_context, const void *new_context);
@@ -356,7 +359,24 @@ void enable_sse(void) {
 
     asm volatile("mov %%cr4, %0" : "=r"(cr4));
     cr4 |= (1ull << 9) | (1ull << 10); // OSFXSR | OSXMMEXCPT.
+
+    // Enable XSAVE + AVX when the CPU supports them. Rust's libm (FMA fma_with_fma path)
+    // and portable_atomic (128-bit atomic load/store via VEX vmovdqa) runtime-dispatch to
+    // VEX/AVX-encoded instructions whenever CPUID reports AVX. VEX instructions #UD unless
+    // the OS sets CR4.OSXSAVE and XCR0[2:1]=11b (SSE|AVX) -- so on real AVX hardware the WM
+    // would fault (e.g. #UD in atomic_load) without this. Only XMM (VEX.128) is generated,
+    // so the fxsave/fxrstor in the interrupt stubs still preserves the full live state.
+    uint32_t eax = 0, ebx = 0, ecx = 0, edx = 0;
+    asm volatile("cpuid" : "=a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx) : "a"(1u), "c"(0u));
+    const bool have_xsave = (ecx & (1u << 26)) != 0u;
+    const bool have_avx   = (ecx & (1u << 28)) != 0u;
+    if (have_xsave) cr4 |= (1ull << 18); // OSXSAVE
     asm volatile("mov %0, %%cr4" : : "r"(cr4) : "memory");
+    if (have_xsave) {
+        uint32_t xcr0_lo = 0x1u | 0x2u;      // x87 | SSE
+        if (have_avx) xcr0_lo |= 0x4u;       // AVX (YMM) -- required to legalise VEX encoding
+        asm volatile("xsetbv" : : "a"(xcr0_lo), "d"(0u), "c"(0u));
+    }
     asm volatile("fninit");
 }
 
@@ -423,7 +443,7 @@ extern "C" void x86_exception_report(uint64_t vector, uint64_t error, uint64_t r
     if (vector == 8u || vector == 14u) {
         const uint64_t cr2 = read_cr2();
         const uint64_t guard = reinterpret_cast<uint64_t>(x86_boot_stack_guard);
-        if (cr2 >= guard && cr2 < guard + 4096u) {
+        if (cr2 >= guard && cr2 < guard + kBootStackGuardBytes) {
             x86_serial_write("RAD_X86_STACK_GUARD_OVERFLOW kernel boot stack overflowed into the guard page\n");
             rad_debug_marker("RAD_X86_STACK_GUARD_OVERFLOW");
         }
@@ -589,7 +609,8 @@ extern "C" void x86_install_stack_guard(void) {
     const uint32_t pd_index = (guard >> 21) & 0x1ffu;
     for (uint32_t i = 0; i < 512u; ++i) {
         const uint64_t page = region + static_cast<uint64_t>(i) * 4096u;
-        g_stack_guard_pt[i] = (page == guard) ? 0ull : (page | 0x3ull); // present|write
+        const bool in_guard = (page >= guard) && (page < guard + kBootStackGuardBytes);
+        g_stack_guard_pt[i] = in_guard ? 0ull : (page | 0x3ull); // non-present guard | present|write
     }
     pd[pd_index] = (reinterpret_cast<uint64_t>(g_stack_guard_pt) & addr_mask) | 0x3ull;
     write_cr3(read_cr3()); // flush the TLB for the remapped region

@@ -232,6 +232,7 @@ void emit_tier_marker(rad_compositor_tier_t tier) {
     rad_debug_marker(rad_compositor_tier_marker(tier));
 }
 int g_boot_marker_sent = 0;
+int g_input_ready_marker_sent = 0;
 int g_loading_marker_sent = 0;
 int g_ready_marker_sent = 0;
 int g_wm_marker_sent = 0;
@@ -847,8 +848,6 @@ public:
     }
 
     rad_status_t tick() {
-        // The freestanding x86 shell is currently static; avoid Slint's host
-        // timer pump until the kernel owns a full timer integration path.
         if (x86_ps2_poll_devices) x86_ps2_poll_devices();
         if (x86_virtio_input_poll) x86_virtio_input_poll();
         poll_input_device(keyboard_);
@@ -900,6 +899,11 @@ public:
         }
         if (any_rendered && !g_boot_marker_sent) {
             marker_once(&g_boot_marker_sent, "RAD_SLINT_BOOT_SHELL_OK");
+        }
+        // The window tree is now laid out; it is safe to dispatch input into Slint.
+        if (any_rendered && !ready_for_input_) {
+            ready_for_input_ = true;
+            marker_once(&g_input_ready_marker_sent, "RAD_SLINT_INPUT_READY_OK");
         }
         return RAD_STATUS_OK;
     }
@@ -988,6 +992,13 @@ private:
         int has_pending_motion = 0;
         while (rad_input_read_event(device, &event) == RAD_STATUS_OK) {
             update_cursor_position(event);
+            // Until the shell has completed its first render, the Slint window item tree
+            // is not laid out yet. Dispatching an input event now drives try_dispatch_event
+            // -> set_window_item_geometry against an unbuilt property/dependency graph and
+            // corrupts Slint's reference-counted internals (intermittent #GP later). Drain
+            // (and keep cursor tracking current) but do not dispatch until we are ready --
+            // this also flushes any spurious PS/2 boot-time input.
+            if (!ready_for_input_) continue;
             if (event.type == RAD_INPUT_EVENT_POINTER_MOTION) {
                 pending_motion = event;
                 has_pending_motion = 1;
@@ -1021,6 +1032,7 @@ private:
     rad_compositor_rect_t terminal_bounds_{};
     int terminal_bounds_valid_ = 0;
     bool dispatching_input_ = false;
+    bool ready_for_input_ = false;   // set true after the first render lays out the tree
     bool pending_terminal_resize_ = false;
     uint32_t pending_terminal_width_ = 0;
     uint32_t pending_terminal_height_ = 0;

@@ -62,6 +62,19 @@ void heap_unlock(void) {
     __atomic_clear(&g_heap_lock, __ATOMIC_RELEASE);
 }
 
+// Opt-in, layout-preserving heap integrity checker. Walks the block list on every
+// malloc/free and reports the first place the allocator's invariants are violated
+// (a header overrun clobbering an adjacent block's size/next/free). No redzones, so
+// it does not perturb the heap layout the bug is sensitive to. Enable with
+// -DRAD_HEAP_INTEGRITY_CHECK=1.
+#ifndef RAD_HEAP_INTEGRITY_CHECK
+#define RAD_HEAP_INTEGRITY_CHECK 0
+#endif
+#if RAD_HEAP_INTEGRITY_CHECK
+volatile int g_heap_corruption_reported = 0;
+bool heap_check(const char *where);   // defined below, after the formatting helpers
+#endif
+
 size_t align_up_size(size_t value, size_t alignment) {
     return (value + alignment - 1u) & ~(alignment - 1u);
 }
@@ -106,6 +119,9 @@ void *allocate_aligned(size_t size, size_t alignment) {
     const size_t total = align_up_size(size + alignment - 1u + sizeof(AllocationHeader), 64u);
     heap_lock();
     heap_init();
+#if RAD_HEAP_INTEGRITY_CHECK
+    heap_check("alloc");
+#endif
     for (HeapBlock *block = g_heap_head; block; block = block->next) {
         if (!block->free || block->size < total) continue;
         split_block(block, total);
@@ -143,6 +159,57 @@ void put_unsigned(char *buffer, size_t size, size_t& pos, unsigned long long val
     } while (value && n < sizeof(tmp));
     while (n) put_char(buffer, size, pos, tmp[--n]);
 }
+
+#if RAD_HEAP_INTEGRITY_CHECK
+void heap_report(const char *where, const void *block, const char *code, unsigned long long detail) {
+    char buf[256];
+    size_t pos = 0;
+    put_text(buf, sizeof(buf), pos, "RAD_HEAP_CORRUPT code=");
+    put_text(buf, sizeof(buf), pos, code);
+    put_text(buf, sizeof(buf), pos, " at=");
+    put_text(buf, sizeof(buf), pos, where);
+    put_text(buf, sizeof(buf), pos, " block=0x");
+    put_unsigned(buf, sizeof(buf), pos, static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(block)), 16u);
+    put_text(buf, sizeof(buf), pos, " detail=0x");
+    put_unsigned(buf, sizeof(buf), pos, detail, 16u);
+    put_char(buf, sizeof(buf), pos, '\n');
+    buf[pos < sizeof(buf) ? pos : sizeof(buf) - 1] = '\0';
+    if (rad_hal_early_console_write) rad_hal_early_console_write(buf);
+}
+
+// Caller must hold heap_lock. Returns true if the block list is intact.
+bool heap_check(const char *where) {
+    if (g_heap_corruption_reported) return false;
+    const uintptr_t begin = reinterpret_cast<uintptr_t>(g_heap);
+    const uintptr_t end = begin + sizeof(g_heap);
+    const size_t max_blocks = sizeof(g_heap) / sizeof(HeapBlock) + 4u;
+    size_t seen = 0;
+    for (HeapBlock *block = g_heap_head; block; block = block->next) {
+        const uintptr_t addr = reinterpret_cast<uintptr_t>(block);
+        if (addr < begin || addr + sizeof(HeapBlock) > end) {
+            g_heap_corruption_reported = 1; heap_report(where, block, "OOR", addr); return false;
+        }
+        if (block->free > 1u) {
+            g_heap_corruption_reported = 1; heap_report(where, block, "FREEFLAG", block->free); return false;
+        }
+        if (block->size > sizeof(g_heap)) {
+            g_heap_corruption_reported = 1; heap_report(where, block, "SIZE", block->size); return false;
+        }
+        HeapBlock *expected = reinterpret_cast<HeapBlock*>(reinterpret_cast<uint8_t*>(block + 1) + block->size);
+        if (block->next) {
+            if (block->next != expected) {
+                g_heap_corruption_reported = 1; heap_report(where, block, "LINK", reinterpret_cast<uintptr_t>(block->next)); return false;
+            }
+        } else if (reinterpret_cast<uintptr_t>(expected) != end) {
+            g_heap_corruption_reported = 1; heap_report(where, block, "TAIL", reinterpret_cast<uintptr_t>(expected)); return false;
+        }
+        if (++seen > max_blocks) {
+            g_heap_corruption_reported = 1; heap_report(where, block, "LOOP", seen); return false;
+        }
+    }
+    return true;
+}
+#endif
 }
 
 extern "C" {
@@ -368,6 +435,9 @@ void free(void *pointer) {
     const uintptr_t heap_end = heap_begin + sizeof(g_heap);
     if (block_addr < heap_begin || block_addr >= heap_end) return;
     heap_lock();
+#if RAD_HEAP_INTEGRITY_CHECK
+    heap_check("free");
+#endif
     if (block->free) {
         heap_unlock();
         return;

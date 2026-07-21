@@ -756,6 +756,26 @@ void unlock_pty_master() {
     if (was_enabled) rad_cpu_interrupts_enable();
 }
 
+// Dedicated, interrupt-safe lock for the input-event queues. rad_input_queue_push is
+// called from the keyboard/mouse IRQ handlers, while rad_input_queue_read runs in task
+// context (the WM drain). Previously both took the global runtime lock; on a single core
+// an IRQ landing on a task that already held runtime_lock would spin forever pushing an
+// input event -> boot hang. A private lock that disables interrupts while held removes
+// that path without widening the (timer-waiting) runtime_lock critical sections.
+volatile int g_input_queue_lock = 0;
+volatile int g_input_queue_saved_irq = 0;
+void lock_input_queue() {
+    const int was_enabled = rad_cpu_interrupts_enabled();
+    rad_cpu_interrupts_disable();
+    while (__atomic_test_and_set(&g_input_queue_lock, __ATOMIC_ACQUIRE)) { /* spin */ }
+    g_input_queue_saved_irq = was_enabled;
+}
+void unlock_input_queue() {
+    const int was_enabled = g_input_queue_saved_irq;
+    __atomic_clear(&g_input_queue_lock, __ATOMIC_RELEASE);
+    if (was_enabled) rad_cpu_interrupts_enable();
+}
+
 void lock_provider(VfsProviderRecord *provider) {
     if (!provider) return;
     while (__atomic_test_and_set(&provider->io_lock, __ATOMIC_ACQUIRE)) {
@@ -6424,7 +6444,7 @@ rad_status_t rad_input_read_event(rad_device_t device, rad_input_event_t *event)
 rad_status_t rad_input_queue_create(const char *name, size_t capacity, rad_input_queue_t *queue) {
     if (!queue) return RAD_STATUS_INVALID_ARGUMENT;
     if (capacity == 0 || capacity > RAD_KERNEL_INPUT_QUEUE_EVENTS) capacity = RAD_KERNEL_INPUT_QUEUE_EVENTS;
-    lock_runtime();
+    lock_input_queue();
     for (size_t i = 0; i < RAD_KERNEL_MAX_INPUT_QUEUES; ++i) {
         if (g_state.input_queues[i].used) continue;
         InputQueueRecord& record = g_state.input_queues[i];
@@ -6434,37 +6454,37 @@ rad_status_t rad_input_queue_create(const char *name, size_t capacity, rad_input
         copy_string(record.name, sizeof(record.name), name ? name : "input");
         g_state.input_queue_handles[i].index = i;
         *queue = &g_state.input_queue_handles[i];
-        unlock_runtime();
+        unlock_input_queue();
         return RAD_STATUS_OK;
     }
-    unlock_runtime();
+    unlock_input_queue();
     return RAD_STATUS_NO_MEMORY;
 }
 
 void rad_input_queue_destroy(rad_input_queue_t queue) {
     if (!queue || queue->index >= RAD_KERNEL_MAX_INPUT_QUEUES) return;
-    lock_runtime();
+    lock_input_queue();
     memset(&g_state.input_queues[queue->index], 0, sizeof(g_state.input_queues[queue->index]));
     memset(&g_state.input_queue_handles[queue->index], 0, sizeof(g_state.input_queue_handles[queue->index]));
-    unlock_runtime();
+    unlock_input_queue();
 }
 
 rad_status_t rad_input_queue_push(rad_input_queue_t queue, const rad_input_event_t *event) {
     if (!queue || queue->index >= RAD_KERNEL_MAX_INPUT_QUEUES || !event) return RAD_STATUS_INVALID_ARGUMENT;
-    lock_runtime();
+    lock_input_queue();
     InputQueueRecord& record = g_state.input_queues[queue->index];
     if (!record.used) {
-        unlock_runtime();
+        unlock_input_queue();
         return RAD_STATUS_INVALID_ARGUMENT;
     }
     if (record.count >= record.capacity) {
-        unlock_runtime();
+        unlock_input_queue();
         return RAD_STATUS_NO_MEMORY;
     }
     record.events[record.head] = *event;
     record.head = (record.head + 1u) % record.capacity;
     ++record.count;
-    unlock_runtime();
+    unlock_input_queue();
     rad_perf_counter_add("input.events", 1);
     return RAD_STATUS_OK;
 }
@@ -6474,10 +6494,10 @@ rad_status_t rad_input_queue_read(rad_input_queue_t queue, rad_input_event_t *ev
     const uint64_t start = rad_time_millis();
     size_t read = 0;
     for (;;) {
-        lock_runtime();
+        lock_input_queue();
         InputQueueRecord& record = g_state.input_queues[queue->index];
         if (!record.used) {
-            unlock_runtime();
+            unlock_input_queue();
             return RAD_STATUS_INVALID_ARGUMENT;
         }
         while (read < capacity && record.count > 0) {
@@ -6485,7 +6505,7 @@ rad_status_t rad_input_queue_read(rad_input_queue_t queue, rad_input_event_t *ev
             record.tail = (record.tail + 1u) % record.capacity;
             --record.count;
         }
-        unlock_runtime();
+        unlock_input_queue();
         if (read || timeout_ms == 0) break;
         if (timeout_ms != RAD_WAIT_FOREVER && rad_time_millis() - start >= timeout_ms) break;
         rad_cpu_idle();
