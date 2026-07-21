@@ -164,6 +164,30 @@ rad_a53_restore_user:
     ldr x16, [sp, #264]
     msr spsr_el1, x16
 31:
+    // Restore the interrupted context's FP/SIMD state saved by the entry paths at
+    // frame +288 (see rad_a53_trap_frame_t). Kernel code is -mgeneral-regs-only, so
+    // the exception paths are the only place FP/NEON is saved and restored.
+    add x16, sp, #288
+    ldp q0, q1, [x16, #0]
+    ldp q2, q3, [x16, #32]
+    ldp q4, q5, [x16, #64]
+    ldp q6, q7, [x16, #96]
+    ldp q8, q9, [x16, #128]
+    ldp q10, q11, [x16, #160]
+    ldp q12, q13, [x16, #192]
+    ldp q14, q15, [x16, #224]
+    ldp q16, q17, [x16, #256]
+    ldp q18, q19, [x16, #288]
+    ldp q20, q21, [x16, #320]
+    ldp q22, q23, [x16, #352]
+    ldp q24, q25, [x16, #384]
+    ldp q26, q27, [x16, #416]
+    ldp q28, q29, [x16, #448]
+    ldp q30, q31, [x16, #480]
+    ldr x17, [x16, #512]
+    msr fpsr, x17
+    ldr x17, [x16, #520]
+    msr fpcr, x17
     ldp x0, x1, [sp, #0]
     ldp x2, x3, [sp, #16]
     ldp x4, x5, [sp, #32]
@@ -180,11 +204,11 @@ rad_a53_restore_user:
     ldp x26, x27, [sp, #208]
     ldp x28, x29, [sp, #224]
     ldr x30, [sp, #240]
-    add sp, sp, #288
+    add sp, sp, #816
     eret
 
 rad_a53_sync_common:
-    sub sp, sp, #288
+    sub sp, sp, #816
     stp x0, x1, [sp, #0]
     stp x2, x3, [sp, #16]
     stp x4, x5, [sp, #32]
@@ -226,6 +250,31 @@ rad_a53_sync_common:
     mrs x0, far_el1
     str x0, [sp, #280]
 41:
+    // Save the interrupted context's FP/SIMD state (frame +288). Kernel code is
+    // -mgeneral-regs-only, so this is the only save site; the software renderer and
+    // libm use FP/NEON, and a sync exception (e.g. demand-paging a COW page) inside
+    // FP code must return with q0-q31/fpsr/fpcr intact.
+    add x0, sp, #288
+    stp q0, q1, [x0, #0]
+    stp q2, q3, [x0, #32]
+    stp q4, q5, [x0, #64]
+    stp q6, q7, [x0, #96]
+    stp q8, q9, [x0, #128]
+    stp q10, q11, [x0, #160]
+    stp q12, q13, [x0, #192]
+    stp q14, q15, [x0, #224]
+    stp q16, q17, [x0, #256]
+    stp q18, q19, [x0, #288]
+    stp q20, q21, [x0, #320]
+    stp q22, q23, [x0, #352]
+    stp q24, q25, [x0, #384]
+    stp q26, q27, [x0, #416]
+    stp q28, q29, [x0, #448]
+    stp q30, q31, [x0, #480]
+    mrs x1, fpsr
+    str x1, [x0, #512]
+    mrs x1, fpcr
+    str x1, [x0, #520]
     mov x0, sp
     bl rad_a53_exception_dispatch
     // Contract: 0 = resume the interrupted user context from this stack frame;
@@ -251,7 +300,7 @@ rad_a53_sync_common:
 // tick interrupted EL0 -- yields to the scheduler. Resume through the shared
 // restore path (may eret into a different task after a preemptive switch).
 rad_a53_irq_common:
-    sub sp, sp, #288
+    sub sp, sp, #816
     stp x0, x1, [sp, #0]
     stp x2, x3, [sp, #16]
     stp x4, x5, [sp, #32]
@@ -285,6 +334,30 @@ rad_a53_irq_common:
     mrs x0, spsr_el1
     str x0, [sp, #264]
 51:
+    // FP/SIMD state of the interrupted context (frame +288): the IRQ may have landed
+    // mid-FP-computation, and the preemption path can run other code before this frame
+    // resumes, so q0-q31/fpsr/fpcr must be preserved (mirrors the x86 fxsave in IRQ entry).
+    add x0, sp, #288
+    stp q0, q1, [x0, #0]
+    stp q2, q3, [x0, #32]
+    stp q4, q5, [x0, #64]
+    stp q6, q7, [x0, #96]
+    stp q8, q9, [x0, #128]
+    stp q10, q11, [x0, #160]
+    stp q12, q13, [x0, #192]
+    stp q14, q15, [x0, #224]
+    stp q16, q17, [x0, #256]
+    stp q18, q19, [x0, #288]
+    stp q20, q21, [x0, #320]
+    stp q22, q23, [x0, #352]
+    stp q24, q25, [x0, #384]
+    stp q26, q27, [x0, #416]
+    stp q28, q29, [x0, #448]
+    stp q30, q31, [x0, #480]
+    mrs x1, fpsr
+    str x1, [x0, #512]
+    mrs x1, fpcr
+    str x1, [x0, #520]
     mov x0, sp
     bl rad_bcm283x_irq_dispatch_frame
     b rad_a53_restore_user

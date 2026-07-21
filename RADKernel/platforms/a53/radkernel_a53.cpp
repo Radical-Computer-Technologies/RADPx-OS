@@ -1078,7 +1078,45 @@ extern "C" rad_status_t rad_a53_vm_init(const rad_boot_info_t *boot, rad_a53_vm_
     return RAD_STATUS_OK;
 }
 
+// Interrupt/SMP-safe recursive lock for the physical page tracker (g_page_state[],
+// g_page_refs[] and the free/reserved counters). a53 is genuinely SMP (PSCI secondary
+// cores; the ZuBoard smoke runs -smp 2), and the COW data-abort handler holds it across
+// its own alloc/copy/free, so the lock must be recursive per core. Mirrors x86's
+// page_tracker_lock in x86_vm.cpp.
+volatile int g_a53_page_spin = 0;
+volatile uint32_t g_a53_page_lock_owner = 0xffffffffu;
+volatile int g_a53_page_lock_depth = 0;
+
+void page_tracker_lock(void) {
+    const uint32_t core = a53_current_core();
+    if (g_a53_page_lock_depth > 0 && g_a53_page_lock_owner == core) {
+        ++g_a53_page_lock_depth;
+        return;
+    }
+    while (__atomic_test_and_set(&g_a53_page_spin, __ATOMIC_ACQUIRE)) {
+        asm volatile("yield");
+    }
+    g_a53_page_lock_owner = core;
+    g_a53_page_lock_depth = 1;
+}
+
+void page_tracker_unlock(void) {
+    if (g_a53_page_lock_depth > 1) {
+        --g_a53_page_lock_depth;
+        return;
+    }
+    g_a53_page_lock_owner = 0xffffffffu;
+    g_a53_page_lock_depth = 0;
+    __atomic_clear(&g_a53_page_spin, __ATOMIC_RELEASE);
+}
+
+struct PageTrackerGuard {
+    PageTrackerGuard() { page_tracker_lock(); }
+    ~PageTrackerGuard() { page_tracker_unlock(); }
+};
+
 extern "C" uintptr_t rad_a53_vm_alloc_page(void) {
+    PageTrackerGuard guard;
     if (!g_a53.summary.size) reset_page_allocator(DefaultUsableBase, DefaultUsableLimit);
     for (size_t i = 0; i < MaxTrackedPages; ++i) {
         if (g_page_state[i] != PageFree) continue;
@@ -1092,6 +1130,7 @@ extern "C" uintptr_t rad_a53_vm_alloc_page(void) {
 }
 
 extern "C" int rad_a53_vm_retain_page(uintptr_t physical_address) {
+    PageTrackerGuard guard;
     size_t index = 0;
     if (!physical_to_index(physical_address, &index) || g_page_state[index] != PageReserved || g_page_refs[index] == 0u) return 0;
     ++g_page_refs[index];
@@ -1099,6 +1138,7 @@ extern "C" int rad_a53_vm_retain_page(uintptr_t physical_address) {
 }
 
 extern "C" void rad_a53_vm_free_page(uintptr_t physical_address) {
+    PageTrackerGuard guard;
     size_t index = 0;
     if (!physical_to_index(physical_address, &index) || g_page_state[index] != PageReserved || g_page_refs[index] == 0u) return;
     if (g_page_refs[index] > 1u) {
@@ -1211,6 +1251,10 @@ extern "C" int rad_a53_handle_data_abort(uintptr_t fault_address, uint64_t esr_e
     uint64_t *leaf = walk_user_leaf(active_space_slot(), va);
     if (!leaf || ((*leaf & PteCow) == 0u)) return 0;
     const uintptr_t old_physical = static_cast<uintptr_t>(*leaf & PteAddressMask);
+    // Hold the page-tracker lock across the whole refcount check-then-act so a concurrent
+    // free/retain/fork on another core cannot change old_physical's refcount between the
+    // decision and the alloc/copy/free. The nested alloc/free below re-enter this lock.
+    PageTrackerGuard guard;
     size_t old_index = 0;
     if (!physical_to_index(old_physical, &old_index) || g_page_refs[old_index] == 0u) return 0;
     if (g_page_refs[old_index] == 1u) {
