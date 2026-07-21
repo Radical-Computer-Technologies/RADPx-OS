@@ -6478,8 +6478,14 @@ rad_status_t rad_input_queue_push(rad_input_queue_t queue, const rad_input_event
         return RAD_STATUS_INVALID_ARGUMENT;
     }
     if (record.count >= record.capacity) {
-        unlock_input_queue();
-        return RAD_STATUS_NO_MEMORY;
+        // Drop the OLDEST event, not the newest. A fast pointer floods this queue with
+        // motion events between shell ticks; dropping new events left the queue full of
+        // stale positions so the cursor lagged badly behind the real mouse. Discarding the
+        // oldest keeps the most recent events, so the shell always applies a current
+        // position. (Losing the tail of a keyboard burst is far less likely -- 64 entries
+        // -- and far less harmful than an unusable cursor.)
+        record.tail = (record.tail + 1u) % record.capacity;
+        --record.count;
     }
     record.events[record.head] = *event;
     record.head = (record.head + 1u) % record.capacity;

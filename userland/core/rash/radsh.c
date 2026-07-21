@@ -631,6 +631,10 @@ static int read_file_text(const char *path, char *buffer, size_t size) {
     long n = sc(SYS_READ, fd, (long)buffer, size - 1, 0, 0, 0);
     sc(SYS_CLOSE, fd, 0, 0, 0, 0, 0);
     if (n < 0) return (int)n;
+    // Never trust the returned length as an in-bounds index: a kernel that reports more
+    // than was requested would make buffer[n] a stack overflow (this shell is built
+    // -fno-stack-protector, so that corrupts a return address silently -> jump to 0).
+    if ((size_t)n > size - 1) n = (long)(size - 1);
     buffer[n] = 0;
     return (int)n;
 }

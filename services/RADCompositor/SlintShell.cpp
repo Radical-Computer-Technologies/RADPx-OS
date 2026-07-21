@@ -108,26 +108,39 @@ public:
         return true;
     }
 
-    bool moveWindow(uint32_t window_id, int32_t dx, int32_t dy) {
+    // Move/resize are driven by the SCREEN-absolute cursor (cursor_x/cursor_y), not by the
+    // Slint TouchArea-local delta. The drag handle lives inside the window, so as the window
+    // moves/resizes the handle moves under the pointer and a TouchArea-local delta feeds back
+    // on itself -> the window jitters. The screen cursor is unaffected by window movement, so
+    // (cursor - cursor_at_gesture_start) is a stable delta from the bounds captured at start.
+    bool moveWindow(uint32_t window_id, int32_t cursor_x, int32_t cursor_y) {
         if (window_id != terminal_window_.id || terminal_window_.state == DesktopWindowState::Closed) return false;
         if (!move_active_ || move_window_id_ != window_id) {
             move_active_ = true;
             move_window_id_ = window_id;
             move_start_bounds_ = terminal_window_.bounds;
+            gesture_cursor_x_ = cursor_x;
+            gesture_cursor_y_ = cursor_y;
         }
+        const int32_t dx = cursor_x - gesture_cursor_x_;
+        const int32_t dy = cursor_y - gesture_cursor_y_;
         terminal_window_.bounds.x = clamp_range(move_start_bounds_.x + dx, 0, max_window_x(terminal_window_.bounds.width));
         terminal_window_.bounds.y = clamp_range(move_start_bounds_.y + dy, 38, max_window_y(terminal_window_.bounds.height));
         focusTerminal();
         return true;
     }
 
-    bool resizeWindow(uint32_t window_id, int32_t dx, int32_t dy) {
+    bool resizeWindow(uint32_t window_id, int32_t cursor_x, int32_t cursor_y) {
         if (window_id != terminal_window_.id || terminal_window_.state == DesktopWindowState::Closed) return false;
         if (!resize_active_ || resize_window_id_ != window_id) {
             resize_active_ = true;
             resize_window_id_ = window_id;
             resize_start_bounds_ = terminal_window_.bounds;
+            gesture_cursor_x_ = cursor_x;
+            gesture_cursor_y_ = cursor_y;
         }
+        const int32_t dx = cursor_x - gesture_cursor_x_;
+        const int32_t dy = cursor_y - gesture_cursor_y_;
         const int32_t max_width = clamp_min(static_cast<int32_t>(desktop_width_) - resize_start_bounds_.x, MinWindowWidth);
         const int32_t max_height = clamp_min(static_cast<int32_t>(desktop_height_) - resize_start_bounds_.y, MinWindowHeight);
         terminal_window_.bounds.width = clamp_range(resize_start_bounds_.width + dx, MinWindowWidth, max_width);
@@ -211,6 +224,8 @@ private:
     bool resize_active_ = false;
     uint32_t move_window_id_ = 0;
     uint32_t resize_window_id_ = 0;
+    int32_t gesture_cursor_x_ = 0;   // screen cursor at move/resize gesture start
+    int32_t gesture_cursor_y_ = 0;
     DesktopWindowBounds move_start_bounds_{};
     DesktopWindowBounds resize_start_bounds_{};
     DesktopWindow terminal_window_{};
@@ -1371,17 +1386,19 @@ extern "C" rad_status_t rad_slint_shell_start(rad_framebuffer_t framebuffer, con
     (*g_terminal_shell)->on_close_terminal_window([]() {
         close_terminal_model_only();
     });
-    (*g_terminal_shell)->on_move_terminal_window([](float dx, float dy) {
+    (*g_terminal_shell)->on_move_terminal_window([](float, float) {
+        // Ignore the Slint TouchArea-local delta (it feeds back and jitters as the window
+        // moves under the pointer); drive the move from the stable screen cursor instead.
         if (const DesktopWindow *window = g_desktop.terminalWindow()) {
-            if (g_desktop.moveWindow(window->id, bounded_drag_delta(dx), bounded_drag_delta(dy))) {
+            if (g_desktop.moveWindow(window->id, g_cursor_x, g_cursor_y)) {
                 marker_once(&g_window_move_marker_sent, "RAD_SLINT_WINDOW_MOVE_OK");
             }
         }
         set_shell_state();
     });
-    (*g_terminal_shell)->on_resize_terminal_window([](float dx, float dy) {
+    (*g_terminal_shell)->on_resize_terminal_window([](float, float) {
         if (const DesktopWindow *window = g_desktop.terminalWindow()) {
-            if (g_desktop.resizeWindow(window->id, bounded_drag_delta(dx), bounded_drag_delta(dy))) {
+            if (g_desktop.resizeWindow(window->id, g_cursor_x, g_cursor_y)) {
                 marker_once(&g_window_resize_marker_sent, "RAD_SLINT_WINDOW_RESIZE_OK");
             }
         }
@@ -1391,8 +1408,12 @@ extern "C" rad_status_t rad_slint_shell_start(rad_framebuffer_t framebuffer, con
     (*g_desktop_shell)->show();
     (*g_terminal_shell)->show();
     g_slint_started = 1;
+    (void)terminal_text;
     render_ticks(2);
-    launch_terminal(terminal_text);
+    // The window manager is up as soon as the desktop is composited. The terminal is NOT
+    // auto-launched -- the user opens it from the applications menu (on_launch_terminal),
+    // which is when the terminal process/window and their markers come up.
+    marker_once(&g_wm_marker_sent, "RAD_SLINT_WM_OK");
 #if defined(RAD_SLINT_SHELL_SELFTEST)
     // Self-test scaffolding only: drives the shell through menu/move/resize/close/
     // relaunch to emit the RAD_SLINT_* markers. It is destabilising in a live boot
