@@ -64,9 +64,11 @@ struct DesktopWindow {
     uint32_t id = TerminalWindowId;
     const char *title = "Terminal";
     DesktopWindowBounds bounds{};
-    DesktopWindowState state = DesktopWindowState::Running;
+    // Closed by default: the desktop boots with no terminal window. The user opens it
+    // from the applications menu (launch_terminal), which spawns radsh and shows the window.
+    DesktopWindowState state = DesktopWindowState::Closed;
     uint32_t z = 1;
-    bool focused = true;
+    bool focused = false;
 };
 
 class EmbeddedDesktopShellModel {
@@ -1189,9 +1191,26 @@ void launch_terminal(const char *terminal_text) {
     marker_once(&g_terminal_window_marker_sent, "RAD_SLINT_APP_TERMINAL_WINDOW_OK");
 }
 
+// Kill the terminal's shell process and drop its PTY, and clear the on-screen buffer, so
+// the next open is a fresh, empty radsh session (not the old scrollback / a dead shell).
+void teardown_terminal_process() {
+    if (g_terminal_pid > 0) {
+        rad_process_kill(g_terminal_pid, 9); // SIGKILL
+        g_terminal_pid = 0;
+    }
+    g_terminal_task = nullptr;
+    if (g_terminal_pty) {
+        rad_pty_close(g_terminal_pty);
+        g_terminal_pty = nullptr;
+    }
+    g_terminal_scroll_lines = 0;
+    copy_terminal_text("");
+}
+
 void close_terminal_model_only() {
     if (const DesktopWindow *window = g_desktop.terminalWindow()) {
         g_desktop.closeWindow(window->id);
+        teardown_terminal_process();
         set_shell_state();
         marker_once(&g_terminal_close_marker_sent, "RAD_SLINT_TERMINAL_CLOSE_OK");
     }
