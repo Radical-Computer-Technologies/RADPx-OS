@@ -151,7 +151,7 @@ export component RadOsShell inherits Window {
                 x: 10px;
                 y: 7px;
                 width: parent.width - 48px;
-                text: root.terminal_loading ? root.terminal_window_title : "Slint " + root.terminal_window_title;
+                text: root.terminal_window_title;
                 color: #f8fafc;
                 font-size: 13px;
                 font-weight: 700;
@@ -640,7 +640,7 @@ export component RadTerminalSurface inherits Window {
                 x: 10px;
                 y: 7px;
                 width: parent.width - 48px;
-                text: root.terminal_loading ? root.terminal_window_title : "Slint " + root.terminal_window_title;
+                text: root.terminal_window_title;
                 color: #f8fafc;
                 font-size: 13px;
                 font-weight: 700;
@@ -814,7 +814,7 @@ export component RadFileExplorerSurface inherits Window {
                 x: 10px;
                 y: 7px;
                 width: parent.width - 48px;
-                text: "Slint " + root.explorer_window_title;
+                text: root.explorer_window_title;
                 color: #f8fafc;
                 font-size: 13px;
                 font-weight: 700;
