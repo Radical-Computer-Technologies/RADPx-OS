@@ -136,35 +136,12 @@ void queue_surface_full_damage(rad_compositor_t *compositor, const rad_composito
     rad_compositor_queue_damage(compositor, surface.id, &rect, flags);
 }
 
-bool rect_contains(const rad_compositor_rect_t& outer, const rad_compositor_rect_t& inner) {
-    return inner.x >= outer.x && inner.y >= outer.y
-        && inner.x + inner.width <= outer.x + outer.width
-        && inner.y + inner.height <= outer.y + outer.height;
-}
-
-// Highest z of a visible, opaque surface whose bounds fully contain `rect`. Such a
-// surface fully paints the rect, so everything strictly below it is occluded (drawing
-// it would be immediately overwritten) and the copy-forward for this rect is wasted.
-// Returns INT32_MIN with *found=false when nothing fully covers the rect.
-int32_t opaque_cover_floor_z(const rad_compositor_t *compositor, const rad_compositor_rect_t& rect, bool *found) {
-    int32_t floor_z = INT32_MIN;
-    bool any = false;
-    for (size_t i = 0; i < RAD_COMPOSITOR_MAX_SURFACES; ++i) {
-        const rad_compositor_surface_info_t& s = compositor->surfaces[i];
-        if (!s.id || !s.visible || !s.pixels) continue;
-        if (s.flags & RAD_COMPOSITOR_SURFACE_ALPHA) continue;   // translucent: does not occlude
-        if (!rect_contains(s.bounds, rect)) continue;
-        if (!any || s.z > floor_z) { floor_z = s.z; any = true; }
-    }
-    if (found) *found = any;
-    return floor_z;
-}
-
 void draw_surfaces_for_rect(rad_compositor_t *compositor, const rad_compositor_rect_t& rect) {
-    bool covered = false;
-    const int32_t floor_z = opaque_cover_floor_z(compositor, rect, &covered);
-    // Start above any fully-covering opaque surface: strictly lower surfaces are occluded.
-    int32_t last_z = covered ? floor_z : INT32_MIN;
+    // Draw every intersecting surface bottom-up. (An earlier occlusion optimization that
+    // skipped surfaces below a fully-covering opaque one was a suspected source of leftover
+    // pixels over an overlapped window; reverted to the simple correct path. KVM makes the
+    // extra blits negligible.)
+    int32_t last_z = INT32_MIN;
     for (;;) {
         const rad_compositor_surface_info_t *next = nullptr;
         for (size_t i = 0; i < RAD_COMPOSITOR_MAX_SURFACES; ++i) {
@@ -247,38 +224,14 @@ rad_status_t rad_compositor_set_surface_bounds(rad_compositor_t *compositor, uin
     rad_compositor_surface_info_t *surface = find_surface(compositor, surface_id);
     if (!surface || !bounds || bounds->width <= 0 || bounds->height <= 0) return RAD_STATUS_INVALID_ARGUMENT;
     const rad_compositor_rect_t old_bounds = surface->bounds;
+    // Damage the full old footprint (so whatever it exposes is recomposited) and the full new
+    // footprint (so the moved surface is repainted). Every intersecting surface is redrawn in
+    // both, so nothing is left stale. (Simple and correct; the exposed-strip optimization it
+    // replaces was a suspected source of leftover pixels over an overlapped window.)
+    rad_compositor_queue_damage(compositor, surface_id, &old_bounds, RAD_COMPOSITOR_DAMAGE_EXPOSED);
     surface->bounds = *bounds;
     surface->dirty = 1;
-    // Damage the new footprint in full: the moved/resized surface repaints there, and if it
-    // is opaque the occlusion skip means only it is blitted -- not the desktop underneath.
     queue_surface_full_damage(compositor, *surface, 0);
-    // Plus only the region the surface EXPOSED by moving -- old_bounds minus new_bounds --
-    // so the content behind it is restored there. Compositing the full old+new union instead
-    // would refill the desktop across the whole new position under the (opaque) window that
-    // overdraws it, which is the bulk of the per-frame cost and scales with window size. The
-    // exposed region is old \ new decomposed into up to four non-overlapping edge strips.
-    const int32_t ox0 = old_bounds.x, oy0 = old_bounds.y;
-    const int32_t ox1 = old_bounds.x + old_bounds.width, oy1 = old_bounds.y + old_bounds.height;
-    const int32_t ix0 = ox0 > bounds->x ? ox0 : bounds->x;
-    const int32_t iy0 = oy0 > bounds->y ? oy0 : bounds->y;
-    const int32_t ix1 = ox1 < (bounds->x + bounds->width) ? ox1 : (bounds->x + bounds->width);
-    const int32_t iy1 = oy1 < (bounds->y + bounds->height) ? oy1 : (bounds->y + bounds->height);
-    if (ix0 >= ix1 || iy0 >= iy1) {
-        // Disjoint footprints (a teleport): the whole old rect is exposed.
-        rad_compositor_queue_damage(compositor, surface_id, &old_bounds, RAD_COMPOSITOR_DAMAGE_EXPOSED);
-    } else {
-        const rad_compositor_rect_t strips[4] = {
-            { ox0, oy0, old_bounds.width, iy0 - oy0 },   // top strip, above the overlap
-            { ox0, iy1, old_bounds.width, oy1 - iy1 },   // bottom strip, below the overlap
-            { ox0, iy0, ix0 - ox0, iy1 - iy0 },          // left strip, within the overlap band
-            { ix1, iy0, ox1 - ix1, iy1 - iy0 },          // right strip, within the overlap band
-        };
-        for (size_t i = 0; i < 4; ++i) {
-            if (strips[i].width > 0 && strips[i].height > 0) {
-                rad_compositor_queue_damage(compositor, surface_id, &strips[i], RAD_COMPOSITOR_DAMAGE_EXPOSED);
-            }
-        }
-    }
     return RAD_STATUS_OK;
 }
 
@@ -363,12 +316,10 @@ rad_status_t rad_compositor_compose_frame(rad_compositor_t *compositor) {
         const uint32_t index = (compositor->damage_head + n) % RAD_COMPOSITOR_MAX_DAMAGE;
         rad_compositor_rect_t clipped{};
         if (!rect_intersect(compositor->damage[index].rect, framebuffer_rect(compositor), &clipped)) continue;
-        // A rect fully covered by an opaque surface is entirely repainted below, so the
-        // copy-forward memcpy would be 100% overwritten -- skip it. Identical pixels, less
-        // memory traffic (the dominant per-drag-frame cost).
-        bool covered = false;
-        opaque_cover_floor_z(compositor, clipped, &covered);
-        if (!covered) copy_forward_rect(compositor, clipped);
+        // Always bring the previous frame forward before drawing, then composite every
+        // surface over it. (The copy-forward skip was a suspected source of leftover pixels
+        // over an overlapped window.)
+        copy_forward_rect(compositor, clipped);
         draw_surfaces_for_rect(compositor, clipped);
         if (compositor->last_present_rect_count < RAD_COMPOSITOR_MAX_DAMAGE) {
             compositor->last_present_rects[compositor->last_present_rect_count] = clipped;
