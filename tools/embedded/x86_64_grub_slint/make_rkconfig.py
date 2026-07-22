@@ -76,7 +76,7 @@ def main() -> int:
     out.mkdir(parents=True, exist_ok=True)
     salt = "rad-root-v1"
     digest = password_hash(salt, args.root_password)
-    version = "0.1.3"
+    version = "0.1.4"
     autocomplete = bool_arg(args.terminal_autocomplete)
     posix_compat = bool_arg(args.terminal_posix_compat)
     ncurses = bool_arg(args.terminal_ncurses)
