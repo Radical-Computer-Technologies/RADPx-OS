@@ -199,6 +199,8 @@ set(RAD_USERLAND_INIT_SOURCE_DIR "${RADPX_OS_ROOT}/userland/core/init")
 set(RAD_USERLAND_RASH_SOURCE_DIR "${RADPX_OS_ROOT}/userland/core/rash")
 set(RAD_USERLAND_LOGIN_SOURCE_DIR "${RADPX_OS_ROOT}/userland/core/login")
 set(RAD_USERLAND_RADGFX_SOURCE_DIR "${RADPX_OS_ROOT}/userland/core/radgfx")
+set(RAD_USERLAND_RADWC_DEMO_SOURCE_DIR "${RADPX_OS_ROOT}/userland/core/radwc-demo")
+set(RAD_LIBRADCOMPOSITOR_SOURCE_DIR "${RADPX_OS_ROOT}/userland/lib/radcompositor")
 set(RAD_USERSPACE_TEST_SOURCE_DIR "${RADPX_OS_ROOT}/tests/userspace")
 set(RAD_LIBRADC_SOURCE_DIR "${RADPX_OS_ROOT}/libs/libradc")
 set(RAD_LIBRADC_INCLUDE_DIR "${RAD_LIBRADC_SOURCE_DIR}/include")
@@ -377,6 +379,7 @@ set(RAD_DNS_RESOLVER_ELF "${CMAKE_BINARY_DIR}/rad-dns-resolver.elf")
 set(RAD_TIME_SYNC_ELF "${CMAKE_BINARY_DIR}/rad-time-sync.elf")
 set(RAD_SH_ELF "${CMAKE_BINARY_DIR}/rad-sh.elf")
 set(RAD_RADGFX_ELF "${CMAKE_BINARY_DIR}/rad-radgfx-smoke.elf")
+set(RAD_RADWC_DEMO_ELF "${CMAKE_BINARY_DIR}/rad-radwc-demo.elf")
 set(RAD_TTY_STRESS_ELF "${CMAKE_BINARY_DIR}/rad-tty-stress.elf")
 set(RAD_SLEEP_STRESS_ELF "${CMAKE_BINARY_DIR}/rad-sleep-stress.elf")
 set(RAD_SIGNAL_STRESS_ELF "${CMAKE_BINARY_DIR}/rad-signal-stress.elf")
@@ -773,6 +776,28 @@ add_custom_command(
     VERBATIM
 )
 
+# radwc-demo: a userland C client of the client/server compositor. Renders into a
+# shared-memory surface and reacts to routed input. Links the libradcompositor
+# client library; freestanding (no libc), uses <rad/syscalls.h> only.
+add_custom_command(
+    OUTPUT "${RAD_RADWC_DEMO_ELF}"
+    COMMAND "${X86_64_LINUX_GNU_GCC_EXECUTABLE}" -nostdlib -static -no-pie
+            -ffreestanding -fno-stack-protector -fno-pic -fno-pie -fomit-frame-pointer -mno-red-zone
+            -I "${RAD_LIBRADC_INCLUDE_DIR}"
+            -I "${RAD_LIBRADCOMPOSITOR_SOURCE_DIR}"
+            -Wl,-Ttext=0x40000000
+            -Wl,--build-id=none
+            -o "${RAD_RADWC_DEMO_ELF}"
+            "${RAD_USERLAND_RUNTIME_SOURCE_DIR}/c_entry.S"
+            "${RAD_USERLAND_RADWC_DEMO_SOURCE_DIR}/radwc_demo.c"
+            "${RAD_LIBRADCOMPOSITOR_SOURCE_DIR}/radcompositor.c"
+    DEPENDS "${RAD_USERLAND_RUNTIME_SOURCE_DIR}/c_entry.S"
+            "${RAD_USERLAND_RADWC_DEMO_SOURCE_DIR}/radwc_demo.c"
+            "${RAD_LIBRADCOMPOSITOR_SOURCE_DIR}/radcompositor.c"
+            "${RAD_LIBRADCOMPOSITOR_SOURCE_DIR}/radcompositor.h"
+    VERBATIM
+)
+
 add_custom_command(
     OUTPUT "${RAD_TTY_STRESS_ELF}"
     COMMAND "${X86_64_LINUX_GNU_GCC_EXECUTABLE}" -nostdlib -static -no-pie
@@ -1066,6 +1091,7 @@ add_custom_command(
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RAD_RADSH_ELF} /bin/tui-smoke" "${RAD_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RAD_LOGIN_ELF} /bin/login" "${RAD_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RAD_RADGFX_ELF} /bin/radgfx-smoke" "${RAD_EXT2_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RAD_RADWC_DEMO_ELF} /bin/radwc-demo" "${RAD_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RAD_TTY_STRESS_ELF} /usr/bin/tty-stress" "${RAD_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RAD_SLEEP_STRESS_ELF} /usr/bin/sleep-stress" "${RAD_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RAD_SIGNAL_STRESS_ELF} /usr/bin/signal-stress" "${RAD_EXT2_ROOTFS_IMAGE}"
@@ -1120,7 +1146,7 @@ add_custom_command(
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RAD_GENERATED_SERVICES_DIR}/boot-session.json /etc/rad/services/boot-session.json" "${RAD_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${CMAKE_CURRENT_LIST_DIR}/services/network-smoke.json /etc/rad/services/network-smoke.json" "${RAD_EXT2_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${CMAKE_CURRENT_LIST_DIR}/services/fatfs.json /etc/rad/services/fatfs.json" "${RAD_EXT2_ROOTFS_IMAGE}"
-    DEPENDS "${RAD_RADINIT_ELF}" "${RAD_INIT_ELF}" "${RAD_RADSH_ELF}" "${RAD_LOGIN_ELF}" "${RAD_NETWORK_SERVICE_ELF}" "${RAD_DNS_RESOLVER_ELF}" "${RAD_TIME_SYNC_ELF}" "${RAD_SH_ELF}" "${RAD_RADGFX_ELF}" "${RAD_TTY_STRESS_ELF}" "${RAD_SLEEP_STRESS_ELF}" "${RAD_SIGNAL_STRESS_ELF}" "${RAD_POSIX_STRESS_ELF}" "${RAD_TUI_STRESS_ELF}" "${RAD_TUI_STRESS_DYN_ELF}" "${RAD_LIBC_RSO_STRESS_ELF}" "${RAD_TINFO_RSO_STRESS_ELF}" "${RAD_TERMINAL_STRESS_ELF}" ${RAD_NANO_DEPENDS} ${RAD_VIM_DEPENDS} "${RAD_LIBC_ARCHIVE}" "${RAD_LIBC_RSO}" "${RAD_NCURSESW_ARCHIVE}" "${RAD_TINFO_ARCHIVE}" "${RAD_TINFO_RSO}" "${RAD_LIBNCURSES_RSO}" "${RAD_LIBNCURSESW_RSO}" "${RAD_RKCONFIG_STAMP}" "${RAD_TERMINFO_STAMP}" "${RAD_SYSROOT_STAMP}" "${CMAKE_CURRENT_LIST_DIR}/test_script.sh"
+    DEPENDS "${RAD_RADINIT_ELF}" "${RAD_INIT_ELF}" "${RAD_RADSH_ELF}" "${RAD_LOGIN_ELF}" "${RAD_NETWORK_SERVICE_ELF}" "${RAD_DNS_RESOLVER_ELF}" "${RAD_TIME_SYNC_ELF}" "${RAD_SH_ELF}" "${RAD_RADGFX_ELF}" "${RAD_RADWC_DEMO_ELF}" "${RAD_TTY_STRESS_ELF}" "${RAD_SLEEP_STRESS_ELF}" "${RAD_SIGNAL_STRESS_ELF}" "${RAD_POSIX_STRESS_ELF}" "${RAD_TUI_STRESS_ELF}" "${RAD_TUI_STRESS_DYN_ELF}" "${RAD_LIBC_RSO_STRESS_ELF}" "${RAD_TINFO_RSO_STRESS_ELF}" "${RAD_TERMINAL_STRESS_ELF}" ${RAD_NANO_DEPENDS} ${RAD_VIM_DEPENDS} "${RAD_LIBC_ARCHIVE}" "${RAD_LIBC_RSO}" "${RAD_NCURSESW_ARCHIVE}" "${RAD_TINFO_ARCHIVE}" "${RAD_TINFO_RSO}" "${RAD_LIBNCURSES_RSO}" "${RAD_LIBNCURSESW_RSO}" "${RAD_RKCONFIG_STAMP}" "${RAD_TERMINFO_STAMP}" "${RAD_SYSROOT_STAMP}" "${CMAKE_CURRENT_LIST_DIR}/test_script.sh"
             "${CMAKE_CURRENT_LIST_DIR}/services/storage-root.json" "${RAD_GENERATED_SERVICES_DIR}/userspace-shell.json"
             "${CMAKE_CURRENT_LIST_DIR}/services/network.json" "${CMAKE_CURRENT_LIST_DIR}/services/dns-resolver.json" "${CMAKE_CURRENT_LIST_DIR}/services/time-sync.json"
             "${CMAKE_CURRENT_LIST_DIR}/services/base-terminal.json" "${RAD_GENERATED_SERVICES_DIR}/terminal-stress.json" "${RAD_GENERATED_SERVICES_DIR}/boot-session.json" "${CMAKE_CURRENT_LIST_DIR}/services/network-smoke.json"
@@ -1178,6 +1204,7 @@ add_custom_command(
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RAD_RADSH_ELF} /bin/tui-smoke" "${RAD_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RAD_LOGIN_ELF} /bin/login" "${RAD_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RAD_RADGFX_ELF} /bin/radgfx-smoke" "${RAD_ROOTFS_IMAGE}"
+    COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RAD_RADWC_DEMO_ELF} /bin/radwc-demo" "${RAD_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RAD_TTY_STRESS_ELF} /usr/bin/tty-stress" "${RAD_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RAD_SLEEP_STRESS_ELF} /usr/bin/sleep-stress" "${RAD_ROOTFS_IMAGE}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RAD_SIGNAL_STRESS_ELF} /usr/bin/signal-stress" "${RAD_ROOTFS_IMAGE}"
@@ -1234,7 +1261,7 @@ add_custom_command(
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${CMAKE_CURRENT_LIST_DIR}/services/fatfs.json /etc/rad/services/fatfs.json" "${RAD_ROOTFS_IMAGE}"
     COMMAND "${PYTHON3_EXECUTABLE}" "${CMAKE_CURRENT_LIST_DIR}/install_rootfs_tree.py" "${RAD_ROOTFS_IMAGE}" "${RAD_RADPM_ROOTFS_DIR}"
     COMMAND "${DEBUGFS_EXECUTABLE}" -w -R "write ${RAD_EXT4_WRITE_SEED} /tmp/radwrite.txt" "${RAD_ROOTFS_IMAGE}"
-    DEPENDS "${RAD_RADINIT_ELF}" "${RAD_INIT_ELF}" "${RAD_RADSH_ELF}" "${RAD_LOGIN_ELF}" "${RAD_NETWORK_SERVICE_ELF}" "${RAD_DNS_RESOLVER_ELF}" "${RAD_TIME_SYNC_ELF}" "${RAD_SH_ELF}" "${RAD_RADGFX_ELF}" "${RAD_TTY_STRESS_ELF}" "${RAD_SLEEP_STRESS_ELF}" "${RAD_SIGNAL_STRESS_ELF}" "${RAD_POSIX_STRESS_ELF}" "${RAD_TUI_STRESS_ELF}" "${RAD_TUI_STRESS_DYN_ELF}" "${RAD_LIBC_RSO_STRESS_ELF}" "${RAD_TINFO_RSO_STRESS_ELF}" "${RAD_TERMINAL_STRESS_ELF}" ${RAD_NANO_DEPENDS} ${RAD_VIM_DEPENDS} "${RAD_LIBC_ARCHIVE}" "${RAD_LIBC_RSO}" "${RAD_NCURSESW_ARCHIVE}" "${RAD_TINFO_ARCHIVE}" "${RAD_TINFO_RSO}" "${RAD_LIBNCURSES_RSO}" "${RAD_LIBNCURSESW_RSO}" "${RAD_RKCONFIG_STAMP}" "${RAD_TERMINFO_STAMP}" "${RAD_SYSROOT_STAMP}" "${CMAKE_CURRENT_LIST_DIR}/test_script.sh"
+    DEPENDS "${RAD_RADINIT_ELF}" "${RAD_INIT_ELF}" "${RAD_RADSH_ELF}" "${RAD_LOGIN_ELF}" "${RAD_NETWORK_SERVICE_ELF}" "${RAD_DNS_RESOLVER_ELF}" "${RAD_TIME_SYNC_ELF}" "${RAD_SH_ELF}" "${RAD_RADGFX_ELF}" "${RAD_RADWC_DEMO_ELF}" "${RAD_TTY_STRESS_ELF}" "${RAD_SLEEP_STRESS_ELF}" "${RAD_SIGNAL_STRESS_ELF}" "${RAD_POSIX_STRESS_ELF}" "${RAD_TUI_STRESS_ELF}" "${RAD_TUI_STRESS_DYN_ELF}" "${RAD_LIBC_RSO_STRESS_ELF}" "${RAD_TINFO_RSO_STRESS_ELF}" "${RAD_TERMINAL_STRESS_ELF}" ${RAD_NANO_DEPENDS} ${RAD_VIM_DEPENDS} "${RAD_LIBC_ARCHIVE}" "${RAD_LIBC_RSO}" "${RAD_NCURSESW_ARCHIVE}" "${RAD_TINFO_ARCHIVE}" "${RAD_TINFO_RSO}" "${RAD_LIBNCURSES_RSO}" "${RAD_LIBNCURSESW_RSO}" "${RAD_RKCONFIG_STAMP}" "${RAD_TERMINFO_STAMP}" "${RAD_SYSROOT_STAMP}" "${CMAKE_CURRENT_LIST_DIR}/test_script.sh"
             "${CMAKE_CURRENT_LIST_DIR}/services/storage-root.json" "${RAD_GENERATED_SERVICES_DIR}/userspace-shell.json"
             "${CMAKE_CURRENT_LIST_DIR}/services/network.json" "${CMAKE_CURRENT_LIST_DIR}/services/dns-resolver.json" "${CMAKE_CURRENT_LIST_DIR}/services/time-sync.json"
             "${CMAKE_CURRENT_LIST_DIR}/services/base-terminal.json" "${RAD_GENERATED_SERVICES_DIR}/terminal-stress.json" "${RAD_GENERATED_SERVICES_DIR}/boot-session.json" "${CMAKE_CURRENT_LIST_DIR}/services/network-smoke.json"

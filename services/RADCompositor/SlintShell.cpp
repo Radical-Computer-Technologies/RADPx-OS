@@ -418,6 +418,7 @@ int g_input_ready_marker_sent = 0;
 int g_loading_marker_sent = 0;
 int g_ready_marker_sent = 0;
 int g_wm_marker_sent = 0;
+int g_wc_demo_marker_sent = 0;
 int g_terminal_window_marker_sent = 0;
 int g_menu_open_marker_sent = 0;
 int g_menu_escape_marker_sent = 0;
@@ -2538,6 +2539,17 @@ extern "C" rad_status_t rad_slint_shell_start(rad_framebuffer_t framebuffer, con
     // auto-launched -- the user opens it from the applications menu (on_launch_terminal),
     // which is when the terminal process/window and their markers come up.
     marker_once(&g_wm_marker_sent, "RAD_SLINT_WM_OK");
+    // Launch the reference client/server compositor app as a real userland
+    // process. It creates its window over shared memory via /dev/compositor0 and
+    // is composited + input-routed like any client -- proving the architecture
+    // end to end (RAD_COMPOSITOR_IPC_SURFACE_OK fires when its surface lands).
+    if (x86_user_spawn_process) {
+        int32_t demo_pid = 0;
+        rad_task_t demo_task = nullptr;
+        if (x86_user_spawn_process("/bin/radwc-demo", rad_process_current_pid(), &demo_pid, &demo_task) == RAD_STATUS_OK) {
+            marker_once(&g_wc_demo_marker_sent, "RAD_WC_DEMO_LAUNCH_OK");
+        }
+    }
 #if defined(RAD_SLINT_SHELL_SELFTEST)
     // Self-test scaffolding only: drives the shell through menu/move/resize/close/
     // relaunch to emit the RAD_SLINT_* markers. It is destabilising in a live boot
