@@ -101,7 +101,7 @@ extern "C" void free(void*);
 #endif
 
 #ifndef RAD_KERNEL_MAX_SHM_OBJECTS
-#define RAD_KERNEL_MAX_SHM_OBJECTS 8u
+#define RAD_KERNEL_MAX_SHM_OBJECTS 16u
 #endif
 
 #ifndef RAD_KERNEL_MAX_UDP_SOCKETS

@@ -115,7 +115,7 @@ extern "C" {
 #define RAD_DISPLAY_CONNECTOR_MAX 32u ///< Public constant or ioctl helper.
 #define RAD_FRAMEBUFFER_MAX_MODES 8u ///< Public constant or ioctl helper.
 #define RAD_SHM_NAME_MAX 64u ///< Public constant or ioctl helper.
-#define RAD_SHM_MAX_PAGES 16u ///< Public constant or ioctl helper.
+#define RAD_SHM_MAX_PAGES 1024u ///< Public constant or ioctl helper. Up to 4 MiB per object (a full window surface).
 #define RAD_MMAP_PROT_READ 1u ///< Public constant or ioctl helper.
 #define RAD_MMAP_PROT_WRITE 2u ///< Public constant or ioctl helper.
 #define RAD_MMAP_SHARED 1u ///< Public constant or ioctl helper.

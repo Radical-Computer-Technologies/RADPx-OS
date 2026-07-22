@@ -349,6 +349,33 @@ extern "C" uint64_t x86_vm_alloc_page(void) {
     return 0;
 }
 
+extern "C" uint64_t x86_vm_alloc_pages(size_t count) {
+    if (count == 0) return 0;
+    if (count == 1) return x86_vm_alloc_page();
+    page_tracker_lock();
+    uint64_t run_start = 0;
+    uint64_t run = 0;
+    for (uint64_t page = 0; page < MaxTrackedPages; ++page) {
+        if (g_page_state[page] != PageFree) {
+            run = 0;
+            continue;
+        }
+        if (run == 0) run_start = page;
+        if (++run == count) {
+            for (uint64_t p = run_start; p < run_start + count; ++p) {
+                g_page_state[p] = PageReserved;
+                g_page_refs[p] = 1;
+                if (g_summary.free_pages > 0) --g_summary.free_pages;
+                ++g_summary.reserved_pages;
+            }
+            page_tracker_unlock();
+            return run_start * PageSize;
+        }
+    }
+    page_tracker_unlock();
+    return 0;
+}
+
 extern "C" void x86_vm_free_page(uint64_t physical_address) {
     if (physical_address % PageSize) return;
     const uint64_t page = physical_address / PageSize;

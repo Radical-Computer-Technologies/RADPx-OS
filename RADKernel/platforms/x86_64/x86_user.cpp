@@ -1176,15 +1176,24 @@ long x86_sys_shm_open(uint64_t name_user, uint64_t byte_size, uint64_t flags) {
     if (fd < 0) return fd;
     rad_shm_info_t info{};
     if (rad_shm_get_info(fd, &info) != RAD_STATUS_OK) return fd;
+    // A shm object is backed by a single physically-contiguous block so the
+    // compositor can treat page 0 as the linear base of the whole surface
+    // buffer (a window spans many pages and is blitted with a fixed stride).
+    // If the object already exists (opened by name a second time) page 0 is
+    // populated and we reuse the existing backing.
+    uintptr_t existing = 0;
+    if (rad_shm_get_page(fd, 0, &existing) == RAD_STATUS_OK && existing) {
+        rad_debug_marker("RAD_SHM_OPEN_OK");
+        return fd;
+    }
+    const uint64_t base = x86_vm_alloc_pages(info.page_count);
+    if (!base) return RAD_STATUS_NO_MEMORY;
+    memset(reinterpret_cast<void*>(static_cast<uintptr_t>(base)), 0, info.page_count * PageSize);
     for (size_t i = 0; i < info.page_count; ++i) {
-        uintptr_t page = 0;
-        if (rad_shm_get_page(fd, i, &page) == RAD_STATUS_OK && page) continue;
-        const uint64_t physical = x86_vm_alloc_page();
-        if (!physical) return RAD_STATUS_NO_MEMORY;
-        memset(reinterpret_cast<void*>(static_cast<uintptr_t>(physical)), 0, PageSize);
-        const int32_t status = rad_shm_set_page(fd, i, static_cast<uintptr_t>(physical));
+        const uintptr_t physical = static_cast<uintptr_t>(base + i * PageSize);
+        const int32_t status = rad_shm_set_page(fd, i, physical);
         if (status != RAD_STATUS_OK) {
-            x86_vm_free_page(physical);
+            for (size_t p = 0; p < info.page_count; ++p) x86_vm_free_page(base + p * PageSize);
             return status;
         }
     }

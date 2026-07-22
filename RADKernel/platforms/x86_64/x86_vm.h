@@ -38,6 +38,7 @@ typedef struct x86_address_space {
 
 extern "C" void x86_vm_init(const rad_boot_info_t *boot, x86_vm_summary_t *summary);
 extern "C" uint64_t x86_vm_alloc_page(void);
+extern "C" uint64_t x86_vm_alloc_pages(size_t count);
 extern "C" int x86_vm_retain_page(uint64_t physical_address);
 extern "C" void x86_vm_free_page(uint64_t physical_address);
 extern "C" int x86_vm_create_address_space(x86_address_space_t *space);
