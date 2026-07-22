@@ -820,6 +820,128 @@ bool alloc_surface_buffers(uint32_t stride, uint32_t height) {
     return true;
 }
 
+// ---------------------------------------------------------------------------
+// Client/server surface ownership + per-surface input routing.
+//
+// A userland process creates a compositor surface over shared memory via the
+// /dev/compositor0 ioctls. The kernel needs to (a) remember which process owns
+// each client surface so it can tear the surface down when that process exits,
+// and (b) deliver input that hit-tests / focuses onto a client surface to that
+// process (which polls it back out with RAD_DEVICE_IOCTL_COMPOSITOR_POLL_INPUT),
+// rather than into an in-kernel Slint adapter (client surfaces have none).
+// ---------------------------------------------------------------------------
+#ifndef RAD_IPC_INPUT_RING
+#define RAD_IPC_INPUT_RING 64u
+#endif
+
+struct IpcSurfaceRecord {
+    uint32_t surface_id;
+    int32_t owner_pid;
+    int used;
+    rad_input_event_t ring[RAD_IPC_INPUT_RING];
+    uint32_t ring_head;
+    uint32_t ring_count;
+};
+
+IpcSurfaceRecord g_ipc_surfaces[RAD_COMPOSITOR_MAX_SURFACES];
+
+IpcSurfaceRecord *ipc_find(uint32_t surface_id) {
+    if (surface_id == 0) return nullptr;
+    for (auto &record : g_ipc_surfaces) {
+        if (record.used && record.surface_id == surface_id) return &record;
+    }
+    return nullptr;
+}
+
+bool ipc_is_surface(uint32_t surface_id) { return ipc_find(surface_id) != nullptr; }
+
+IpcSurfaceRecord *ipc_alloc(uint32_t surface_id, int32_t owner_pid) {
+    for (auto &record : g_ipc_surfaces) {
+        if (record.used) continue;
+        record = IpcSurfaceRecord{};
+        record.used = 1;
+        record.surface_id = surface_id;
+        record.owner_pid = owner_pid;
+        return &record;
+    }
+    return nullptr;
+}
+
+void ipc_push_input(IpcSurfaceRecord *record, const rad_input_event_t &event) {
+    if (!record) return;
+    if (record->ring_count == RAD_IPC_INPUT_RING) {
+        // Drop the oldest event so live input never stalls behind a slow client.
+        record->ring_head = (record->ring_head + 1) % RAD_IPC_INPUT_RING;
+        --record->ring_count;
+    }
+    const uint32_t slot = (record->ring_head + record->ring_count) % RAD_IPC_INPUT_RING;
+    record->ring[slot] = event;
+    ++record->ring_count;
+}
+
+int ipc_pop_input(uint32_t surface_id, rad_input_event_t *out) {
+    IpcSurfaceRecord *record = ipc_find(surface_id);
+    if (!record || record->ring_count == 0) return 0;
+    if (out) *out = record->ring[record->ring_head];
+    record->ring_head = (record->ring_head + 1) % RAD_IPC_INPUT_RING;
+    --record->ring_count;
+    return 1;
+}
+
+// Fetch a live surface's screen bounds from the compositor by id (for exposed
+// damage when a client surface is torn down).
+bool compositor_surface_bounds(uint32_t surface_id, rad_compositor_rect_t *out) {
+    rad_compositor_surface_info_t infos[RAD_COMPOSITOR_MAX_SURFACES];
+    const size_t n = rad_compositor_list_surfaces(&g_compositor, infos, RAD_COMPOSITOR_MAX_SURFACES);
+    for (size_t i = 0; i < n; ++i) {
+        if (infos[i].id == surface_id) {
+            if (out) *out = infos[i].bounds;
+            return true;
+        }
+    }
+    return false;
+}
+
+// Destroy a client surface: queue exposed damage over its footprint (while it
+// still exists, so the region repaints), then remove it and drop its owner slot.
+void ipc_destroy_surface(uint32_t surface_id) {
+    rad_compositor_rect_t bounds{};
+    if (compositor_surface_bounds(surface_id, &bounds)) {
+        rad_compositor_queue_damage(&g_compositor, surface_id, &bounds, RAD_COMPOSITOR_DAMAGE_EXPOSED);
+    }
+    rad_compositor_destroy_surface(&g_compositor, surface_id);
+    if (IpcSurfaceRecord *record = ipc_find(surface_id)) {
+        record->used = 0;
+        record->surface_id = 0;
+    }
+}
+
+// Is a pid a live (non-zombie) process? A pid that has exited and been reaped no
+// longer appears in the process list at all, so "absent" also means dead.
+bool ipc_owner_alive(int32_t pid) {
+    rad_process_info_t procs[64];
+    const size_t n = rad_process_list(procs, 64);
+    for (size_t i = 0; i < n; ++i) {
+        if (procs[i].pid == pid) {
+            return procs[i].state != RAD_PROCESS_ZOMBIE && !procs[i].exited;
+        }
+    }
+    return false;
+}
+
+// Reap client surfaces whose owning process has exited. Called from the shell
+// tick; returns the number of surfaces torn down.
+int ipc_reap_dead_owners() {
+    int reaped = 0;
+    for (auto &record : g_ipc_surfaces) {
+        if (!record.used || record.owner_pid <= 0) continue;
+        if (ipc_owner_alive(record.owner_pid)) continue;
+        ipc_destroy_surface(record.surface_id);
+        ++reaped;
+    }
+    return reaped;
+}
+
 rad_status_t compositor_device_ioctl(void*, uint32_t request, void *argument) {
     if (request == RAD_DEVICE_IOCTL_COMPOSITOR_CREATE_SURFACE) {
         auto *surface = static_cast<rad_compositor_ipc_surface_t*>(argument);
@@ -840,9 +962,42 @@ rad_status_t compositor_device_ioctl(void*, uint32_t request, void *argument) {
         config.stride_pixels = surface->stride_pixels;
         const rad_status_t status = rad_compositor_create_surface(&g_compositor, &config, &surface->surface_id);
         if (status == RAD_STATUS_OK) {
+            ipc_alloc(surface->surface_id, rad_process_current_pid());
             marker_once(&g_compositor_ipc_marker_sent, "RAD_COMPOSITOR_IPC_SURFACE_OK");
         }
         return status;
+    }
+    if (request == RAD_DEVICE_IOCTL_COMPOSITOR_DESTROY_SURFACE) {
+        auto *surface = static_cast<rad_compositor_ipc_surface_t*>(argument);
+        if (!surface || surface->size < sizeof(*surface)) return RAD_STATUS_INVALID_ARGUMENT;
+        if (!ipc_find(surface->surface_id)) return RAD_STATUS_NOT_FOUND;
+        ipc_destroy_surface(surface->surface_id);
+        return RAD_STATUS_OK;
+    }
+    if (request == RAD_DEVICE_IOCTL_COMPOSITOR_SET_BOUNDS) {
+        auto *surface = static_cast<rad_compositor_ipc_surface_t*>(argument);
+        if (!surface || surface->size < sizeof(*surface)) return RAD_STATUS_INVALID_ARGUMENT;
+        if (!ipc_find(surface->surface_id)) return RAD_STATUS_NOT_FOUND;
+        rad_compositor_rect_t bounds{};
+        bounds.x = surface->x;
+        bounds.y = surface->y;
+        bounds.width = static_cast<int32_t>(surface->width);
+        bounds.height = static_cast<int32_t>(surface->height);
+        return rad_compositor_set_surface_bounds(&g_compositor, surface->surface_id, &bounds);
+    }
+    if (request == RAD_DEVICE_IOCTL_COMPOSITOR_FOCUS) {
+        auto *surface = static_cast<rad_compositor_ipc_surface_t*>(argument);
+        if (!surface || surface->size < sizeof(*surface)) return RAD_STATUS_INVALID_ARGUMENT;
+        if (!ipc_find(surface->surface_id)) return RAD_STATUS_NOT_FOUND;
+        return rad_compositor_focus_surface(&g_compositor, surface->surface_id);
+    }
+    if (request == RAD_DEVICE_IOCTL_COMPOSITOR_POLL_INPUT) {
+        auto *poll = static_cast<rad_compositor_ipc_input_t*>(argument);
+        if (!poll || poll->size < sizeof(*poll)) return RAD_STATUS_INVALID_ARGUMENT;
+        rad_input_event_t event{};
+        poll->has_event = ipc_pop_input(poll->surface_id, &event) ? 1u : 0u;
+        if (poll->has_event) poll->event = event;
+        return RAD_STATUS_OK;
     }
     if (request == RAD_DEVICE_IOCTL_COMPOSITOR_QUEUE_DAMAGE) {
         auto *damage = static_cast<rad_compositor_ipc_damage_t*>(argument);
@@ -1193,6 +1348,16 @@ public:
         apply_pending_explorer_resize();
         apply_pending_editor_resize();
         drain_terminal_pty();
+        // Reap client (userland) surfaces whose owning process has exited. Cheap
+        // but not free (walks the process list), so throttle to a few times a
+        // second rather than every frame.
+        if ((++ipc_reap_ticks_ & 0x1f) == 0) {
+            if (ipc_reap_dead_owners() > 0) {
+                if (focused_ipc_surface_ && !ipc_is_surface(focused_ipc_surface_)) {
+                    focused_ipc_surface_ = 0;
+                }
+            }
+        }
         bool rendered = false;
         bool any_rendered = false;
         if (desktop_window_) {
@@ -1403,6 +1568,15 @@ private:
 
     void dispatch_polled_event(const rad_input_event_t& event) {
         if (event.type == RAD_INPUT_EVENT_KEY) {
+            // A focused client (userland) surface takes keyboard input first: queue it for
+            // the owning process to poll, instead of dispatching into an in-kernel adapter.
+            if (focused_ipc_surface_) {
+                if (IpcSurfaceRecord *record = ipc_find(focused_ipc_surface_)) {
+                    ipc_push_input(record, event);
+                    return;
+                }
+                focused_ipc_surface_ = 0;
+            }
             // Route keys to the FOCUSED window's adapter so the editor's TextEdit (and any
             // other Slint-driven window) receives them. Only the terminal adapter forwards
             // keys to the PTY (gated in dispatch_key_event). Fall back to the terminal
@@ -1435,6 +1609,16 @@ private:
             // A button is held: deliver motion/release to the grabbed surface even when the
             // cursor has moved off it. Without this a fast drag that outruns the window
             // stops (the motion hit-tests onto the desktop and the drag gesture dies).
+            if (IpcSurfaceRecord *record = ipc_find(pointer_grab_surface_)) {
+                rad_compositor_rect_t bounds{};
+                compositor_surface_bounds(pointer_grab_surface_, &bounds);
+                rad_input_event_t local = event;
+                local.x = g_cursor_x - bounds.x;
+                local.y = g_cursor_y - bounds.y;
+                ipc_push_input(record, local);
+                if (is_release) { pointer_grab_active_ = false; }
+                return;
+            }
             target = adapter_for_surface(pointer_grab_surface_);
             int32_t ox = 0, oy = 0;
             surface_origin(pointer_grab_surface_, &ox, &oy);
@@ -1444,6 +1628,24 @@ private:
             rad_compositor_input_result_t result{};
             if (rad_compositor_dispatch_input(&g_compositor, &event, &result) != RAD_STATUS_OK || !result.hit) {
                 if (is_release) { g_desktop.endPointerGesture(); pointer_grab_active_ = false; }
+                return;
+            }
+            // A hit on a client (userland) surface routes to its owning process.
+            if (IpcSurfaceRecord *record = ipc_find(result.surface_id)) {
+                if (is_press) {
+                    pointer_grab_active_ = true;
+                    pointer_grab_surface_ = result.surface_id;
+                    rad_compositor_focus_surface(&g_compositor, result.surface_id);
+                    focused_ipc_surface_ = result.surface_id;   // client takes keyboard focus
+                    set_shell_state();
+                    marker_once(&g_compositor_hit_marker_sent, "RAD_COMPOSITOR_HIT_TEST_OK");
+                    marker_once(&g_compositor_input_marker_sent, "RAD_COMPOSITOR_INPUT_TRANSLATE_OK");
+                }
+                rad_input_event_t local = event;
+                local.x = result.local_x;
+                local.y = result.local_y;
+                ipc_push_input(record, local);
+                if (is_release) { pointer_grab_active_ = false; }
                 return;
             }
             target = adapter_for_surface(result.surface_id);
@@ -1469,6 +1671,7 @@ private:
                 if (focus_window_id != 0) {
                     rad_compositor_focus_surface(&g_compositor, result.surface_id);
                     g_desktop.focusWindow(focus_window_id);
+                    focused_ipc_surface_ = 0;   // WM window reclaims keyboard focus
                     set_shell_state();
                 }
             }
@@ -1540,6 +1743,8 @@ private:
     int editor_bounds_valid_ = 0;
     bool dispatching_input_ = false;
     bool ready_for_input_ = false;   // set true after the first render lays out the tree
+    uint32_t ipc_reap_ticks_ = 0;      // throttle counter for client-surface reaping
+    uint32_t focused_ipc_surface_ = 0; // client surface that currently has keyboard focus
     bool pointer_grab_active_ = false;   // a button is held: route motion/release to this
     uint32_t pointer_grab_surface_ = 0;  // surface even when the cursor leaves its bounds
     bool pending_terminal_resize_ = false;

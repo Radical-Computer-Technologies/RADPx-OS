@@ -72,6 +72,10 @@ extern "C" {
 #define RAD_DEVICE_IOCTL_NET_CONFIGURE RAD_IOW(RAD_IOCTL_TYPE_NET, 7u, struct rad_net_stack_config) ///< Public constant or ioctl helper.
 #define RAD_DEVICE_IOCTL_COMPOSITOR_CREATE_SURFACE RAD_IOWR(RAD_IOCTL_TYPE_COMPOSITOR, 1u, struct rad_compositor_ipc_surface) ///< Public constant or ioctl helper.
 #define RAD_DEVICE_IOCTL_COMPOSITOR_QUEUE_DAMAGE RAD_IOW(RAD_IOCTL_TYPE_COMPOSITOR, 2u, struct rad_compositor_ipc_damage) ///< Public constant or ioctl helper.
+#define RAD_DEVICE_IOCTL_COMPOSITOR_DESTROY_SURFACE RAD_IOW(RAD_IOCTL_TYPE_COMPOSITOR, 3u, struct rad_compositor_ipc_surface) ///< Destroy a client surface by id.
+#define RAD_DEVICE_IOCTL_COMPOSITOR_SET_BOUNDS RAD_IOW(RAD_IOCTL_TYPE_COMPOSITOR, 4u, struct rad_compositor_ipc_surface) ///< Move/resize a client surface.
+#define RAD_DEVICE_IOCTL_COMPOSITOR_FOCUS RAD_IOW(RAD_IOCTL_TYPE_COMPOSITOR, 5u, struct rad_compositor_ipc_surface) ///< Raise + focus a client surface.
+#define RAD_DEVICE_IOCTL_COMPOSITOR_POLL_INPUT RAD_IOWR(RAD_IOCTL_TYPE_COMPOSITOR, 6u, struct rad_compositor_ipc_input) ///< Dequeue one routed input event for a client surface.
 #define RAD_DEVICE_IOCTL_FRAMEBUFFER_PRESENT RAD_IOW(RAD_IOCTL_TYPE_FRAMEBUFFER, 3u, struct rad_framebuffer_present) ///< Public constant or ioctl helper.
 #define RAD_DEVICE_IOCTL_USB_HOST_INFO RAD_IOR(RAD_IOCTL_TYPE_USB, 1u, struct rad_usb_host_info) ///< Public constant or ioctl helper.
 #define RAD_DEVICE_IOCTL_TTY_GET_WINSIZE RAD_IOR(RAD_IOCTL_TYPE_TTY, 1u, struct rad_tty_window_size) ///< Public constant or ioctl helper.
@@ -1019,6 +1023,20 @@ typedef struct rad_compositor_ipc_damage {
     int32_t height; ///< Public structure field.
     uint32_t flags; ///< Public structure field.
 } rad_compositor_ipc_damage_t; ///< Public typedef alias.
+
+/** @brief Client input poll: dequeue one routed event for a surface.
+ *
+ * A client fills @c size and @c surface_id and issues
+ * @c RAD_DEVICE_IOCTL_COMPOSITOR_POLL_INPUT. The compositor sets @c has_event to
+ * 1 and populates @c event when an event was waiting, or 0 when the per-surface
+ * input queue is empty. Pointer coordinates in @c event are surface-local. */
+typedef struct rad_compositor_ipc_input {
+    uint32_t size; ///< Public structure field.
+    uint32_t surface_id; ///< Public structure field.
+    uint32_t has_event; ///< Public structure field (out): 1 when @c event is valid.
+    uint32_t reserved; ///< Public structure field.
+    rad_input_event_t event; ///< Public structure field (out): dequeued event, surface-local.
+} rad_compositor_ipc_input_t; ///< Public typedef alias.
 
 /** @brief Public data structure for rad_i2c_transfer. */
 typedef struct rad_i2c_transfer {
