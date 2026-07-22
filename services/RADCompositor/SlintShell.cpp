@@ -31,6 +31,7 @@ namespace {
 
 constexpr uint32_t MaxShellText = 8192u;
 constexpr uint32_t TerminalWindowId = 1u;
+constexpr uint32_t FileExplorerWindowId = 2u;
 constexpr int32_t MinWindowWidth = 180;
 constexpr int32_t MinWindowHeight = 112;
 constexpr uint32_t MaxSurfaceWidth = 1920u;
@@ -38,7 +39,8 @@ constexpr uint32_t MaxSurfaceHeight = 1080u;
 
 enum class SlintSurfaceRole {
     Desktop,
-    Terminal
+    Terminal,
+    FileExplorer
 };
 
 enum class TerminalAppState {
@@ -95,17 +97,31 @@ public:
         return &terminal_window_;
     }
 
+    const DesktopWindow *fileExplorerWindow() const {
+        return &file_explorer_window_;
+    }
+
+    bool fileExplorerOpen() const {
+        return file_explorer_window_.state != DesktopWindowState::Closed;
+    }
+
+    bool fileExplorerLaunching() const {
+        return file_explorer_window_.state == DesktopWindowState::Loading;
+    }
+
     bool focusWindow(uint32_t window_id) {
-        if (window_id != terminal_window_.id || terminal_window_.state == DesktopWindowState::Closed) return false;
-        focusTerminal();
+        DesktopWindow *window = windowById(window_id);
+        if (!window || window->state == DesktopWindowState::Closed) return false;
+        focusWindowRecord(window);
         applications_menu_open_ = false;
         return true;
     }
 
     bool closeWindow(uint32_t window_id) {
-        if (window_id != terminal_window_.id) return false;
-        terminal_window_.state = DesktopWindowState::Closed;
-        terminal_window_.focused = false;
+        DesktopWindow *window = windowById(window_id);
+        if (!window) return false;
+        window->state = DesktopWindowState::Closed;
+        window->focused = false;
         applications_menu_open_ = false;
         return true;
     }
@@ -116,28 +132,30 @@ public:
     // on itself -> the window jitters. The screen cursor is unaffected by window movement, so
     // (cursor - cursor_at_gesture_start) is a stable delta from the bounds captured at start.
     bool moveWindow(uint32_t window_id, int32_t cursor_x, int32_t cursor_y) {
-        if (window_id != terminal_window_.id || terminal_window_.state == DesktopWindowState::Closed) return false;
+        DesktopWindow *window = windowById(window_id);
+        if (!window || window->state == DesktopWindowState::Closed) return false;
         if (!move_active_ || move_window_id_ != window_id) {
             move_active_ = true;
             move_window_id_ = window_id;
-            move_start_bounds_ = terminal_window_.bounds;
+            move_start_bounds_ = window->bounds;
             gesture_cursor_x_ = cursor_x;
             gesture_cursor_y_ = cursor_y;
         }
         const int32_t dx = cursor_x - gesture_cursor_x_;
         const int32_t dy = cursor_y - gesture_cursor_y_;
-        terminal_window_.bounds.x = clamp_range(move_start_bounds_.x + dx, 0, max_window_x(terminal_window_.bounds.width));
-        terminal_window_.bounds.y = clamp_range(move_start_bounds_.y + dy, 38, max_window_y(terminal_window_.bounds.height));
-        focusTerminal();
+        window->bounds.x = clamp_range(move_start_bounds_.x + dx, 0, max_window_x(window->bounds.width));
+        window->bounds.y = clamp_range(move_start_bounds_.y + dy, 38, max_window_y(window->bounds.height));
+        focusWindowRecord(window);
         return true;
     }
 
     bool resizeWindow(uint32_t window_id, int32_t cursor_x, int32_t cursor_y) {
-        if (window_id != terminal_window_.id || terminal_window_.state == DesktopWindowState::Closed) return false;
+        DesktopWindow *window = windowById(window_id);
+        if (!window || window->state == DesktopWindowState::Closed) return false;
         if (!resize_active_ || resize_window_id_ != window_id) {
             resize_active_ = true;
             resize_window_id_ = window_id;
-            resize_start_bounds_ = terminal_window_.bounds;
+            resize_start_bounds_ = window->bounds;
             gesture_cursor_x_ = cursor_x;
             gesture_cursor_y_ = cursor_y;
         }
@@ -145,9 +163,9 @@ public:
         const int32_t dy = cursor_y - gesture_cursor_y_;
         const int32_t max_width = clamp_min(static_cast<int32_t>(desktop_width_) - resize_start_bounds_.x, MinWindowWidth);
         const int32_t max_height = clamp_min(static_cast<int32_t>(desktop_height_) - resize_start_bounds_.y, MinWindowHeight);
-        terminal_window_.bounds.width = clamp_range(resize_start_bounds_.width + dx, MinWindowWidth, max_width);
-        terminal_window_.bounds.height = clamp_range(resize_start_bounds_.height + dy, MinWindowHeight, max_height);
-        focusTerminal();
+        window->bounds.width = clamp_range(resize_start_bounds_.width + dx, MinWindowWidth, max_width);
+        window->bounds.height = clamp_range(resize_start_bounds_.height + dy, MinWindowHeight, max_height);
+        focusWindowRecord(window);
         return true;
     }
 
@@ -159,14 +177,13 @@ public:
     void setDesktopExtent(uint32_t width, uint32_t height) {
         desktop_width_ = width ? width : MaxSurfaceWidth;
         desktop_height_ = height ? height : MaxSurfaceHeight;
-        terminal_window_.bounds.x = clamp_range(terminal_window_.bounds.x, 0, max_window_x(terminal_window_.bounds.width));
-        terminal_window_.bounds.y = clamp_range(terminal_window_.bounds.y, 38, max_window_y(terminal_window_.bounds.height));
-        terminal_window_.bounds.width = clamp_range(terminal_window_.bounds.width, MinWindowWidth, clamp_min(static_cast<int32_t>(desktop_width_) - terminal_window_.bounds.x, MinWindowWidth));
-        terminal_window_.bounds.height = clamp_range(terminal_window_.bounds.height, MinWindowHeight, clamp_min(static_cast<int32_t>(desktop_height_) - terminal_window_.bounds.y, MinWindowHeight));
+        clampWindowToDesktop(terminal_window_);
+        clampWindowToDesktop(file_explorer_window_);
     }
 
     void toggleApplicationsMenu() {
         applications_menu_open_ = !applications_menu_open_;
+        dock_menu_app_ = 0;
     }
 
     void beginTerminalLaunch() {
@@ -180,15 +197,47 @@ public:
         focusTerminal();
     }
 
+    void beginFileExplorerLaunch() {
+        file_explorer_window_.state = DesktopWindowState::Loading;
+        focusWindowRecord(&file_explorer_window_);
+        applications_menu_open_ = false;
+    }
+
+    void fileExplorerReady() {
+        file_explorer_window_.state = DesktopWindowState::Running;
+        focusWindowRecord(&file_explorer_window_);
+    }
+
+    // Escape only dismisses transient UI (the applications menu or a dock right-click
+    // dropdown). It never closes an app window: when the terminal is focused and nothing
+    // transient is open, Escape is forwarded to the PTY (see dispatch_key_event) so vim and
+    // other programs receive it. Returns true only when it dismissed something.
     bool handleEscape() {
         if (applications_menu_open_) {
             applications_menu_open_ = false;
+            dock_menu_app_ = 0;
             return true;
         }
-        if (terminal_window_.state != DesktopWindowState::Closed && terminal_window_.focused) {
-            return closeWindow(terminal_window_.id);
+        if (dock_menu_app_ != 0) {
+            dock_menu_app_ = 0;
+            return true;
         }
         return false;
+    }
+
+    int dockMenuApp() const {
+        return dock_menu_app_;
+    }
+
+    // Toggle the dock right-click "Close" dropdown for the given app (1=terminal, 2=files).
+    // Only one dropdown is open at a time; opening one closes the applications menu.
+    void toggleDockMenu(int app) {
+        dock_menu_app_ = (dock_menu_app_ == app) ? 0 : app;
+        if (dock_menu_app_ != 0) applications_menu_open_ = false;
+    }
+
+    void closeDockMenu() {
+        dock_menu_app_ = 0;
     }
 
 private:
@@ -213,12 +262,36 @@ private:
         return maximum > 38 ? maximum : 38;
     }
 
+    DesktopWindow *windowById(uint32_t id) {
+        if (id == terminal_window_.id) return &terminal_window_;
+        if (id == file_explorer_window_.id) return &file_explorer_window_;
+        return nullptr;
+    }
+
+    // Exclusive focus: only one window carries `focused` at a time. Clear both records
+    // first so raising one visibly de-focuses the other (border/title styling), then set
+    // focus + a fresh z on the target so it composites above its sibling.
+    void focusWindowRecord(DesktopWindow *window) {
+        terminal_window_.focused = false;
+        file_explorer_window_.focused = false;
+        if (!window) return;
+        window->focused = true;
+        window->z = next_z_++;
+    }
+
     void focusTerminal() {
-        terminal_window_.focused = true;
-        terminal_window_.z = next_z_++;
+        focusWindowRecord(&terminal_window_);
+    }
+
+    void clampWindowToDesktop(DesktopWindow &window) {
+        window.bounds.x = clamp_range(window.bounds.x, 0, max_window_x(window.bounds.width));
+        window.bounds.y = clamp_range(window.bounds.y, 38, max_window_y(window.bounds.height));
+        window.bounds.width = clamp_range(window.bounds.width, MinWindowWidth, clamp_min(static_cast<int32_t>(desktop_width_) - window.bounds.x, MinWindowWidth));
+        window.bounds.height = clamp_range(window.bounds.height, MinWindowHeight, clamp_min(static_cast<int32_t>(desktop_height_) - window.bounds.y, MinWindowHeight));
     }
 
     bool applications_menu_open_ = false;
+    int dock_menu_app_ = 0;   // 0=none, 1=terminal, 2=files (dock right-click dropdown)
     uint32_t next_z_ = 2;
     uint32_t desktop_width_ = MaxSurfaceWidth;
     uint32_t desktop_height_ = MaxSurfaceHeight;
@@ -231,6 +304,14 @@ private:
     DesktopWindowBounds move_start_bounds_{};
     DesktopWindowBounds resize_start_bounds_{};
     DesktopWindow terminal_window_{};
+    DesktopWindow file_explorer_window_{
+        FileExplorerWindowId,
+        "Files",
+        DesktopWindowBounds{ 220, 150, 560, 360 },
+        DesktopWindowState::Closed,
+        1,
+        false
+    };
 };
 
 char g_terminal_text[MaxShellText];
@@ -301,6 +382,7 @@ uint32_t g_surface_alloc_height = 0;
 size_t g_surface_buffer_pixels = 0;       // g_surface_stride * g_surface_alloc_height
 uint32_t *g_desktop_pixels = nullptr;
 uint32_t *g_terminal_pixels = nullptr;
+uint32_t *g_file_explorer_pixels = nullptr;
 uint32_t *g_present_front_pixels = nullptr;
 uint32_t *g_present_back_pixels = nullptr;
 uint32_t *g_present_front = nullptr;
@@ -308,9 +390,17 @@ uint32_t *g_present_back = nullptr;
 rad_compositor_t g_compositor{};
 uint32_t g_desktop_surface_id = 0;
 uint32_t g_terminal_surface_id = 0;
+uint32_t g_file_explorer_surface_id = 0;
+
+// File explorer listing state. g_explorer_path is the directory currently shown (hardcoded
+// to "/" for now; kept as a buffer so future navigation can rewrite it). g_explorer_entries
+// is the newline-joined listing pushed into the explorer window's `entries` property.
+char g_explorer_path[256] = "/";
+char g_explorer_entries[MaxShellText];
 
 slint::ComponentHandle<RadDesktopSurface> *g_desktop_shell = nullptr;
 slint::ComponentHandle<RadTerminalSurface> *g_terminal_shell = nullptr;
+slint::ComponentHandle<RadFileExplorerSurface> *g_file_explorer_shell = nullptr;
 
 void marker_once(int *flag, const char *marker);
 int32_t clamp_i32(int32_t value, int32_t minimum, int32_t maximum);
@@ -602,15 +692,18 @@ bool alloc_surface_buffers(uint32_t stride, uint32_t height) {
     const size_t bytes = count * sizeof(uint32_t);
     g_desktop_pixels = static_cast<uint32_t*>(rad_memory_alloc(bytes));
     g_terminal_pixels = static_cast<uint32_t*>(rad_memory_alloc(bytes));
+    g_file_explorer_pixels = static_cast<uint32_t*>(rad_memory_alloc(bytes));
     g_present_front_pixels = static_cast<uint32_t*>(rad_memory_alloc(bytes));
     g_present_back_pixels = static_cast<uint32_t*>(rad_memory_alloc(bytes));
-    if (!g_desktop_pixels || !g_terminal_pixels || !g_present_front_pixels || !g_present_back_pixels) {
+    if (!g_desktop_pixels || !g_terminal_pixels || !g_file_explorer_pixels || !g_present_front_pixels || !g_present_back_pixels) {
         rad_memory_free(g_desktop_pixels);
         rad_memory_free(g_terminal_pixels);
+        rad_memory_free(g_file_explorer_pixels);
         rad_memory_free(g_present_front_pixels);
         rad_memory_free(g_present_back_pixels);
         g_desktop_pixels = nullptr;
         g_terminal_pixels = nullptr;
+        g_file_explorer_pixels = nullptr;
         g_present_front_pixels = nullptr;
         g_present_back_pixels = nullptr;
         return false;
@@ -867,6 +960,11 @@ private:
             if (event.code == RAD_INPUT_KEY_ENTER) {
                 input[0] = '\n';
                 input_size = 1;
+            } else if (event.code == RAD_INPUT_KEY_ESCAPE) {
+                // Forward Escape to the PTY as the ESC byte so vim and other programs
+                // receive it. The WM no longer closes the window on Escape.
+                input[0] = '\x1b';
+                input_size = 1;
             } else if (event.code == RAD_INPUT_KEY_BACKSPACE) {
                 input[0] = '\b';
                 input_size = 1;
@@ -940,6 +1038,15 @@ public:
             next_role_ = SlintSurfaceRole::Desktop;
             return window;
         }
+        if (next_role_ == SlintSurfaceRole::FileExplorer) {
+            const DesktopWindow *explorer = g_desktop.fileExplorerWindow();
+            const uint32_t width = explorer && explorer->bounds.width > 0 ? static_cast<uint32_t>(explorer->bounds.width) : 560u;
+            const uint32_t height = explorer && explorer->bounds.height > 0 ? static_cast<uint32_t>(explorer->bounds.height) : 360u;
+            auto window = std::make_unique<RadSlintWindowAdapter>(SlintSurfaceRole::FileExplorer, g_file_explorer_surface_id, g_file_explorer_pixels, width, height, g_surface_stride);
+            file_explorer_window_ = window.get();
+            next_role_ = SlintSurfaceRole::Desktop;
+            return window;
+        }
         auto window = std::make_unique<RadSlintWindowAdapter>(SlintSurfaceRole::Desktop, g_desktop_surface_id, g_desktop_pixels, g_desktop_surface_width, g_desktop_surface_height, g_surface_stride);
         desktop_window_ = window.get();
         return window;
@@ -967,6 +1074,7 @@ public:
         poll_input_device(keyboard_);
         poll_input_device(pointer_);
         apply_pending_terminal_resize();
+        apply_pending_explorer_resize();
         drain_terminal_pty();
         bool rendered = false;
         bool any_rendered = false;
@@ -981,6 +1089,12 @@ public:
             if (status != RAD_STATUS_OK) return status;
             any_rendered = any_rendered || rendered;
             if (terminal_window_->window().has_active_animations()) terminal_window_->request_redraw();
+        }
+        if (file_explorer_window_) {
+            const rad_status_t status = file_explorer_window_->render_if_needed(&rendered);
+            if (status != RAD_STATUS_OK) return status;
+            any_rendered = any_rendered || rendered;
+            if (file_explorer_window_->window().has_active_animations()) file_explorer_window_->request_redraw();
         }
         rad_compositor_set_framebuffers(&g_compositor, g_present_front, g_surface_stride, g_present_back, g_surface_stride);
         queue_cursor_damage();
@@ -1026,6 +1140,10 @@ public:
         if (terminal_window_) terminal_window_->request_redraw();
     }
 
+    void request_explorer_redraw() {
+        if (file_explorer_window_) file_explorer_window_->request_redraw();
+    }
+
     void sync_terminal_bounds() {
         if (!terminal_window_) return;
         const DesktopWindow *terminal = g_desktop.terminalWindow();
@@ -1056,6 +1174,34 @@ public:
         }
     }
 
+    void sync_explorer_bounds() {
+        if (!file_explorer_window_) return;
+        const DesktopWindow *explorer = g_desktop.fileExplorerWindow();
+        if (!explorer) return;
+        rad_compositor_rect_t bounds{};
+        bounds.x = explorer->bounds.x;
+        bounds.y = explorer->bounds.y;
+        bounds.width = explorer->bounds.width;
+        bounds.height = explorer->bounds.height;
+        const bool bounds_changed = !explorer_bounds_valid_
+            || explorer_bounds_.x != bounds.x
+            || explorer_bounds_.y != bounds.y
+            || explorer_bounds_.width != bounds.width
+            || explorer_bounds_.height != bounds.height;
+        if (!bounds_changed) return;
+        const bool size_changed = !explorer_bounds_valid_
+            || explorer_bounds_.width != bounds.width
+            || explorer_bounds_.height != bounds.height;
+        rad_compositor_set_surface_bounds(&g_compositor, g_file_explorer_surface_id, &bounds);
+        explorer_bounds_ = bounds;
+        explorer_bounds_valid_ = 1;
+        if (size_changed) {
+            pending_explorer_resize_ = true;
+            pending_explorer_width_ = static_cast<uint32_t>(bounds.width);
+            pending_explorer_height_ = static_cast<uint32_t>(bounds.height);
+        }
+    }
+
 private:
     void apply_pending_terminal_resize() {
         if (!pending_terminal_resize_ || !terminal_window_ || dispatching_input_) return;
@@ -1063,11 +1209,22 @@ private:
         terminal_window_->update_size(pending_terminal_width_, pending_terminal_height_);
     }
 
+    void apply_pending_explorer_resize() {
+        if (!pending_explorer_resize_ || !file_explorer_window_ || dispatching_input_) return;
+        pending_explorer_resize_ = false;
+        file_explorer_window_->update_size(pending_explorer_width_, pending_explorer_height_);
+    }
+
     void surface_origin(uint32_t surface_id, int32_t *x, int32_t *y) {
         *x = 0;
         *y = 0;
         if (surface_id == g_terminal_surface_id) {
             if (const DesktopWindow *w = g_desktop.terminalWindow()) {
+                *x = w->bounds.x;
+                *y = w->bounds.y;
+            }
+        } else if (surface_id == g_file_explorer_surface_id) {
+            if (const DesktopWindow *w = g_desktop.fileExplorerWindow()) {
                 *x = w->bounds.x;
                 *y = w->bounds.y;
             }
@@ -1082,6 +1239,7 @@ private:
             target->dispatch_input_event(event);
             dispatching_input_ = false;
             apply_pending_terminal_resize();
+            apply_pending_explorer_resize();
             return;
         }
         const bool is_press = event.type == RAD_INPUT_EVENT_POINTER_BUTTON && event.pressed;
@@ -1122,9 +1280,12 @@ private:
                 // wallpaper + topbar + applications menu and is full-screen opaque;
                 // raising it above the terminal window (as clicking the menu button did)
                 // hid the window entirely. The desktop stays at the bottom.
-                if (result.surface_id == g_terminal_surface_id) {
+                uint32_t focus_window_id = 0;
+                if (result.surface_id == g_terminal_surface_id) focus_window_id = TerminalWindowId;
+                else if (result.surface_id == g_file_explorer_surface_id) focus_window_id = FileExplorerWindowId;
+                if (focus_window_id != 0) {
                     rad_compositor_focus_surface(&g_compositor, result.surface_id);
-                    if (const DesktopWindow *window = g_desktop.terminalWindow()) g_desktop.focusWindow(window->id);
+                    g_desktop.focusWindow(focus_window_id);
                     set_shell_state();
                 }
             }
@@ -1136,6 +1297,7 @@ private:
         target->dispatch_input_event(event, local_x, local_y);
         dispatching_input_ = false;
         apply_pending_terminal_resize();
+        apply_pending_explorer_resize();
     }
 
     void poll_input_device(rad_device_t device) {
@@ -1171,6 +1333,7 @@ private:
     RadSlintWindowAdapter *adapter_for_surface(uint32_t surface_id) {
         if (desktop_window_ && desktop_window_->surface_id() == surface_id) return desktop_window_;
         if (terminal_window_ && terminal_window_->surface_id() == surface_id) return terminal_window_;
+        if (file_explorer_window_ && file_explorer_window_->surface_id() == surface_id) return file_explorer_window_;
         return nullptr;
     }
 
@@ -1182,8 +1345,11 @@ private:
     SlintSurfaceRole next_role_ = SlintSurfaceRole::Desktop;
     RadSlintWindowAdapter *desktop_window_ = nullptr;
     RadSlintWindowAdapter *terminal_window_ = nullptr;
+    RadSlintWindowAdapter *file_explorer_window_ = nullptr;
     rad_compositor_rect_t terminal_bounds_{};
     int terminal_bounds_valid_ = 0;
+    rad_compositor_rect_t explorer_bounds_{};
+    int explorer_bounds_valid_ = 0;
     bool dispatching_input_ = false;
     bool ready_for_input_ = false;   // set true after the first render lays out the tree
     bool pointer_grab_active_ = false;   // a button is held: route motion/release to this
@@ -1191,6 +1357,9 @@ private:
     bool pending_terminal_resize_ = false;
     uint32_t pending_terminal_width_ = 0;
     uint32_t pending_terminal_height_ = 0;
+    bool pending_explorer_resize_ = false;
+    uint32_t pending_explorer_width_ = 0;
+    uint32_t pending_explorer_height_ = 0;
 };
 
 RadSlintPlatform *g_platform = nullptr;
@@ -1214,14 +1383,16 @@ const char *shell_status_text() {
 }
 
 void set_shell_state(const char *status) {
-    if (!g_desktop_shell || !g_terminal_shell) return;
+    if (!g_desktop_shell || !g_terminal_shell || !g_file_explorer_shell) return;
     const DesktopWindow *terminal = g_desktop.terminalWindow();
+    const DesktopWindow *explorer = g_desktop.fileExplorerWindow();
     (*g_desktop_shell)->set_surface_width(static_cast<float>(g_desktop_surface_width));
     (*g_desktop_shell)->set_surface_height(static_cast<float>(g_desktop_surface_height));
     (*g_desktop_shell)->set_backend(shared_string("x86_64_grub / RADPx-OS"));
     (*g_desktop_shell)->set_status(shared_string(status ? status : shell_status_text()));
     (*g_desktop_shell)->set_applications_open(g_desktop.applicationsMenuOpen());
     (*g_desktop_shell)->set_terminal_open(g_desktop.terminalOpen());
+    (*g_desktop_shell)->set_file_explorer_open(g_desktop.fileExplorerOpen());
     (*g_terminal_shell)->set_terminal(shared_string(g_terminal_visible_text));
     (*g_terminal_shell)->set_terminal_loading(g_desktop.terminalLaunching());
     if (terminal) {
@@ -1231,6 +1402,16 @@ void set_shell_state(const char *status) {
         (*g_terminal_shell)->set_surface_height(static_cast<float>(terminal->bounds.height));
         rad_compositor_set_surface_visible(&g_compositor, g_terminal_surface_id, terminal->state != DesktopWindowState::Closed);
         if (g_platform) g_platform->sync_terminal_bounds();
+    }
+    (*g_file_explorer_shell)->set_entries(shared_string(g_explorer_entries));
+    (*g_file_explorer_shell)->set_explorer_loading(g_desktop.fileExplorerLaunching());
+    if (explorer) {
+        (*g_file_explorer_shell)->set_explorer_window_title(shared_string(explorer->title));
+        (*g_file_explorer_shell)->set_explorer_window_focused(explorer->focused);
+        (*g_file_explorer_shell)->set_surface_width(static_cast<float>(explorer->bounds.width));
+        (*g_file_explorer_shell)->set_surface_height(static_cast<float>(explorer->bounds.height));
+        rad_compositor_set_surface_visible(&g_compositor, g_file_explorer_surface_id, explorer->state != DesktopWindowState::Closed);
+        if (g_platform) g_platform->sync_explorer_bounds();
     }
 }
 
@@ -1287,6 +1468,55 @@ void launch_terminal(const char *terminal_text) {
     marker_once(&g_ready_marker_sent, "RAD_SLINT_TERMINAL_READY_OK");
     marker_once(&g_wm_marker_sent, "RAD_SLINT_WM_OK");
     marker_once(&g_terminal_window_marker_sent, "RAD_SLINT_APP_TERMINAL_WINDOW_OK");
+}
+
+// Enumerate g_explorer_path with the in-kernel VFS and build the newline-joined listing
+// pushed into the explorer window. Directories are prefixed with "/". Navigation/clicking
+// is not wired yet -- this just shows the contents of the current path (hardcoded "/").
+void populate_explorer_listing() {
+    size_t len = 0;
+    g_explorer_entries[0] = '\0';
+    rad_dir_t dir = nullptr;
+    if (rad_vfs_opendir(g_explorer_path, &dir) == RAD_STATUS_OK && dir) {
+        rad_vfs_dirent_t entry{};
+        while (rad_vfs_readdir(dir, &entry) == RAD_STATUS_OK) {
+            const bool is_dir = entry.stat.is_directory != 0;
+            const char *name = entry.name;
+            const size_t name_len = strnlen(name, sizeof(entry.name));
+            const size_t need = name_len + (is_dir ? 1u : 0u) + 1u; // optional '/' + '\n'
+            if (len + need >= sizeof(g_explorer_entries)) break;
+            if (is_dir) g_explorer_entries[len++] = '/';
+            memcpy(g_explorer_entries + len, name, name_len);
+            len += name_len;
+            g_explorer_entries[len++] = '\n';
+        }
+        rad_vfs_closedir(dir);
+    }
+    if (len == 0) {
+        const char *empty = "(empty)";
+        const size_t empty_len = strlen(empty);
+        memcpy(g_explorer_entries, empty, empty_len);
+        len = empty_len;
+    }
+    g_explorer_entries[len] = '\0';
+}
+
+void launch_file_explorer() {
+    g_desktop.beginFileExplorerLaunch();
+    set_shell_state();
+    render_ticks(2);
+    populate_explorer_listing();
+    g_desktop.fileExplorerReady();
+    set_shell_state();
+    if (g_platform) g_platform->request_explorer_redraw();
+    render_ticks(2);
+    marker_once(&g_wm_marker_sent, "RAD_SLINT_WM_OK");
+}
+
+void close_file_explorer_model_only() {
+    g_desktop.closeWindow(FileExplorerWindowId);
+    g_explorer_entries[0] = '\0';
+    set_shell_state();
 }
 
 // Kill the terminal's shell process and drop its PTY, and clear the on-screen buffer, so
@@ -1445,8 +1675,8 @@ extern "C" rad_status_t rad_slint_shell_start(rad_framebuffer_t framebuffer, con
         return RAD_STATUS_NO_MEMORY;
     }
     marker_once(&g_surface_alloc_marker_sent, "RAD_COMPOSITOR_SURFACE_ALLOC_OK");
-    // Budget gate: the four buffers must fit the tier's byte ceiling.
-    const size_t surface_total_bytes = 4u * g_surface_buffer_pixels * sizeof(uint32_t);
+    // Budget gate: the five buffers must fit the tier's byte ceiling.
+    const size_t surface_total_bytes = 5u * g_surface_buffer_pixels * sizeof(uint32_t);
     const size_t budget_ceiling_bytes =
         (tier == RAD_COMPOSITOR_TIER_LEAN) ? (24u * 1024u * 1024u) : (64u * 1024u * 1024u);
     if (surface_total_bytes <= budget_ceiling_bytes) {
@@ -1458,6 +1688,7 @@ extern "C" rad_status_t rad_slint_shell_start(rad_framebuffer_t framebuffer, con
     const size_t surface_bytes = g_surface_buffer_pixels * sizeof(uint32_t);
     memset(g_desktop_pixels, 0, surface_bytes);
     memset(g_terminal_pixels, 0, surface_bytes);
+    memset(g_file_explorer_pixels, 0, surface_bytes);
     memset(g_present_front_pixels, 0x1f, surface_bytes);
     memset(g_present_back_pixels, 0x1f, surface_bytes);
     g_desktop.setDesktopExtent(g_desktop_surface_width, g_desktop_surface_height);
@@ -1495,6 +1726,22 @@ extern "C" rad_status_t rad_slint_shell_start(rad_framebuffer_t framebuffer, con
     terminal_config.stride_pixels = g_surface_stride;
     status = rad_compositor_create_surface(&g_compositor, &terminal_config, &g_terminal_surface_id);
     if (status != RAD_STATUS_OK) return status;
+    const DesktopWindow *explorer_window = g_desktop.fileExplorerWindow();
+    rad_compositor_surface_config_t explorer_config{};
+    explorer_config.size = sizeof(explorer_config);
+    explorer_config.app_id = "rad.files";
+    explorer_config.title = "Files";
+    explorer_config.x = explorer_window ? explorer_window->bounds.x : 220;
+    explorer_config.y = explorer_window ? explorer_window->bounds.y : 150;
+    explorer_config.width = explorer_window ? explorer_window->bounds.width : 560;
+    explorer_config.height = explorer_window ? explorer_window->bounds.height : 360;
+    explorer_config.z = 20;
+    explorer_config.pixels = g_file_explorer_pixels;
+    explorer_config.stride_pixels = g_surface_stride;
+    status = rad_compositor_create_surface(&g_compositor, &explorer_config, &g_file_explorer_surface_id);
+    if (status != RAD_STATUS_OK) return status;
+    // The explorer starts Closed; hide it until launch_file_explorer shows it.
+    rad_compositor_set_surface_visible(&g_compositor, g_file_explorer_surface_id, false);
     rad_compositor_focus_surface(&g_compositor, g_terminal_surface_id);
     marker_once(&g_compositor_surface_marker_sent, "RAD_COMPOSITOR_SURFACE_CREATE_OK");
     marker_once(&g_compositor_z_marker_sent, "RAD_COMPOSITOR_Z_ORDER_OK");
@@ -1507,6 +1754,8 @@ extern "C" rad_status_t rad_slint_shell_start(rad_framebuffer_t framebuffer, con
     g_desktop_shell = new slint::ComponentHandle<RadDesktopSurface>(RadDesktopSurface::create());
     platform->set_next_role(SlintSurfaceRole::Terminal);
     g_terminal_shell = new slint::ComponentHandle<RadTerminalSurface>(RadTerminalSurface::create());
+    platform->set_next_role(SlintSurfaceRole::FileExplorer);
+    g_file_explorer_shell = new slint::ComponentHandle<RadFileExplorerSurface>(RadFileExplorerSurface::create());
     (*g_desktop_shell)->on_toggle_applications([]() {
         if (!g_desktop_shell) return;
         g_desktop.toggleApplicationsMenu();
@@ -1515,6 +1764,39 @@ extern "C" rad_status_t rad_slint_shell_start(rad_framebuffer_t framebuffer, con
     });
     (*g_desktop_shell)->on_launch_terminal([]() {
         launch_terminal(g_terminal_text);
+    });
+    (*g_desktop_shell)->on_launch_file_explorer([]() {
+        launch_file_explorer();
+    });
+    // Dock right-click "Close" dropdown: open the per-icon menu, dismiss it, and the
+    // Close actions for each app.
+    (*g_desktop_shell)->on_dock_context_menu([](int app) {
+        g_desktop.toggleDockMenu(app);
+        set_shell_state();
+    });
+    (*g_desktop_shell)->on_dock_dismiss([]() {
+        g_desktop.closeDockMenu();
+        set_shell_state();
+    });
+    (*g_desktop_shell)->on_focus_window_from_dock([](int app) {
+        g_desktop.closeDockMenu();
+        if (app == 1) {
+            g_desktop.focusWindow(TerminalWindowId);
+            rad_compositor_focus_surface(&g_compositor, g_terminal_surface_id);
+        } else if (app == 2) {
+            g_desktop.focusWindow(FileExplorerWindowId);
+            rad_compositor_focus_surface(&g_compositor, g_file_explorer_surface_id);
+        }
+        set_shell_state();
+    });
+    (*g_desktop_shell)->on_close_terminal_from_dock([]() {
+        g_desktop.closeDockMenu();
+        close_terminal_model_only();
+        set_shell_state();
+    });
+    (*g_desktop_shell)->on_close_file_explorer_from_dock([]() {
+        g_desktop.closeDockMenu();
+        close_file_explorer_model_only();
     });
     (*g_desktop_shell)->on_escape_pressed([]() {
         if (!g_desktop_shell) return;
@@ -1562,9 +1844,37 @@ extern "C" rad_status_t rad_slint_shell_start(rad_framebuffer_t framebuffer, con
         }
         set_shell_state();
     });
+    (*g_file_explorer_shell)->on_escape_pressed([]() {
+        if (g_desktop.handleEscape()) {
+            set_shell_state();
+            marker_once(&g_menu_escape_marker_sent, "RAD_SLINT_MENU_ESCAPE_OK");
+        }
+    });
+    (*g_file_explorer_shell)->on_focus_explorer_window([]() {
+        g_desktop.focusWindow(FileExplorerWindowId);
+        rad_compositor_focus_surface(&g_compositor, g_file_explorer_surface_id);
+        marker_once(&g_compositor_z_marker_sent, "RAD_COMPOSITOR_Z_ORDER_OK");
+        set_shell_state();
+    });
+    (*g_file_explorer_shell)->on_close_explorer_window([]() {
+        close_file_explorer_model_only();
+    });
+    (*g_file_explorer_shell)->on_move_explorer_window([](float, float) {
+        if (g_desktop.moveWindow(FileExplorerWindowId, g_cursor_x, g_cursor_y)) {
+            marker_once(&g_window_move_marker_sent, "RAD_SLINT_WINDOW_MOVE_OK");
+        }
+        set_shell_state();
+    });
+    (*g_file_explorer_shell)->on_resize_explorer_window([](float, float) {
+        if (g_desktop.resizeWindow(FileExplorerWindowId, g_cursor_x, g_cursor_y)) {
+            marker_once(&g_window_resize_marker_sent, "RAD_SLINT_WINDOW_RESIZE_OK");
+        }
+        set_shell_state();
+    });
     set_shell_state("framebuffer=primary shell=radlib state=desktop");
     (*g_desktop_shell)->show();
     (*g_terminal_shell)->show();
+    (*g_file_explorer_shell)->show();
     g_slint_started = 1;
     (void)terminal_text;
     render_ticks(2);

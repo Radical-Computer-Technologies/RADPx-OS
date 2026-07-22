@@ -279,10 +279,19 @@ export component RadDesktopSurface inherits Window {
     in property <float> surface_height: 360;
     in property <bool> applications_open: false;
     in property <bool> terminal_open: false;
+    in property <bool> file_explorer_open: false;
+    // Dock right-click "Close" dropdown: 0=none, 1=terminal, 2=files.
+    in property <int> dock_menu_app: 0;
 
     callback toggle_applications();
     callback launch_terminal();
+    callback launch_file_explorer();
     callback escape_pressed();
+    callback dock_context_menu(int);
+    callback dock_dismiss();
+    callback focus_window_from_dock(int);
+    callback close_terminal_from_dock();
+    callback close_file_explorer_from_dock();
 
     title: "RAD Desktop";
     width: root.surface_width * 1px;
@@ -362,7 +371,8 @@ export component RadDesktopSurface inherits Window {
         }
 
         // Open-app icon: the terminal, a black tile with a ">_" prompt glyph, shown while
-        // the terminal window is open.
+        // the terminal window is open. Left-click focuses/raises the window; right-click
+        // opens the "Close" dropdown.
         Rectangle {
             x: 13px;
             y: 94px;
@@ -387,6 +397,54 @@ export component RadDesktopSurface inherits Window {
                 font-weight: 800;
                 font-family: "monospace";
             }
+
+            TouchArea {
+                clicked => { root.focus_window_from_dock(1); }
+                pointer-event(event) => {
+                    if (event.kind == PointerEventKind.down && event.button == PointerEventButton.right) {
+                        root.dock_context_menu(1);
+                    }
+                }
+                mouse-cursor: MouseCursor.pointer;
+            }
+        }
+
+        // Open-app icon: the file explorer, a folder-style tile with "Fs", shown while the
+        // explorer window is open.
+        Rectangle {
+            x: 13px;
+            y: 164px;
+            width: 60px;
+            height: 60px;
+            visible: root.file_explorer_open;
+            background: #1e293b;
+            border-radius: 9px;
+            border-color: #38bdf8;
+            border-width: 1px;
+
+            Text {
+                x: 0px;
+                y: 0px;
+                width: parent.width;
+                height: parent.height;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                text: "Fs";
+                color: #7dd3fc;
+                font-size: 22px;
+                font-weight: 800;
+                font-family: "monospace";
+            }
+
+            TouchArea {
+                clicked => { root.focus_window_from_dock(2); }
+                pointer-event(event) => {
+                    if (event.kind == PointerEventKind.down && event.button == PointerEventButton.right) {
+                        root.dock_context_menu(2);
+                    }
+                }
+                mouse-cursor: MouseCursor.pointer;
+            }
         }
     }
 
@@ -394,7 +452,7 @@ export component RadDesktopSurface inherits Window {
         x: 96px;
         y: 38px;
         width: 190px;
-        height: root.applications_open ? 92px : 0px;
+        height: root.applications_open ? 140px : 0px;
         background: #0f172a;
         border-color: #38bdf8;
         border-width: root.applications_open ? 1px : 0px;
@@ -430,6 +488,91 @@ export component RadDesktopSurface inherits Window {
             TouchArea {
                 clicked => { root.launch_terminal(); }
             }
+        }
+
+        Rectangle {
+            x: 8px;
+            y: 84px;
+            width: parent.width - 16px;
+            height: 42px;
+            background: #111827;
+            border-color: #334155;
+            border-width: 1px;
+
+            Text {
+                x: 10px;
+                y: 12px;
+                text: "Files";
+                color: #bae6fd;
+                font-size: 13px;
+            }
+
+            TouchArea {
+                clicked => { root.launch_file_explorer(); }
+            }
+        }
+    }
+
+    // Backdrop: any click outside an open dock dropdown dismisses it. Declared before the
+    // dropdowns so the dropdown row stays clickable on top of it.
+    TouchArea {
+        x: 0px;
+        y: 0px;
+        width: parent.width;
+        height: parent.height;
+        visible: root.dock_menu_app != 0;
+        clicked => { root.dock_dismiss(); }
+    }
+
+    // Dock right-click "Close" dropdown for the terminal icon (anchored to its right).
+    Rectangle {
+        x: 60px;
+        y: 132px;
+        width: 96px;
+        height: 30px;
+        visible: root.dock_menu_app == 1;
+        background: #0b1729;
+        border-color: #38bdf8;
+        border-width: 1px;
+        border-radius: 6px;
+
+        Text {
+            x: 12px;
+            y: 7px;
+            text: "Close";
+            color: #fecaca;
+            font-size: 13px;
+        }
+
+        TouchArea {
+            clicked => { root.close_terminal_from_dock(); }
+            mouse-cursor: MouseCursor.pointer;
+        }
+    }
+
+    // Dock right-click "Close" dropdown for the file-explorer icon.
+    Rectangle {
+        x: 60px;
+        y: 202px;
+        width: 96px;
+        height: 30px;
+        visible: root.dock_menu_app == 2;
+        background: #0b1729;
+        border-color: #38bdf8;
+        border-width: 1px;
+        border-radius: 6px;
+
+        Text {
+            x: 12px;
+            y: 7px;
+            text: "Close";
+            color: #fecaca;
+            font-size: 13px;
+        }
+
+        TouchArea {
+            clicked => { root.close_file_explorer_from_dock(); }
+            mouse-cursor: MouseCursor.pointer;
         }
     }
 
@@ -582,6 +725,181 @@ export component RadTerminalSurface inherits Window {
             moved => {
                 if (self.pressed) {
                     root.resize_terminal_window(
+                        (self.mouse-x - self.pressed-x) / 1px,
+                        (self.mouse-y - self.pressed-y) / 1px
+                    );
+                }
+            }
+            mouse-cursor: MouseCursor.nwse-resize;
+
+            Rectangle {
+                x: 14px;
+                y: 6px;
+                width: 2px;
+                height: 10px;
+                background: #64748b;
+            }
+            Rectangle {
+                x: 6px;
+                y: 14px;
+                width: 10px;
+                height: 2px;
+                background: #64748b;
+            }
+        }
+    }
+
+    // Escape must reach the terminal (forwarded to the PTY as the ESC byte in C++), so
+    // the window does NOT swallow it here -- it never closes the window and never routes
+    // to the desktop's escape close path.
+    FocusScope {
+        key-pressed(event) => {
+            reject
+        }
+    }
+}
+
+// File explorer window. A near-duplicate of RadTerminalSurface (title bar with drag-to-move
+// and close, focus-on-click body, resize handle). The body shows a single multi-line Text
+// bound to `entries` (newline-joined listing) -- Repeater-free so the freestanding kernel
+// links (-nostdlib / -fno-exceptions cannot pull in std::make_shared for Slint models).
+export component RadFileExplorerSurface inherits Window {
+    in property <string> entries: "";
+    in property <bool> explorer_loading: false;
+    in property <string> explorer_window_title: "Files";
+    in property <bool> explorer_window_focused: true;
+    in property <float> surface_width: 560;
+    in property <float> surface_height: 360;
+
+    callback focus_explorer_window();
+    callback close_explorer_window();
+    callback move_explorer_window(float, float);
+    callback resize_explorer_window(float, float);
+    callback escape_pressed();
+
+    title: "RAD Files";
+    width: root.surface_width * 1px;
+    height: root.surface_height * 1px;
+    background: #020617;
+
+    Rectangle {
+        x: 0px;
+        y: 0px;
+        width: parent.width;
+        height: parent.height;
+        background: @linear-gradient(180deg, #0a1626 0%, #040d1a 100%);
+        border-color: root.explorer_window_focused ? #38bdf8 : #2a3a4f;
+        border-width: root.explorer_window_focused ? 1.5px : 1px;
+        border-radius: 8px;
+        clip: true;
+
+        Rectangle {
+            x: 0px;
+            y: 0px;
+            width: parent.width;
+            height: 28px;
+            background: root.explorer_window_focused
+                ? @linear-gradient(180deg, #1b3e64 0%, #0f2942 100%)
+                : @linear-gradient(180deg, #132a41 0%, #0a1c30 100%);
+
+            Rectangle {
+                x: 0px;
+                y: parent.height - 1px;
+                width: parent.width;
+                height: 1px;
+                background: root.explorer_window_focused ? #38bdf8 : #1e2f45;
+            }
+
+            Text {
+                x: 10px;
+                y: 7px;
+                width: parent.width - 48px;
+                text: "Slint " + root.explorer_window_title;
+                color: #f8fafc;
+                font-size: 13px;
+                font-weight: 700;
+                overflow: elide;
+            }
+
+            title-drag := TouchArea {
+                x: 0px;
+                y: 0px;
+                width: parent.width - 32px;
+                height: parent.height;
+                clicked => { root.focus_explorer_window(); }
+                moved => {
+                    if (self.pressed) {
+                        root.move_explorer_window(
+                            (self.mouse-x - self.pressed-x) / 1px,
+                            (self.mouse-y - self.pressed-y) / 1px
+                        );
+                    }
+                }
+                mouse-cursor: MouseCursor.grab;
+            }
+
+            close-button := TouchArea {
+                x: parent.width - 28px;
+                y: 2px;
+                width: 24px;
+                height: 24px;
+                clicked => { root.close_explorer_window(); }
+                mouse-cursor: MouseCursor.pointer;
+
+                Text {
+                    x: 0px;
+                    y: 2px;
+                    width: parent.width;
+                    horizontal-alignment: center;
+                    text: "x";
+                    color: parent.has-hover ? #fecaca : #f8fafc;
+                    font-size: 13px;
+                    font-weight: 700;
+                }
+            }
+        }
+
+        TouchArea {
+            x: 0px;
+            y: 28px;
+            width: parent.width;
+            height: parent.height - 28px;
+            clicked => { root.focus_explorer_window(); }
+        }
+
+        // Header label for the current listing.
+        Text {
+            x: 10px;
+            y: 34px;
+            width: parent.width - 20px;
+            text: "Files";
+            color: #7dd3fc;
+            font-size: 13px;
+            font-weight: 700;
+        }
+
+        // Directory listing: one newline-joined string in a single multi-line Text.
+        Text {
+            x: 10px;
+            y: 54px;
+            width: parent.width - 20px;
+            height: parent.height - 62px;
+            text: root.entries;
+            color: #d1fae5;
+            font-family: "monospace";
+            font-size: 13px;
+            wrap: word-wrap;
+            overflow: clip;
+        }
+
+        resize-handle := TouchArea {
+            x: parent.width - 20px;
+            y: parent.height - 20px;
+            width: 20px;
+            height: 20px;
+            moved => {
+                if (self.pressed) {
+                    root.resize_explorer_window(
                         (self.mouse-x - self.pressed-x) / 1px,
                         (self.mouse-y - self.pressed-y) / 1px
                     );
