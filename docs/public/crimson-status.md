@@ -29,9 +29,21 @@ testing.
   exercise the same shell implementation as the interactive path.
 - Shared-memory `mmap`/`shm_open` support is present for the x86 compositor
   smoke path, but not yet a complete POSIX memory-mapping implementation.
-- RADCompositor supports dirty-rectangle software composition and shm-backed
-  producer surfaces; full Slint userspace apps and hardware page flip are still
-  follow-up work.
+- RADCompositor now boots a multi-window desktop shell on the x86 VM target: a
+  gradient dock with an app launcher and open-order icons (right-click to close),
+  and three kernel-rendered Slint application windows — Terminal (real PTY),
+  File Explorer (VFS directory browser), and Text Editor (VFS open/save). Windows
+  move, resize, focus/raise, and close, with per-window keyboard routing
+  (Terminal keys go to the PTY, Editor keys go to its Slint `TextEdit`).
+- The shell UI is fully dynamic Slint in the freestanding kernel: `for` repeaters
+  over `[struct]` models and the `std-widgets` set (`Button`, `LineEdit`,
+  `TextEdit`, `ScrollView`) link and run under `-nostdlib`/`-fno-exceptions` via
+  a small set of libstdc++ support symbols in the kernel runtime.
+- RADCompositor also exposes dirty-rectangle software composition and an
+  shm-backed producer surface path. Full Slint *userspace* apps (a Wayland-style
+  client/server model where apps are separate processes rendering into shared
+  memory), per-window surface allocation, and hardware page flip are the 0.1.5
+  follow-up.
 - Network APIs now include device/link/send/receive/poll shape, experimental
   IPv4/UDP datagram sockets, local TCP stream socket lifecycle support, and
   legacy virtio-net RX/TX queue ownership markers for the x86 VM target.

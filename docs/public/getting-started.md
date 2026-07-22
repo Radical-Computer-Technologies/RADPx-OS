@@ -59,8 +59,15 @@ smoke. To run just the ISO smoke against an existing build:
 RAD_X86_UI_PROFILE=terminal tools/embedded/x86_64_grub_slint_smoke.sh
 ```
 
-The `settings.wm.json` profile builds the Slint-backed RADCompositor window
-manager instead of the terminal shell.
+The `settings.wm.json` profile builds the Slint-backed RADCompositor desktop
+shell instead of the plain terminal image. That shell boots a multi-window
+desktop — a gradient dock with an app launcher plus Terminal, File Explorer,
+and Text Editor windows — rendered by the freestanding Slint software renderer
+in the kernel. Run it with `-enable-kvm -cpu host` for smooth window drag:
+
+```bash
+RAD_X86_UI_PROFILE=wm tools/embedded/x86_64_grub_slint_smoke.sh
+```
 
 ## 3. Boot the ZuBoard-1CG in QEMU (A53, ~2–3 minutes)
 
@@ -92,4 +99,4 @@ requires each `RAD_*` milestone marker to appear in order on the serial log.
 - @ref networking and @ref device_tree_guide, plus the ZuBoard-1CG bring-up
   notes, for target-specific detail.
 - The public Crimson API docs are published through RadicalPackages under
-  `docs/radpx-os/0.1.0/api/`.
+  `docs/radpx-os/0.1.4/api/`.

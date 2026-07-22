@@ -16,8 +16,8 @@ This hub documents the experimental Crimson 0.1.4 kernel/package API surface.
 - @ref api_structure explains the public ABI shape and subsystem ownership.
 - @ref api_groups provides a subsystem-oriented API index.
 - @ref device_tree_guide documents the runtime overlay/device-tree model.
-- @ref radcompositor describes the experimental Slint/RADCompositor windowing
-  path.
+- @ref radcompositor describes the Slint/RADCompositor multi-window desktop
+  shell (Terminal, File Explorer, and Text Editor windows).
 - @ref networking describes the experimental IPv4/UDP and TCP stream socket
   foundation.
 - @ref radbuild_integration describes the RadBuild 0.2.1 OS build and artifact

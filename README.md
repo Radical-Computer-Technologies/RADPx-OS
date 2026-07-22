@@ -1,7 +1,15 @@
 # RADPx-OS (Radical Posix OS)
 
 RADPx-OS is a POSIX-inspired operating system targeting hybrid RTOS-like
-performance with a POSIX-like feature set.
+performance with a POSIX-like feature set. Its kernel is **RADKernel**.
+
+The x86_64 GRUB target can boot either a framebuffer terminal or a **Slint
+multi-window desktop shell** (RADCompositor): a gradient dock with an app
+launcher and three kernel-rendered windows — Terminal (real PTY), File Explorer
+(VFS browser), and Text Editor (VFS open/save) — driven by dynamic Slint (`for`
+repeaters + `std-widgets`) running in the freestanding kernel. The Cortex-A53
+ZuBoard-1CG and Pi Zero 2 W targets are earlier in bring-up (serial/marker and
+two-stage payload respectively).
 
 ## Layout
 
@@ -41,9 +49,9 @@ radbuild build os --settings settings.ci.json --system rad-zuboard-1cg-qemu-ci -
 
 RadBuild 0.2.1 treats each JSON as an OS build configuration. The terminal
 profile excludes Slint/RADCompositor chunks and runs the terminal VM smoke; the
-WM profile includes the Slint-backed RADCompositor shell, runs the hosted UI
-smoke, and packages the VM image without making the current Slint VM path a
-release gate. The ZuBoard profile cross-builds the A53 kernel + userland,
+WM profile includes the Slint-backed RADCompositor desktop shell (dock,
+launcher, Terminal/File Explorer/Text Editor windows), runs the hosted UI smoke,
+and packages the VM image. The Slint VM path is not yet a release gate. The ZuBoard profile cross-builds the A53 kernel + userland,
 assembles the SD image, and runs the QEMU marker smoke.
 Each profile has its own build directory, artifact directory, writable ext4/FAT
 images, serial logs, and `SHA256SUMS`.
