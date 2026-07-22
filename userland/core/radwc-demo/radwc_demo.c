@@ -103,11 +103,16 @@ int main(void) {
     int dragging = 0;
     int grab_x = 0, grab_y = 0;
     int running = 1;
+    int announced_input = 0;
 
     while (running) {
         rad_wc_input_event_t ev;
         int r;
         while ((r = rad_wc_surface_poll_input(&surface, &ev)) == 1) {
+            if (!announced_input) {
+                announced_input = 1;
+                put_str("radwc-demo: RAD_WC_DEMO_INPUT_OK routed input received\n");
+            }
             if (ev.type == RAD_WC_EVENT_POINTER_BUTTON) {
                 if (ev.pressed) {
                     focused = 1;

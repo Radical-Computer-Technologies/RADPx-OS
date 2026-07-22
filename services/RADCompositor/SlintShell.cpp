@@ -846,6 +846,11 @@ struct IpcSurfaceRecord {
 
 IpcSurfaceRecord g_ipc_surfaces[RAD_COMPOSITOR_MAX_SURFACES];
 
+// The client surface that currently holds keyboard focus (0 = a WM window does).
+// Set on a press over a client surface or an explicit FOCUS request; cleared when
+// a WM window is clicked or the focused client surface goes away.
+uint32_t g_focused_ipc_surface = 0;
+
 IpcSurfaceRecord *ipc_find(uint32_t surface_id) {
     if (surface_id == 0) return nullptr;
     for (auto &record : g_ipc_surfaces) {
@@ -915,6 +920,7 @@ void ipc_destroy_surface(uint32_t surface_id) {
         record->used = 0;
         record->surface_id = 0;
     }
+    if (g_focused_ipc_surface == surface_id) g_focused_ipc_surface = 0;
 }
 
 // Is a pid a live (non-zombie) process? A pid that has exited and been reaped no
@@ -990,7 +996,9 @@ rad_status_t compositor_device_ioctl(void*, uint32_t request, void *argument) {
         auto *surface = static_cast<rad_compositor_ipc_surface_t*>(argument);
         if (!surface || surface->size < sizeof(*surface)) return RAD_STATUS_INVALID_ARGUMENT;
         if (!ipc_find(surface->surface_id)) return RAD_STATUS_NOT_FOUND;
-        return rad_compositor_focus_surface(&g_compositor, surface->surface_id);
+        const rad_status_t status = rad_compositor_focus_surface(&g_compositor, surface->surface_id);
+        if (status == RAD_STATUS_OK) g_focused_ipc_surface = surface->surface_id;
+        return status;
     }
     if (request == RAD_DEVICE_IOCTL_COMPOSITOR_POLL_INPUT) {
         auto *poll = static_cast<rad_compositor_ipc_input_t*>(argument);
@@ -1354,8 +1362,8 @@ public:
         // second rather than every frame.
         if ((++ipc_reap_ticks_ & 0x1f) == 0) {
             if (ipc_reap_dead_owners() > 0) {
-                if (focused_ipc_surface_ && !ipc_is_surface(focused_ipc_surface_)) {
-                    focused_ipc_surface_ = 0;
+                if (g_focused_ipc_surface && !ipc_is_surface(g_focused_ipc_surface)) {
+                    g_focused_ipc_surface = 0;
                 }
             }
         }
@@ -1571,12 +1579,12 @@ private:
         if (event.type == RAD_INPUT_EVENT_KEY) {
             // A focused client (userland) surface takes keyboard input first: queue it for
             // the owning process to poll, instead of dispatching into an in-kernel adapter.
-            if (focused_ipc_surface_) {
-                if (IpcSurfaceRecord *record = ipc_find(focused_ipc_surface_)) {
+            if (g_focused_ipc_surface) {
+                if (IpcSurfaceRecord *record = ipc_find(g_focused_ipc_surface)) {
                     ipc_push_input(record, event);
                     return;
                 }
-                focused_ipc_surface_ = 0;
+                g_focused_ipc_surface = 0;
             }
             // Route keys to the FOCUSED window's adapter so the editor's TextEdit (and any
             // other Slint-driven window) receives them. Only the terminal adapter forwards
@@ -1637,7 +1645,7 @@ private:
                     pointer_grab_active_ = true;
                     pointer_grab_surface_ = result.surface_id;
                     rad_compositor_focus_surface(&g_compositor, result.surface_id);
-                    focused_ipc_surface_ = result.surface_id;   // client takes keyboard focus
+                    g_focused_ipc_surface = result.surface_id;   // client takes keyboard focus
                     set_shell_state();
                     marker_once(&g_compositor_hit_marker_sent, "RAD_COMPOSITOR_HIT_TEST_OK");
                     marker_once(&g_compositor_input_marker_sent, "RAD_COMPOSITOR_INPUT_TRANSLATE_OK");
@@ -1672,7 +1680,7 @@ private:
                 if (focus_window_id != 0) {
                     rad_compositor_focus_surface(&g_compositor, result.surface_id);
                     g_desktop.focusWindow(focus_window_id);
-                    focused_ipc_surface_ = 0;   // WM window reclaims keyboard focus
+                    g_focused_ipc_surface = 0;   // WM window reclaims keyboard focus
                     set_shell_state();
                 }
             }
@@ -1745,7 +1753,6 @@ private:
     bool dispatching_input_ = false;
     bool ready_for_input_ = false;   // set true after the first render lays out the tree
     uint32_t ipc_reap_ticks_ = 0;      // throttle counter for client-surface reaping
-    uint32_t focused_ipc_surface_ = 0; // client surface that currently has keyboard focus
     bool pointer_grab_active_ = false;   // a button is held: route motion/release to this
     uint32_t pointer_grab_surface_ = 0;  // surface even when the cursor leaves its bounds
     bool pending_terminal_resize_ = false;

@@ -21,11 +21,19 @@ static long wc_mmap(long length, long prot, long flags, long fd) {
 }
 
 void rad_wc_sleep_ms(uint32_t ms) {
-    /* struct timespec { long tv_sec; long tv_nsec; } */
-    long ts[2];
-    ts[0] = (long)(ms / 1000u);
-    ts[1] = (long)((ms % 1000u) * 1000000u);
-    rad_syscall6(RAD_WC_SYS_NANOSLEEP, (long)ts, 0, 0, 0, 0, 0);
+    /* Frame pacing for a compositor client. nanosleep takes the duration in
+     * NANOSECONDS directly in arg0 (0 == yield). A full blocking sleep is
+     * avoided on purpose: a user task that goes fully to sleep on a worker core
+     * is not currently re-woken by that core's scheduler, so the client would
+     * render one frame and stall. Instead pace cooperatively -- a light spin
+     * for rough timing, then a scheduler yield (nanosleep(0), which keeps the
+     * task runnable and is reliably rescheduled) so the WM and every other task
+     * keep running without this client ever monopolising a core. */
+    for (uint32_t k = 0; k < ms; ++k) {
+        volatile unsigned long spin = 40000ul;
+        while (spin--) { __asm__ __volatile__("pause" ::: "memory"); }
+        rad_syscall6(RAD_WC_SYS_NANOSLEEP, 0, 0, 0, 0, 0, 0);
+    }
 }
 
 int rad_wc_surface_open(rad_wc_surface_t *surface, const char *shm_name,
