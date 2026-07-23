@@ -419,6 +419,7 @@ int g_loading_marker_sent = 0;
 int g_ready_marker_sent = 0;
 int g_wm_marker_sent = 0;
 int g_wc_demo_marker_sent = 0;
+int g_radslint_demo_marker_sent = 0;
 int g_terminal_window_marker_sent = 0;
 int g_menu_open_marker_sent = 0;
 int g_menu_escape_marker_sent = 0;
@@ -2767,6 +2768,22 @@ extern "C" rad_status_t rad_slint_shell_start(rad_framebuffer_t framebuffer, con
         if (x86_user_spawn_process("/bin/radwc-demo", rad_process_current_pid(), &demo_pid, &demo_task) == RAD_STATUS_OK) {
             marker_once(&g_wc_demo_marker_sent, "RAD_WC_DEMO_LAUNCH_OK");
         }
+        // The userland Slint app (/bin/radslint-demo) is built and staged: it
+        // links freestanding Slint into a userland process, opens a compositor
+        // surface, gets a WM window frame and runs its event loop -- proving an
+        // app can be Slint-over-libradcompositor. It is NOT auto-launched yet:
+        // its Slint scene currently renders empty (a window draw-driving detail
+        // still being resolved), so launching it would show a blank window. The
+        // spawn is kept, gated off, for when that lands.
+#if defined(RAD_ENABLE_RADSLINT_DEMO_AUTOLAUNCH)
+        int32_t rsd_pid = 0;
+        rad_task_t rsd_task = nullptr;
+        if (x86_user_spawn_process("/bin/radslint-demo", rad_process_current_pid(), &rsd_pid, &rsd_task) == RAD_STATUS_OK) {
+            marker_once(&g_radslint_demo_marker_sent, "RAD_SLINT_USERLAND_LAUNCH_OK");
+        }
+#else
+        (void)g_radslint_demo_marker_sent;
+#endif
     }
 #if defined(RAD_SLINT_SHELL_SELFTEST)
     // Self-test scaffolding only: drives the shell through menu/move/resize/close/

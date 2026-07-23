@@ -1,0 +1,12 @@
+export component AppWindow inherits Window {
+    width: 400px;
+    height: 260px;
+    background: #1e2a44;
+    VerticalLayout {
+        padding: 16px;
+        spacing: 8px;
+        Text { text: "USERLAND SLINT"; color: #e8ecf4; font-size: 22px; }
+        Text { text: "rendered by a separate process"; color: #8791a5; font-size: 14px; }
+        Rectangle { background: #4fd08a; height: 24px; border-radius: 4px; }
+    }
+}
