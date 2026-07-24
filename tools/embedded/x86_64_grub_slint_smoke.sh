@@ -225,6 +225,9 @@ if [[ "${ui_profile}" == "wm" ]]; then
         # The compositor draws server-side window decorations (title/drag bar +
         # close button + border) around each client surface.
         grep -q "RAD_COMPOSITOR_DECORATION_OK" "${qemu_log}"
+        # A real Slint UI running as a separate userland process (Slint linked
+        # into a userland binary, rendering into a compositor surface).
+        grep -q "RAD_SLINT_USERLAND_LAUNCH_OK" "${qemu_log}"
     else
         echo "WM VM reached base terminal before timeout; hosted Slint smoke covers UI markers."
     fi
